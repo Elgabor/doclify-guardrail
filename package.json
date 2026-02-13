@@ -1,0 +1,19 @@
+{
+  "name": "doclify-guardrail-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Low-cost CLI guardrail for markdown docs",
+  "bin": {
+    "doclify-guardrail": "./src/index.mjs"
+  },
+  "scripts": {
+    "start": "node ./src/index.mjs",
+    "debug": "node ./src/index.mjs --debug",
+    "test": "node --test",
+    "demo": "bash ./scripts/demo.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
