@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
+import { stripCodeBlocks } from '../src/checker.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -162,4 +163,56 @@ test('all findings have numeric line field', () => {
   for (const f of allFindings) {
     assert.equal(typeof f.line, 'number', `Finding ${f.code} should have numeric line`);
   }
+});
+
+// === Code block exclusion tests ===
+
+test('stripCodeBlocks: preserves line count', () => {
+  const md = '# Title\n```\ncode line 1\ncode line 2\n```\nAfter code';
+  const stripped = stripCodeBlocks(md);
+  const originalLines = md.split('\n').length;
+  const strippedLines = stripped.split('\n').length;
+  assert.equal(strippedLines, originalLines);
+});
+
+test('TODO inside fenced code block is ignored', () => {
+  const md = `---\ntitle: Test\n---\n# Titolo\n\`\`\`\nTODO: this is code\n\`\`\``;
+  const res = checkMarkdown(md);
+  const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholders.length, 0);
+});
+
+test('TODO outside code block is detected', () => {
+  const md = `---\ntitle: Test\n---\n# Titolo\n\`\`\`\ncode\n\`\`\`\nTODO: fix this`;
+  const res = checkMarkdown(md);
+  const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholders.length, 1);
+  assert.equal(placeholders[0].line, 8);
+});
+
+test('H1 inside code block is not counted', () => {
+  const md = `---\ntitle: Test\n---\n# Real H1\n\`\`\`\n# Fake H1\n\`\`\``;
+  const res = checkMarkdown(md);
+  assert.equal(res.summary.errors, 0);
+});
+
+test('insecure link inside code block is ignored', () => {
+  const md = `---\ntitle: Test\n---\n# Titolo\n\`\`\`\n[link](http://example.com)\n\`\`\``;
+  const res = checkMarkdown(md);
+  const links = res.warnings.filter((w) => w.code === 'insecure-link');
+  assert.equal(links.length, 0);
+});
+
+test('tilde fenced code block is handled', () => {
+  const md = `---\ntitle: Test\n---\n# Titolo\n~~~\nTODO: in tilde block\n~~~`;
+  const res = checkMarkdown(md);
+  const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholders.length, 0);
+});
+
+test('inline code TODO is ignored', () => {
+  const md = `---\ntitle: Test\n---\n# Titolo\nUse \`TODO\` as marker`;
+  const res = checkMarkdown(md);
+  const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholders.length, 0);
 });
