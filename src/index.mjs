@@ -2,9 +2,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { checkMarkdown } from './checker.mjs';
+import { resolveFileList } from './glob.mjs';
 
 function printHelp() {
-  console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
+  console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md ...> [opzioni]\n  doclify-guardrail --dir <path> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --dir <path>             Scansiona ricorsivamente i .md in una directory\n  --report [path]          Genera report markdown (default: doclify-report.md)\n  --rules <path>           Carica regole custom da file JSON\n  --no-color               Disabilita output colorato\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
 }
 
 function parseConfigFile(configPath) {
@@ -24,12 +25,16 @@ function parseConfigFile(configPath) {
 
 function parseArgs(argv) {
   const args = {
-    file: null,
+    files: [],
     strict: undefined,
     debug: false,
     maxLineLength: undefined,
     configPath: path.resolve('.doclify-guardrail.json'),
-    help: false
+    help: false,
+    dir: null,
+    report: null,
+    rules: null,
+    noColor: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -47,6 +52,11 @@ function parseArgs(argv) {
 
     if (a === '--strict') {
       args.strict = true;
+      continue;
+    }
+
+    if (a === '--no-color') {
+      args.noColor = true;
       continue;
     }
 
@@ -74,16 +84,42 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === '--dir') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Valore mancante per --dir');
+      }
+      args.dir = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--report') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        args.report = 'doclify-report.md';
+      } else {
+        args.report = value;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (a === '--rules') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Valore mancante per --rules');
+      }
+      args.rules = value;
+      i += 1;
+      continue;
+    }
+
     if (a.startsWith('-')) {
       throw new Error(`Opzione sconosciuta: ${a}`);
     }
 
-    if (!args.file) {
-      args.file = a;
-      continue;
-    }
-
-    throw new Error(`Argomento inatteso: ${a}`);
+    args.files.push(a);
   }
 
   return args;
@@ -106,12 +142,10 @@ function resolveOptions(args) {
   };
 }
 
-function buildResult(file, analysis, opts) {
+function buildFileResult(filePath, analysis, opts) {
   const pass = analysis.errors.length === 0 && (!opts.strict || analysis.warnings.length === 0);
   return {
-    version: '0.2',
-    file,
-    strict: opts.strict,
+    file: filePath,
     pass,
     findings: {
       errors: analysis.errors,
@@ -125,9 +159,39 @@ function buildResult(file, analysis, opts) {
   };
 }
 
-function printHumanSummary(result) {
+function buildOutput(fileResults, fileErrors, opts, elapsed) {
+  const totalErrors = fileResults.reduce((s, r) => s + r.summary.errors, 0);
+  const totalWarnings = fileResults.reduce((s, r) => s + r.summary.warnings, 0);
+  const passed = fileResults.filter(r => r.pass).length;
+  const failed = fileResults.filter(r => !r.pass).length;
+  const overallPass = failed === 0 && fileErrors.length === 0;
+
+  return {
+    version: '1.0',
+    strict: opts.strict,
+    files: fileResults,
+    fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+    summary: {
+      filesScanned: fileResults.length + fileErrors.length,
+      filesPassed: passed,
+      filesFailed: failed,
+      filesErrored: fileErrors.length,
+      totalErrors,
+      totalWarnings,
+      status: overallPass ? 'PASS' : 'FAIL',
+      elapsed: Math.round(elapsed * 1000) / 1000
+    }
+  };
+}
+
+function printHumanSummary(output) {
+  const s = output.summary;
+  const parts = [];
+  if (s.filesPassed > 0) parts.push(`\u2713 ${s.filesPassed} passed`);
+  if (s.filesFailed > 0) parts.push(`\u2717 ${s.filesFailed} failed`);
+  if (s.filesErrored > 0) parts.push(`${s.filesErrored} errored`);
   console.error(
-    `[doclify-guardrail] ${result.summary.status} — errori: ${result.summary.errors}, warning: ${result.summary.warnings}, strict: ${result.strict ? 'on' : 'off'}`
+    `${parts.join(' \u00B7 ')} \u00B7 ${s.filesScanned} files scanned in ${s.elapsed}s`
   );
 }
 
@@ -146,14 +210,17 @@ function runCli(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  if (!args.file) {
-    console.error('Errore: manca <file.md>.');
-    console.error('Usa --help per esempi di utilizzo.');
+  // Resolve file list
+  let filePaths;
+  try {
+    filePaths = resolveFileList(args);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
     return 2;
   }
 
-  if (!fs.existsSync(args.file)) {
-    console.error(`File non trovato: ${args.file}`);
+  if (filePaths.length === 0) {
+    console.error('Error: no markdown files found.');
     return 2;
   }
 
@@ -165,32 +232,38 @@ function runCli(argv = process.argv.slice(2)) {
     return 2;
   }
 
-  const content = fs.readFileSync(args.file, 'utf8');
-  const analysis = checkMarkdown(content, { maxLineLength: resolved.maxLineLength });
-  const result = buildResult(args.file, analysis, { strict: resolved.strict });
+  const startTime = process.hrtime.bigint();
+  const fileResults = [];
+  const fileErrors = [];
 
-  if (args.debug) {
-    console.error(
-      JSON.stringify(
-        {
-          debug: {
-            args,
-            resolved
-          }
-        },
-        null,
-        2
-      )
-    );
+  for (const filePath of filePaths) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const analysis = checkMarkdown(content, {
+        maxLineLength: resolved.maxLineLength,
+        filePath
+      });
+      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
+    } catch (err) {
+      fileErrors.push({ file: filePath, error: err.message });
+    }
   }
 
-  printHumanSummary(result);
-  console.log(JSON.stringify(result, null, 2));
-  return result.pass ? 0 : 1;
+  const elapsed = Number(process.hrtime.bigint() - startTime) / 1e9;
+  const output = buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed);
+
+  if (args.debug) {
+    console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
+  }
+
+  printHumanSummary(output);
+  console.log(JSON.stringify(output, null, 2));
+
+  return output.summary.status === 'PASS' ? 0 : 1;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   process.exit(runCli());
 }
 
-export { checkMarkdown, parseArgs, resolveOptions, runCli };
+export { checkMarkdown, parseArgs, resolveOptions, runCli, buildFileResult, buildOutput };

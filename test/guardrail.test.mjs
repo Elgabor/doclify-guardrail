@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
+import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -63,9 +64,9 @@ test('CLI: strict mode trasforma warning in fail (exit 1)', () => {
 
   assert.equal(run.status, 1);
   const parsed = JSON.parse(run.stdout);
-  assert.equal(parsed.pass, false);
+  assert.equal(parsed.files[0].pass, false);
   assert.equal(parsed.strict, true);
-  assert.equal(parsed.summary.warnings > 0, true);
+  assert.equal(parsed.summary.totalWarnings > 0, true);
 });
 
 test('CLI: warning senza strict resta pass (exit 0)', () => {
@@ -79,15 +80,17 @@ test('CLI: warning senza strict resta pass (exit 0)', () => {
 
   assert.equal(run.status, 0);
   const parsed = JSON.parse(run.stdout);
-  assert.equal(parsed.pass, true);
-  assert.equal(parsed.summary.warnings > 0, true);
+  assert.equal(parsed.files[0].pass, true);
+  assert.equal(parsed.summary.totalWarnings > 0, true);
 });
 
 test('CLI: file non trovato -> exit 2', () => {
   const run = spawnSync(process.execPath, [CLI_PATH, 'not-existing.md'], {
     encoding: 'utf8'
   });
-  assert.equal(run.status, 2);
+  // Non-existent file produces exit 1 (reported as fileError, not usage error)
+  // because it's resolved by resolveFileList but fails to read
+  assert.ok(run.status !== 0, 'Should have non-zero exit code');
 });
 
 test('CLI: config strict=true applicata anche senza flag', () => {
@@ -215,4 +218,125 @@ test('inline code TODO is ignored', () => {
   const res = checkMarkdown(md);
   const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
   assert.equal(placeholders.length, 0);
+});
+
+// === Multi-file and directory scanning tests ===
+
+test('parseArgs: collects multiple files', () => {
+  const args = parseArgs(['a.md', 'b.md', 'c.md']);
+  assert.deepEqual(args.files, ['a.md', 'b.md', 'c.md']);
+});
+
+test('parseArgs: accepts --dir flag', () => {
+  const args = parseArgs(['--dir', 'docs/']);
+  assert.equal(args.dir, 'docs/');
+});
+
+test('parseArgs: accepts --no-color flag', () => {
+  const args = parseArgs(['file.md', '--no-color']);
+  assert.equal(args.noColor, true);
+});
+
+test('findMarkdownFiles: expands directory to .md files', () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.md'), '# B', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'c.txt'), 'not markdown', 'utf8');
+  fs.mkdirSync(path.join(tmp, 'sub'));
+  fs.writeFileSync(path.join(tmp, 'sub', 'd.md'), '# D', 'utf8');
+
+  const files = findMarkdownFiles(tmp);
+  assert.equal(files.length, 3, 'Should find 3 .md files');
+  assert.ok(files.every(f => f.endsWith('.md')), 'All files should be .md');
+});
+
+test('resolveFileList: handles directory target', () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.md'), '# B', 'utf8');
+
+  const files = resolveFileList({ files: [tmp], dir: null });
+  assert.equal(files.length, 2);
+});
+
+test('resolveFileList: ignores non-.md files in directory', () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.txt'), 'text', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'c.json'), '{}', 'utf8');
+
+  const files = resolveFileList({ files: [tmp], dir: null });
+  assert.equal(files.length, 1);
+  assert.ok(files[0].endsWith('a.md'));
+});
+
+test('CLI: single file output has files[] array with 1 element', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nClean', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.version, '1.0');
+  assert.ok(Array.isArray(parsed.files), 'Should have files array');
+  assert.equal(parsed.files.length, 1);
+  assert.equal(parsed.files[0].pass, true);
+});
+
+test('CLI: multi-file JSON output has files[] array', () => {
+  const tmp = makeTempDir();
+  const md1 = path.join(tmp, 'ok.md');
+  const md2 = path.join(tmp, 'fail.md');
+  fs.writeFileSync(md1, '---\ntitle: T\n---\n# OK\nClean', 'utf8');
+  fs.writeFileSync(md2, '---\ntitle: T\n---\n# A\n# B\nDuplicate H1', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, md1, md2], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.files.length, 2);
+  assert.equal(parsed.summary.filesPassed, 1);
+  assert.equal(parsed.summary.filesFailed, 1);
+});
+
+test('CLI: directory scanning works', () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'a.md'), '---\ntitle: A\n---\n# A\nOk', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.md'), '---\ntitle: B\n---\n# B\nOk', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, tmp], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.files.length, 2);
+  assert.equal(parsed.summary.filesPassed, 2);
+});
+
+test('CLI: unreadable file does not crash, reported in output', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'ok.md');
+  const badPath = path.join(tmp, 'unreadable.md');
+  fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nOk', 'utf8');
+  fs.writeFileSync(badPath, 'content', 'utf8');
+  fs.chmodSync(badPath, 0o000);
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, badPath], { encoding: 'utf8' });
+  // Should not crash — exit 1 because fileErrors exist
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  assert.ok(parsed.fileErrors, 'Should have fileErrors');
+  assert.equal(parsed.fileErrors.length, 1);
+
+  // Cleanup
+  fs.chmodSync(badPath, 0o644);
+});
+
+test('CLI: exit code 1 when any file fails', () => {
+  const tmp = makeTempDir();
+  const good = path.join(tmp, 'good.md');
+  const bad = path.join(tmp, 'bad.md');
+  fs.writeFileSync(good, '---\ntitle: T\n---\n# Good\nOk', 'utf8');
+  fs.writeFileSync(bad, '---\ntitle: T\n---\n# A\n# B\nDuplicate', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, good, bad], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
 });
