@@ -4,6 +4,7 @@ import path from 'node:path';
 import { checkMarkdown } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
+import { loadCustomRules } from './rules-loader.mjs';
 
 function printHelp() {
   console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md ...> [opzioni]\n  doclify-guardrail --dir <path> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --dir <path>             Scansiona ricorsivamente i .md in una directory\n  --report [path]          Genera report markdown (default: doclify-report.md)\n  --rules <path>           Carica regole custom da file JSON\n  --no-color               Disabilita output colorato\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
@@ -233,6 +234,17 @@ function runCli(argv = process.argv.slice(2)) {
     return 2;
   }
 
+  // Load custom rules if specified
+  let customRules = [];
+  if (args.rules) {
+    try {
+      customRules = loadCustomRules(args.rules);
+    } catch (err) {
+      console.error(`Custom rules error: ${err.message}`);
+      return 2;
+    }
+  }
+
   const startTime = process.hrtime.bigint();
   const fileResults = [];
   const fileErrors = [];
@@ -242,7 +254,8 @@ function runCli(argv = process.argv.slice(2)) {
       const content = fs.readFileSync(filePath, 'utf8');
       const analysis = checkMarkdown(content, {
         maxLineLength: resolved.maxLineLength,
-        filePath
+        filePath,
+        customRules
       });
       fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
     } catch (err) {

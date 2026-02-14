@@ -8,6 +8,7 @@ import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
+import { loadCustomRules } from '../src/rules-loader.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -400,4 +401,96 @@ test('CLI: --report writes file to disk', () => {
   assert.ok(fs.existsSync(reportPath), 'Report file should be created');
   const content = fs.readFileSync(reportPath, 'utf8');
   assert.ok(content.includes('Doclify Guardrail Report'));
+});
+
+// === Custom rules tests ===
+
+test('loadCustomRules: loads valid rules file', () => {
+  const tmp = makeTempDir();
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'no-foo', severity: 'error', pattern: '\\bfoo\\b', message: 'Do not use foo' }
+    ]
+  }), 'utf8');
+
+  const rules = loadCustomRules(rulesPath);
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].id, 'no-foo');
+  assert.ok(rules[0].pattern instanceof RegExp);
+});
+
+test('loadCustomRules: rejects malformed JSON', () => {
+  const tmp = makeTempDir();
+  const rulesPath = path.join(tmp, 'bad.json');
+  fs.writeFileSync(rulesPath, 'not json{{{', 'utf8');
+
+  assert.throws(() => loadCustomRules(rulesPath), /Invalid JSON/);
+});
+
+test('loadCustomRules: rejects invalid regex', () => {
+  const tmp = makeTempDir();
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'bad-regex', severity: 'warning', pattern: '[invalid', message: 'bad' }
+    ]
+  }), 'utf8');
+
+  assert.throws(() => loadCustomRules(rulesPath), /bad-regex/);
+});
+
+test('custom rule detects pattern with line number', () => {
+  const md = `---\ntitle: Test\n---\n# Title\nThis has foo in it`;
+  const customRules = [
+    { id: 'no-foo', severity: 'error', pattern: /\bfoo\b/gi, message: 'Do not use foo' }
+  ];
+  const res = checkMarkdown(md, { customRules });
+  const fooErrors = res.errors.filter(e => e.code === 'no-foo');
+  assert.equal(fooErrors.length, 1);
+  assert.equal(fooErrors[0].line, 5);
+  assert.equal(fooErrors[0].message, 'Do not use foo');
+});
+
+test('custom rule inside code block is ignored', () => {
+  const md = `---\ntitle: Test\n---\n# Title\n\`\`\`\nfoo bar\n\`\`\``;
+  const customRules = [
+    { id: 'no-foo', severity: 'error', pattern: /\bfoo\b/gi, message: 'Do not use foo' }
+  ];
+  const res = checkMarkdown(md, { customRules });
+  const fooErrors = res.errors.filter(e => e.code === 'no-foo');
+  assert.equal(fooErrors.length, 0);
+});
+
+test('custom and built-in rules coexist', () => {
+  const md = `# Title\nTODO fix\nThis has foo`;
+  const customRules = [
+    { id: 'no-foo', severity: 'warning', pattern: /\bfoo\b/gi, message: 'No foo' }
+  ];
+  const res = checkMarkdown(md, { customRules });
+  const placeholders = res.warnings.filter(w => w.code === 'placeholder');
+  const foos = res.warnings.filter(w => w.code === 'no-foo');
+  assert.ok(placeholders.length > 0, 'Built-in placeholder rule should fire');
+  assert.ok(foos.length > 0, 'Custom rule should fire');
+});
+
+test('CLI: --rules applies custom rules', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# Title\nThis has foo', 'utf8');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'no-foo', severity: 'error', pattern: '\\bfoo\\b', message: 'No foo allowed' }
+    ]
+  }), 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--rules', rulesPath], {
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  const errors = parsed.files[0].findings.errors;
+  assert.ok(errors.some(e => e.code === 'no-foo'), 'Custom rule should produce error');
 });

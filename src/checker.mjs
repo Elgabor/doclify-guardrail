@@ -140,6 +140,21 @@ function checkMarkdown(rawContent, opts = {}) {
     }
   });
 
+  // Custom rules (uses stripped content)
+  if (opts.customRules && opts.customRules.length > 0) {
+    lines.forEach((line, idx) => {
+      const cleanLine = stripInlineCode(line);
+      for (const rule of opts.customRules) {
+        // Reset lastIndex for global regex
+        rule.pattern.lastIndex = 0;
+        if (rule.pattern.test(cleanLine)) {
+          const bucket = rule.severity === 'error' ? errors : warnings;
+          bucket.push(normalizeFinding(rule.id, rule.message, idx + 1, filePath));
+        }
+      }
+    });
+  }
+
   return {
     errors,
     warnings,
