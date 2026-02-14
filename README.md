@@ -1,29 +1,68 @@
-# Doclify Guardrail CLI — MVP v0.2
+# Doclify Guardrail
 
-CLI locale low-cost per controllare file Markdown prima della pubblicazione (guardrail minimi di qualità/sicurezza), senza API esterne.
+**Quality gate for your Markdown docs. Catches errors in seconds.**
 
-## Quick start
+Zero dependencies. Node.js built-in only. Works everywhere Node 20+ runs.
+
+## Features
+
+- Multi-file and directory scanning with glob support
+- Line numbers in every finding
+- Code block exclusion (no false positives on code examples)
+- Markdown report generation for CI
+- Custom regex-based rules via JSON
+- Colored terminal output
+- Extended placeholder detection (TODO, FIXME, TBD, WIP, and more)
+- Insecure link detection (inline, bare URLs, reference-style)
+
+## Quick Start
+
 ```bash
-cd projects/doclify-guardrail-mvp
-npm install
-npm test
-node ./src/index.mjs ./sample.md
+# Scan a single file
+npx doclify-guardrail README.md
+
+# Scan an entire directory
+npx doclify-guardrail docs/
+
+# Strict mode (warnings = failure)
+npx doclify-guardrail docs/ --strict
+
+# Generate a report
+npx doclify-guardrail docs/ --report
 ```
 
-## Uso CLI
-```bash
-doclify-guardrail <file.md> [opzioni]
+## Usage
+
+```
+doclify-guardrail <file.md ...> [options]
+doclify-guardrail --dir <path> [options]
 ```
 
-### Opzioni
-- `--strict`: tratta i warning come failure
-- `--max-line-length <n>`: soglia max caratteri per linea (default `160`)
-- `--config <path>`: path config JSON (default: `.doclify-guardrail.json` nella cwd)
-- `--debug`: stampa dettagli di runtime (su stderr)
-- `-h, --help`: help rapido
+### Options
 
-## Config file di progetto
-Crea `.doclify-guardrail.json` nella root progetto:
+| Flag | Description |
+|------|-------------|
+| `--strict` | Treat warnings as failures |
+| `--max-line-length <n>` | Maximum line length (default: 160) |
+| `--config <path>` | Config file path (default: `.doclify-guardrail.json`) |
+| `--dir <path>` | Scan all `.md` files in directory (recursive) |
+| `--report [path]` | Generate markdown report (default: `doclify-report.md`) |
+| `--rules <path>` | Load custom rules from JSON file |
+| `--no-color` | Disable colored output |
+| `--debug` | Show runtime details |
+| `-h, --help` | Show help |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | PASS -- all files clean |
+| `1` | FAIL -- errors found, or warnings in strict mode |
+| `2` | Usage error / invalid input |
+
+## Configuration
+
+Create a `.doclify-guardrail.json` in your project root:
 
 ```json
 {
@@ -32,64 +71,89 @@ Crea `.doclify-guardrail.json` nella root progetto:
 }
 ```
 
-Precedenza configurazione:
-1. flag CLI (es. `--strict`, `--max-line-length`)
-2. file config
-3. default interni
+CLI flags override config file values.
 
-## Regole guardrail v0.2
-1. `single-h1` (**error**) — deve esserci un solo H1
-2. `frontmatter` (**warning**) — frontmatter YAML consigliato in testa
-3. `line-length` (**warning**) — linee oltre soglia
-4. `placeholder` (**warning**) — rileva `TODO`, `lorem ipsum`, `xxx`
-5. `insecure-link` (**warning**) — link `http://`
+## Built-in Rules
 
-## Output
-La CLI produce:
-- **summary leggibile** su `stderr`
-- **JSON stabile** su `stdout`
+| Rule | Severity | Description |
+|------|----------|-------------|
+| `frontmatter` | warning | Missing YAML frontmatter block |
+| `single-h1` | error | Zero or multiple H1 headings |
+| `line-length` | warning | Lines exceeding max length |
+| `placeholder` | warning | TODO, FIXME, TBD, WIP, HACK, CHANGEME, lorem ipsum, etc. |
+| `insecure-link` | warning | HTTP links (should be HTTPS) |
 
-Esempio JSON:
+All rules respect code block exclusion -- content inside fenced code blocks
+and inline code is never flagged.
+
+## Custom Rules
+
+Create a JSON file with custom regex-based rules:
+
 ```json
 {
-  "version": "0.2",
-  "file": "./sample.md",
-  "strict": false,
-  "pass": true,
-  "findings": {
-    "errors": [],
-    "warnings": []
-  },
-  "summary": {
-    "errors": 0,
-    "warnings": 0,
-    "status": "PASS"
-  }
+  "rules": [
+    {
+      "id": "no-internal-urls",
+      "severity": "error",
+      "pattern": "https://internal\\.company\\.com",
+      "message": "Internal URL found -- remove before publishing"
+    },
+    {
+      "id": "no-draft-marker",
+      "severity": "warning",
+      "pattern": "\\[DRAFT\\]",
+      "message": "Draft marker found in document"
+    }
+  ]
 }
 ```
 
-## Exit code
-- `0`: PASS
-- `1`: FAIL (`errors > 0` oppure warning con `--strict`)
-- `2`: uso scorretto / input non valido
-
-## Use-cases reali
-1. **Pre-publish locale**: controllo veloce prima di pubblicare docs
-2. **CI minima**: pipeline che fallisce su errori o warning (`--strict`)
-3. **Standard team**: config condivisa per lunghezza righe/strict
-
-## Demo terminale 30–45s
-Script pronto: `./scripts/demo.sh`
-
-Oppure sequenza manuale:
 ```bash
-npm test
-node ./src/index.mjs ./sample.md
-node ./src/index.mjs ./sample.md --strict
-node ./src/index.mjs ./sample.md --max-line-length 100
+doclify-guardrail docs/ --rules my-rules.json
 ```
 
-## Vincoli rispettati
-- nessuna API esterna
-- nessun servizio a pagamento
-- solo Node.js standard library
+Custom rules are applied after built-in rules and respect code block exclusion.
+
+## CI Integration
+
+### GitHub Actions
+
+```yaml
+- name: Docs quality gate
+  run: npx doclify-guardrail docs/ --strict --report
+```
+
+See `.github/workflows/docs-check.yml` for a complete example workflow.
+
+### JSON Output
+
+Pipe JSON output to other tools:
+
+```bash
+doclify-guardrail docs/ 2>/dev/null | jq '.summary'
+```
+
+## Report
+
+Use `--report` to generate a markdown report:
+
+```bash
+doclify-guardrail docs/ --report quality-report.md
+```
+
+The report includes a summary table, per-file details with line numbers,
+and execution metadata.
+
+## License
+
+MIT
+
+---
+
+## Italiano
+
+Doclify Guardrail e' un quality gate per la documentazione Markdown.
+Zero dipendenze esterne, funziona ovunque giri Node.js 20+.
+Rileva errori, placeholder dimenticati, link insicuri e problemi di
+formattazione con numeri di riga precisi e report in formato Markdown.
