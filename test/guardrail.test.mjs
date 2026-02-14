@@ -494,3 +494,33 @@ test('CLI: --rules applies custom rules', () => {
   const errors = parsed.files[0].findings.errors;
   assert.ok(errors.some(e => e.code === 'no-foo'), 'Custom rule should produce error');
 });
+
+// === Color output tests ===
+
+test('CLI: --no-color produces output without ANSI escape codes on stderr', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--no-color'], {
+    encoding: 'utf8'
+  });
+
+  // stderr should not contain ANSI escape codes
+  assert.ok(!run.stderr.includes('\x1b['), 'stderr should have no ANSI codes with --no-color');
+});
+
+test('CLI: stdout JSON never contains ANSI escape codes', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], {
+    encoding: 'utf8'
+  });
+
+  // stdout (JSON) should never have ANSI codes
+  assert.ok(!run.stdout.includes('\x1b['), 'stdout JSON should have no ANSI codes');
+  // Should still be valid JSON
+  assert.doesNotThrow(() => JSON.parse(run.stdout), 'stdout should be valid JSON');
+});

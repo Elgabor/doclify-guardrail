@@ -5,6 +5,7 @@ import { checkMarkdown } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
+import { initColors, printResults } from './colors.mjs';
 
 function printHelp() {
   console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md ...> [opzioni]\n  doclify-guardrail --dir <path> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --dir <path>             Scansiona ricorsivamente i .md in una directory\n  --report [path]          Genera report markdown (default: doclify-report.md)\n  --rules <path>           Carica regole custom da file JSON\n  --no-color               Disabilita output colorato\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
@@ -186,17 +187,6 @@ function buildOutput(fileResults, fileErrors, opts, elapsed) {
   };
 }
 
-function printHumanSummary(output) {
-  const s = output.summary;
-  const parts = [];
-  if (s.filesPassed > 0) parts.push(`\u2713 ${s.filesPassed} passed`);
-  if (s.filesFailed > 0) parts.push(`\u2717 ${s.filesFailed} failed`);
-  if (s.filesErrored > 0) parts.push(`${s.filesErrored} errored`);
-  console.error(
-    `${parts.join(' \u00B7 ')} \u00B7 ${s.filesScanned} files scanned in ${s.elapsed}s`
-  );
-}
-
 function runCli(argv = process.argv.slice(2)) {
   let args;
   try {
@@ -211,6 +201,8 @@ function runCli(argv = process.argv.slice(2)) {
     printHelp();
     return 0;
   }
+
+  initColors(args.noColor);
 
   // Resolve file list
   let filePaths;
@@ -270,7 +262,7 @@ function runCli(argv = process.argv.slice(2)) {
     console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
   }
 
-  printHumanSummary(output);
+  printResults(output);
   console.log(JSON.stringify(output, null, 2));
 
   // Generate report if requested
