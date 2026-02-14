@@ -40,7 +40,7 @@ test('warning su placeholder', () => {
 });
 
 test('parseArgs: errore opzione sconosciuta', () => {
-  assert.throws(() => parseArgs(['--boh']), /Opzione sconosciuta/);
+  assert.throws(() => parseArgs(['--boh']), /Unknown option/);
 });
 
 test('resolveOptions: legge .doclify-guardrail.json', () => {
@@ -523,4 +523,70 @@ test('CLI: stdout JSON never contains ANSI escape codes', () => {
   assert.ok(!run.stdout.includes('\x1b['), 'stdout JSON should have no ANSI codes');
   // Should still be valid JSON
   assert.doesNotThrow(() => JSON.parse(run.stdout), 'stdout should be valid JSON');
+});
+
+// === Extended patterns + English messages tests ===
+
+test('placeholder: detects FIXME', () => {
+  const md = `---\ntitle: T\n---\n# Title\nFIXME: broken`;
+  const res = checkMarkdown(md);
+  const findings = res.warnings.filter(w => w.code === 'placeholder');
+  assert.ok(findings.length > 0, 'Should detect FIXME');
+  assert.ok(findings[0].message.includes('FIXME'), 'Message should mention FIXME');
+});
+
+test('placeholder: detects TBD', () => {
+  const md = `---\ntitle: T\n---\n# Title\nThis section is TBD`;
+  const res = checkMarkdown(md);
+  const findings = res.warnings.filter(w => w.code === 'placeholder');
+  assert.ok(findings.length > 0, 'Should detect TBD');
+});
+
+test('placeholder: detects [insert here]', () => {
+  const md = `---\ntitle: T\n---\n# Title\nName: [insert here]`;
+  const res = checkMarkdown(md);
+  const findings = res.warnings.filter(w => w.code === 'placeholder');
+  assert.ok(findings.length > 0, 'Should detect [insert here]');
+});
+
+test('placeholder: messages are human-readable (no regex)', () => {
+  const md = `---\ntitle: T\n---\n# Title\nTODO: something`;
+  const res = checkMarkdown(md);
+  const findings = res.warnings.filter(w => w.code === 'placeholder');
+  assert.ok(findings.length > 0);
+  // Should NOT contain regex-like patterns
+  assert.ok(!findings[0].message.includes('/\\b'), 'Message should not contain regex');
+  assert.ok(findings[0].message.includes('TODO'), 'Message should mention TODO');
+});
+
+test('insecure-link: detects bare http URL', () => {
+  const md = `---\ntitle: T\n---\n# Title\nVisit http://example.com for more`;
+  const res = checkMarkdown(md);
+  const links = res.warnings.filter(w => w.code === 'insecure-link');
+  assert.ok(links.length > 0, 'Should detect bare http URL');
+  assert.ok(links[0].message.includes('https://'), 'Should suggest https');
+});
+
+test('insecure-link: detects reference-style http link', () => {
+  const md = `---\ntitle: T\n---\n# Title\nSee [ref] for details\n\n[ref]: http://example.com/page`;
+  const res = checkMarkdown(md);
+  const links = res.warnings.filter(w => w.code === 'insecure-link');
+  assert.ok(links.length > 0, 'Should detect reference-style http link');
+});
+
+test('single-h1: message includes line numbers', () => {
+  const md = `---\ntitle: T\n---\n# First\nContent\n# Second`;
+  const res = checkMarkdown(md);
+  const h1Errors = res.errors.filter(e => e.code === 'single-h1');
+  assert.ok(h1Errors.length > 0);
+  assert.ok(h1Errors[0].message.includes('lines'), 'Message should mention line numbers');
+  assert.ok(h1Errors[0].message.includes('2'), 'Should list actual count');
+});
+
+test('all English: frontmatter message is in English', () => {
+  const md = `# Title\nContent`;
+  const res = checkMarkdown(md);
+  const fm = res.warnings.find(w => w.code === 'frontmatter');
+  assert.ok(fm);
+  assert.ok(fm.message.includes('Missing frontmatter'), 'Frontmatter message should be in English');
 });

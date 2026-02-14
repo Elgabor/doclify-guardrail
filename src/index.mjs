@@ -8,7 +8,27 @@ import { loadCustomRules } from './rules-loader.mjs';
 import { initColors, printResults } from './colors.mjs';
 
 function printHelp() {
-  console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md ...> [opzioni]\n  doclify-guardrail --dir <path> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --dir <path>             Scansiona ricorsivamente i .md in una directory\n  --report [path]          Genera report markdown (default: doclify-report.md)\n  --rules <path>           Carica regole custom da file JSON\n  --no-color               Disabilita output colorato\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
+  console.log(`Doclify Guardrail CLI v1.0
+
+Usage:
+  doclify-guardrail <file.md ...> [options]
+  doclify-guardrail --dir <path> [options]
+
+Options:
+  --strict                 Treat warnings as failures
+  --max-line-length <n>    Maximum line length (default: 160)
+  --config <path>          Config file path (default: .doclify-guardrail.json)
+  --dir <path>             Scan all .md files in directory (recursive)
+  --report [path]          Generate markdown report (default: doclify-report.md)
+  --rules <path>           Load custom rules from JSON file
+  --no-color               Disable colored output
+  --debug                  Show runtime details
+  -h, --help               Show this help
+
+Exit codes:
+  0 = PASS (all files clean)
+  1 = FAIL (errors found, or warnings in strict mode)
+  2 = Usage error / invalid input`);
 }
 
 function parseConfigFile(configPath) {
@@ -18,11 +38,11 @@ function parseConfigFile(configPath) {
     const raw = fs.readFileSync(configPath, 'utf8');
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('deve essere un oggetto JSON');
+      throw new Error('must be a JSON object');
     }
     return parsed;
   } catch (err) {
-    throw new Error(`Config non valida (${configPath}): ${err.message}`);
+    throw new Error(`Invalid config (${configPath}): ${err.message}`);
   }
 }
 
@@ -66,7 +86,7 @@ function parseArgs(argv) {
     if (a === '--config') {
       const value = argv[i + 1];
       if (!value || value.startsWith('-')) {
-        throw new Error('Valore mancante per --config');
+        throw new Error('Missing value for --config');
       }
       args.configPath = path.resolve(value);
       i += 1;
@@ -76,11 +96,11 @@ function parseArgs(argv) {
     if (a === '--max-line-length') {
       const value = argv[i + 1];
       if (!value || value.startsWith('-')) {
-        throw new Error('Valore mancante per --max-line-length');
+        throw new Error('Missing value for --max-line-length');
       }
       const parsed = Number(value);
       if (!Number.isInteger(parsed) || parsed <= 0) {
-        throw new Error(`--max-line-length non valido: ${value}`);
+        throw new Error(`Invalid --max-line-length: ${value}`);
       }
       args.maxLineLength = parsed;
       i += 1;
@@ -90,7 +110,7 @@ function parseArgs(argv) {
     if (a === '--dir') {
       const value = argv[i + 1];
       if (!value || value.startsWith('-')) {
-        throw new Error('Valore mancante per --dir');
+        throw new Error('Missing value for --dir');
       }
       args.dir = value;
       i += 1;
@@ -111,7 +131,7 @@ function parseArgs(argv) {
     if (a === '--rules') {
       const value = argv[i + 1];
       if (!value || value.startsWith('-')) {
-        throw new Error('Valore mancante per --rules');
+        throw new Error('Missing value for --rules');
       }
       args.rules = value;
       i += 1;
@@ -119,7 +139,7 @@ function parseArgs(argv) {
     }
 
     if (a.startsWith('-')) {
-      throw new Error(`Opzione sconosciuta: ${a}`);
+      throw new Error(`Unknown option: ${a}`);
     }
 
     args.files.push(a);
@@ -134,7 +154,7 @@ function resolveOptions(args) {
   const strict = Boolean(args.strict ?? cfg.strict ?? false);
 
   if (!Number.isInteger(maxLineLength) || maxLineLength <= 0) {
-    throw new Error(`maxLineLength non valido in config: ${cfg.maxLineLength}`);
+    throw new Error(`Invalid maxLineLength in config: ${cfg.maxLineLength}`);
   }
 
   return {
@@ -192,8 +212,8 @@ function runCli(argv = process.argv.slice(2)) {
   try {
     args = parseArgs(argv);
   } catch (err) {
-    console.error(`Errore argomenti: ${err.message}`);
-    console.error('Usa --help per vedere le opzioni disponibili.');
+    console.error(`Argument error: ${err.message}`);
+    console.error('Use --help for usage information.');
     return 2;
   }
 

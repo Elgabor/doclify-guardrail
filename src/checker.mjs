@@ -11,6 +11,19 @@ const RULE_SEVERITY = {
   'insecure-link': 'warning'
 };
 
+const PLACEHOLDER_PATTERNS = [
+  { rx: /\bTODO\b/i,           msg: 'TODO marker found — remove before publishing' },
+  { rx: /\bFIXME\b/i,          msg: 'FIXME marker found — remove before publishing' },
+  { rx: /\bHACK\b/i,           msg: 'HACK marker found — remove before publishing' },
+  { rx: /\bTBD\b/i,            msg: 'TBD (to be determined) marker found' },
+  { rx: /\bWIP\b/i,            msg: 'WIP (work in progress) marker found' },
+  { rx: /\bCHANGEME\b/i,       msg: 'CHANGEME marker found — update before publishing' },
+  { rx: /\bPLACEHOLDER\b/i,    msg: 'PLACEHOLDER marker found — replace with actual content' },
+  { rx: /\[insert\s+here\]/i,  msg: '"[insert here]" placeholder found' },
+  { rx: /lorem ipsum/i,        msg: 'Lorem ipsum placeholder text found' },
+  { rx: /\bxxx\b/i,            msg: '"xxx" placeholder found' }
+];
+
 function normalizeFinding(rule, message, line, source) {
   const finding = {
     code: rule,
@@ -78,7 +91,7 @@ function checkMarkdown(rawContent, opts = {}) {
 
   // Rule: frontmatter
   if (!rawContent.startsWith('---\n')) {
-    warnings.push(normalizeFinding('frontmatter', 'Frontmatter non trovato in testa al file.', 1, filePath));
+    warnings.push(normalizeFinding('frontmatter', 'Missing frontmatter block at the beginning of the file.', 1, filePath));
   }
 
   // Rule: single-h1
@@ -90,12 +103,13 @@ function checkMarkdown(rawContent, opts = {}) {
   });
 
   if (h1Lines.length === 0) {
-    errors.push(normalizeFinding('single-h1', 'Manca titolo H1.', 1, filePath));
+    errors.push(normalizeFinding('single-h1', 'Missing H1 heading.', 1, filePath));
   } else if (h1Lines.length > 1) {
+    const lineList = h1Lines.join(', ');
     for (const lineNum of h1Lines) {
       errors.push(normalizeFinding(
         'single-h1',
-        `Trovati ${h1Lines.length} H1 (consentito: 1).`,
+        `Found ${h1Lines.length} H1 headings (expected 1) at lines ${lineList}.`,
         lineNum,
         filePath
       ));
@@ -108,7 +122,7 @@ function checkMarkdown(rawContent, opts = {}) {
       warnings.push(
         normalizeFinding(
           'line-length',
-          `Linea ${idx + 1} oltre ${maxLineLength} caratteri (${line.length}).`,
+          `Line exceeds ${maxLineLength} characters (${line.length}).`,
           idx + 1,
           filePath
         )
@@ -117,25 +131,48 @@ function checkMarkdown(rawContent, opts = {}) {
   });
 
   // Rule: placeholder (uses stripped content)
-  const placeholders = [/\bTODO\b/i, /lorem ipsum/i, /\bxxx\b/i];
   lines.forEach((line, idx) => {
     const cleanLine = stripInlineCode(line);
-    placeholders.forEach((rx) => {
+    for (const { rx, msg } of PLACEHOLDER_PATTERNS) {
       if (rx.test(cleanLine)) {
-        warnings.push(normalizeFinding('placeholder', `Placeholder rilevato: ${rx}`, idx + 1, filePath));
+        warnings.push(normalizeFinding('placeholder', msg, idx + 1, filePath));
       }
-    });
+    }
   });
 
   // Rule: insecure-link (uses stripped content)
   lines.forEach((line, idx) => {
     const cleanLine = stripInlineCode(line);
-    const matches = cleanLine.match(/\[.*?\]\(http:\/\/.*?\)/g);
-    if (matches) {
-      for (const match of matches) {
+
+    // Inline markdown links: [text](http://...)
+    const inlineMatches = cleanLine.match(/\[.*?\]\(http:\/\/[^)]+\)/g);
+    if (inlineMatches) {
+      for (const match of inlineMatches) {
+        const url = match.match(/\((http:\/\/[^)]+)\)/)?.[1] || '';
         warnings.push(
-          normalizeFinding('insecure-link', `Link HTTP non sicuro: ${match}`, idx + 1, filePath)
+          normalizeFinding('insecure-link', `Insecure link found: ${url} — use https:// instead`, idx + 1, filePath)
         );
+      }
+    }
+
+    // Reference-style link definitions: [label]: http://...
+    const refMatch = cleanLine.match(/^\[.*?\]:\s*(http:\/\/\S+)/);
+    if (refMatch) {
+      warnings.push(
+        normalizeFinding('insecure-link', `Insecure link found: ${refMatch[1]} — use https:// instead`, idx + 1, filePath)
+      );
+    }
+
+    // Bare URLs: http://... (not inside markdown link syntax)
+    // Only check if no inline links were found on this line to avoid duplicates
+    if (!inlineMatches && !refMatch) {
+      const bareMatch = cleanLine.match(/\bhttp:\/\/\S+/g);
+      if (bareMatch) {
+        for (const url of bareMatch) {
+          warnings.push(
+            normalizeFinding('insecure-link', `Insecure link found: ${url} — use https:// instead`, idx + 1, filePath)
+          );
+        }
       }
     }
   });
@@ -145,7 +182,6 @@ function checkMarkdown(rawContent, opts = {}) {
     lines.forEach((line, idx) => {
       const cleanLine = stripInlineCode(line);
       for (const rule of opts.customRules) {
-        // Reset lastIndex for global regex
         rule.pattern.lastIndex = 0;
         if (rule.pattern.test(cleanLine)) {
           const bucket = rule.severity === 'error' ? errors : warnings;
