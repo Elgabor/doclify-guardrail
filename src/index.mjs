@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { checkMarkdown } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
+import { generateReport } from './report.mjs';
 
 function printHelp() {
   console.log(`Doclify Guardrail CLI\n\nUso:\n  doclify-guardrail <file.md ...> [opzioni]\n  doclify-guardrail --dir <path> [opzioni]\n\nOpzioni:\n  --strict                 Tratta i warning come failure\n  --max-line-length <n>    Lunghezza massima linea (default: 160)\n  --config <path>          Path file config JSON (default: .doclify-guardrail.json)\n  --dir <path>             Scansiona ricorsivamente i .md in una directory\n  --report [path]          Genera report markdown (default: doclify-report.md)\n  --rules <path>           Carica regole custom da file JSON\n  --no-color               Disabilita output colorato\n  --debug                  Mostra dettagli runtime\n  -h, --help               Mostra questo help\n\nExit code:\n  0 = pass\n  1 = fail (errori, o warning in strict mode)\n  2 = uso scorretto / input non valido`);
@@ -258,6 +259,17 @@ function runCli(argv = process.argv.slice(2)) {
 
   printHumanSummary(output);
   console.log(JSON.stringify(output, null, 2));
+
+  // Generate report if requested
+  if (args.report) {
+    try {
+      const reportPath = generateReport(output, { reportPath: args.report });
+      console.error(`Report written to: ${reportPath}`);
+    } catch (err) {
+      console.error(`Failed to write report: ${err.message}`);
+      return 2;
+    }
+  }
 
   return output.summary.status === 'PASS' ? 0 : 1;
 }

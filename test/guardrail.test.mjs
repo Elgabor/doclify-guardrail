@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
+import { generateReport } from '../src/report.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -339,4 +340,64 @@ test('CLI: exit code 1 when any file fails', () => {
 
   const run = spawnSync(process.execPath, [CLI_PATH, good, bad], { encoding: 'utf8' });
   assert.equal(run.status, 1);
+});
+
+// === Report tests ===
+
+test('parseArgs: --report with default path', () => {
+  const args = parseArgs(['file.md', '--report']);
+  assert.equal(args.report, 'doclify-report.md');
+});
+
+test('parseArgs: --report with custom path', () => {
+  const args = parseArgs(['file.md', '--report', 'custom-report.md']);
+  assert.equal(args.report, 'custom-report.md');
+});
+
+test('generateReport: produces valid markdown with findings', () => {
+  const tmp = makeTempDir();
+  const reportPath = path.join(tmp, 'report.md');
+
+  const output = {
+    version: '1.0',
+    strict: false,
+    files: [
+      {
+        file: 'test.md',
+        pass: false,
+        findings: {
+          errors: [{ code: 'single-h1', severity: 'error', message: 'Manca titolo H1.', line: 1 }],
+          warnings: [{ code: 'placeholder', severity: 'warning', message: 'Placeholder rilevato', line: 5 }]
+        },
+        summary: { errors: 1, warnings: 1, status: 'FAIL' }
+      }
+    ],
+    summary: {
+      filesScanned: 1, filesPassed: 0, filesFailed: 1, filesErrored: 0,
+      totalErrors: 1, totalWarnings: 1, status: 'FAIL', elapsed: 0.1
+    }
+  };
+
+  const result = generateReport(output, { reportPath });
+  assert.ok(fs.existsSync(result), 'Report file should exist');
+  const content = fs.readFileSync(result, 'utf8');
+  assert.ok(content.includes('# Doclify Guardrail Report'), 'Should have title');
+  assert.ok(content.includes('test.md'), 'Should contain filename');
+  assert.ok(content.includes('ERROR'), 'Should contain error details');
+  assert.ok(content.includes('WARNING'), 'Should contain warning details');
+});
+
+test('CLI: --report writes file to disk', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const reportPath = path.join(tmp, 'report.md');
+  fs.writeFileSync(mdPath, '# Titolo\nTODO: fix', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--report', reportPath], {
+    encoding: 'utf8'
+  });
+
+  assert.ok(fs.existsSync(reportPath), 'Report file should be created');
+  const content = fs.readFileSync(reportPath, 'utf8');
+  assert.ok(content.includes('Doclify Guardrail Report'));
 });
