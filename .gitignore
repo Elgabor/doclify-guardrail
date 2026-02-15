@@ -3,3 +3,14 @@ node_modules/
 .DS_Store
 .claude/
 doclify-report.md
+
+# Business documents (should be in doclify-business repo)
+docs/ICP.md
+docs/PROPOSTA_VALORE.md
+docs/PIANO_*.md
+docs/STRUTTURA_*.md
+docs/*REPORT*.md
+landingpage/
+CODEBASE_REPORT.md
+*.report.md
+!docs/examples/
