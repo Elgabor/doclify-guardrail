@@ -1,19 +1,26 @@
 {
-  "name": "doclify-guardrail-mvp",
-  "version": "0.1.0",
-  "private": true,
+  "name": "doclify-guardrail",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Low-cost CLI guardrail for markdown docs",
+  "description": "Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.",
   "bin": {
     "doclify-guardrail": "./src/index.mjs"
   },
   "scripts": {
     "start": "node ./src/index.mjs",
-    "debug": "node ./src/index.mjs --debug",
     "test": "node --test",
     "demo": "bash ./scripts/demo.sh"
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "license": "MIT",
+  "keywords": [
+    "markdown",
+    "lint",
+    "documentation",
+    "quality",
+    "guardrail",
+    "cli"
+  ]
 }
