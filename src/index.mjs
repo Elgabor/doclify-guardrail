@@ -6,6 +6,8 @@ import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
 import { initColors, printResults } from './colors.mjs';
+import { checkDeadLinks } from './links.mjs';
+import { autoFixInsecureLinks } from './fixer.mjs';
 
 function printHelp() {
   console.log(`Doclify Guardrail CLI v1.0
@@ -21,6 +23,9 @@ Options:
   --dir <path>             Scan all .md files in directory (recursive)
   --report [path]          Generate markdown report (default: doclify-report.md)
   --rules <path>           Load custom rules from JSON file
+  --check-links            Validate links and fail on dead links
+  --fix                    Auto-fix safe issues (v1: http:// -> https://)
+  --dry-run                Preview changes (valid only with --fix)
   --no-color               Disable colored output
   --debug                  Show runtime details
   -h, --help               Show this help
@@ -57,7 +62,10 @@ function parseArgs(argv) {
     dir: null,
     report: null,
     rules: null,
-    noColor: false
+    noColor: false,
+    checkLinks: false,
+    fix: false,
+    dryRun: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -80,6 +88,21 @@ function parseArgs(argv) {
 
     if (a === '--no-color') {
       args.noColor = true;
+      continue;
+    }
+
+    if (a === '--check-links') {
+      args.checkLinks = true;
+      continue;
+    }
+
+    if (a === '--fix') {
+      args.fix = true;
+      continue;
+    }
+
+    if (a === '--dry-run') {
+      args.dryRun = true;
       continue;
     }
 
@@ -145,6 +168,10 @@ function parseArgs(argv) {
     args.files.push(a);
   }
 
+  if (args.dryRun && !args.fix) {
+    throw new Error('--dry-run can only be used with --fix');
+  }
+
   return args;
 }
 
@@ -182,7 +209,7 @@ function buildFileResult(filePath, analysis, opts) {
   };
 }
 
-function buildOutput(fileResults, fileErrors, opts, elapsed) {
+function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
   const totalErrors = fileResults.reduce((s, r) => s + r.summary.errors, 0);
   const totalWarnings = fileResults.reduce((s, r) => s + r.summary.warnings, 0);
   const passed = fileResults.filter(r => r.pass).length;
@@ -194,6 +221,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed) {
     strict: opts.strict,
     files: fileResults,
     fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+    fix: fixSummary,
     summary: {
       filesScanned: fileResults.length + fileErrors.length,
       filesPassed: passed,
@@ -207,7 +235,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed) {
   };
 }
 
-function runCli(argv = process.argv.slice(2)) {
+async function runCli(argv = process.argv.slice(2)) {
   let args;
   try {
     args = parseArgs(argv);
@@ -224,7 +252,6 @@ function runCli(argv = process.argv.slice(2)) {
 
   initColors(args.noColor);
 
-  // Resolve file list
   let filePaths;
   try {
     filePaths = resolveFileList(args);
@@ -246,7 +273,6 @@ function runCli(argv = process.argv.slice(2)) {
     return 2;
   }
 
-  // Load custom rules if specified
   let customRules = [];
   if (args.rules) {
     try {
@@ -260,15 +286,48 @@ function runCli(argv = process.argv.slice(2)) {
   const startTime = process.hrtime.bigint();
   const fileResults = [];
   const fileErrors = [];
+  const fixSummary = {
+    enabled: args.fix,
+    dryRun: args.dryRun,
+    filesChanged: 0,
+    replacements: 0,
+    ambiguousSkipped: []
+  };
 
   for (const filePath of filePaths) {
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
+      let content = fs.readFileSync(filePath, 'utf8');
+
+      if (args.fix) {
+        const fixed = autoFixInsecureLinks(content);
+        if (fixed.modified) {
+          fixSummary.filesChanged += 1;
+          fixSummary.replacements += fixed.changes.length;
+          if (!args.dryRun) {
+            fs.writeFileSync(filePath, fixed.content, 'utf8');
+          }
+          content = fixed.content;
+        }
+        if (fixed.ambiguous.length > 0) {
+          fixSummary.ambiguousSkipped.push({
+            file: filePath,
+            urls: [...new Set(fixed.ambiguous)]
+          });
+        }
+      }
+
       const analysis = checkMarkdown(content, {
         maxLineLength: resolved.maxLineLength,
         filePath,
         customRules
       });
+
+      if (args.checkLinks) {
+        const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
+        analysis.errors.push(...deadLinks);
+        analysis.summary.errors = analysis.errors.length;
+      }
+
       fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
     } catch (err) {
       fileErrors.push({ file: filePath, error: err.message });
@@ -276,7 +335,7 @@ function runCli(argv = process.argv.slice(2)) {
   }
 
   const elapsed = Number(process.hrtime.bigint() - startTime) / 1e9;
-  const output = buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed);
+  const output = buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed, fixSummary);
 
   if (args.debug) {
     console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
@@ -285,7 +344,6 @@ function runCli(argv = process.argv.slice(2)) {
   printResults(output);
   console.log(JSON.stringify(output, null, 2));
 
-  // Generate report if requested
   if (args.report) {
     try {
       const reportPath = generateReport(output, { reportPath: args.report });
@@ -300,7 +358,8 @@ function runCli(argv = process.argv.slice(2)) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  process.exit(runCli());
+  const code = await runCli();
+  process.exit(code);
 }
 
 export { checkMarkdown, parseArgs, resolveOptions, runCli, buildFileResult, buildOutput };
