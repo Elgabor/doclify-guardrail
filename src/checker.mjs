@@ -8,7 +8,8 @@ const RULE_SEVERITY = {
   'single-h1': 'error',
   'line-length': 'warning',
   placeholder: 'warning',
-  'insecure-link': 'warning'
+  'insecure-link': 'warning',
+  'dead-link': 'error'
 };
 
 const PLACEHOLDER_PATTERNS = [

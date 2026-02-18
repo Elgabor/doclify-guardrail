@@ -4,11 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import http from 'node:http';
 import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
+import { autoFixInsecureLinks } from '../src/fixer.mjs';
+import { checkDeadLinks } from '../src/links.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -589,4 +592,74 @@ test('all English: frontmatter message is in English', () => {
   const fm = res.warnings.find(w => w.code === 'frontmatter');
   assert.ok(fm);
   assert.ok(fm.message.includes('Missing frontmatter'), 'Frontmatter message should be in English');
+});
+
+// === New features: fix / dry-run / dead links ===
+
+test('parseArgs: --dry-run without --fix throws usage error', () => {
+  assert.throws(() => parseArgs(['doc.md', '--dry-run']), /only be used with --fix/);
+});
+
+test('autoFixInsecureLinks: upgrades plain http links to https', () => {
+  const md = '# Title\nVisit http://example.com and [site](http://example.org/path).';
+  const fixed = autoFixInsecureLinks(md);
+  assert.equal(fixed.modified, true);
+  assert.ok(fixed.content.includes('https://example.com'));
+  assert.ok(fixed.content.includes('(https://example.org/path)'));
+});
+
+test('autoFixInsecureLinks: skips ambiguous localhost URLs', () => {
+  const md = '# Title\nLocal http://localhost:3000/path';
+  const fixed = autoFixInsecureLinks(md);
+  assert.equal(fixed.modified, false);
+  assert.equal(fixed.ambiguous.length, 1);
+});
+
+test('CLI: --fix --dry-run does not modify file', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const original = '# Title\nVisit http://example.com';
+  fs.writeFileSync(mdPath, original, 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--fix', '--dry-run'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.equal(fs.readFileSync(mdPath, 'utf8'), original);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.fix.enabled, true);
+  assert.equal(parsed.fix.dryRun, true);
+  assert.equal(parsed.fix.filesChanged, 1);
+});
+
+test('CLI: --fix modifies file on disk', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\nVisit http://example.com', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--fix'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const updated = fs.readFileSync(mdPath, 'utf8');
+  assert.ok(updated.includes('https://example.com'));
+});
+
+test('checkDeadLinks: reports missing local file links', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\nSee [missing](./missing.md)';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const findings = await checkDeadLinks(content, { sourceFile: source });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].code, 'dead-link');
+});
+
+test('CLI: --check-links fails on missing local link', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n[missing](./not-found.md)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links'], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
+  assert.ok(dead);
 });
