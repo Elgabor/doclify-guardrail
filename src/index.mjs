@@ -8,6 +8,12 @@ import { loadCustomRules } from './rules-loader.mjs';
 import { initColors, printResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
+import {
+  computeHealthScore,
+  generateJUnitReport,
+  generateSarifReport,
+  generateBadge
+} from './ci-output.mjs';
 
 function printHelp() {
   console.log(`Doclify Guardrail CLI v1.0
@@ -24,6 +30,10 @@ Options:
   --report [path]          Generate markdown report (default: doclify-report.md)
   --rules <path>           Load custom rules from JSON file
   --check-links            Validate links and fail on dead links
+  --junit [path]           Generate JUnit XML report (default: doclify-junit.xml)
+  --sarif [path]           Generate SARIF report (default: doclify.sarif)
+  --badge [path]           Generate SVG badge (default: doclify-badge.svg)
+  --badge-label <text>     Custom label for generated badge (default: docs health)
   --fix                    Auto-fix safe issues (v1: http:// -> https://)
   --dry-run                Preview changes (valid only with --fix)
   --no-color               Disable colored output
@@ -62,6 +72,10 @@ function parseArgs(argv) {
     dir: null,
     report: null,
     rules: null,
+    junit: null,
+    sarif: null,
+    badge: null,
+    badgeLabel: 'docs health',
     noColor: false,
     checkLinks: false,
     fix: false,
@@ -161,6 +175,49 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === '--junit') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        args.junit = 'doclify-junit.xml';
+      } else {
+        args.junit = value;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (a === '--sarif') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        args.sarif = 'doclify.sarif';
+      } else {
+        args.sarif = value;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (a === '--badge') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        args.badge = 'doclify-badge.svg';
+      } else {
+        args.badge = value;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (a === '--badge-label') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --badge-label');
+      }
+      args.badgeLabel = value;
+      i += 1;
+      continue;
+    }
+
     if (a.startsWith('-')) {
       throw new Error(`Unknown option: ${a}`);
     }
@@ -216,22 +273,26 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
   const failed = fileResults.filter(r => !r.pass).length;
   const overallPass = failed === 0 && fileErrors.length === 0;
 
+  const summary = {
+    filesScanned: fileResults.length + fileErrors.length,
+    filesPassed: passed,
+    filesFailed: failed,
+    filesErrored: fileErrors.length,
+    totalErrors,
+    totalWarnings,
+    status: overallPass ? 'PASS' : 'FAIL',
+    elapsed: Math.round(elapsed * 1000) / 1000
+  };
+
+  summary.healthScore = computeHealthScore(summary);
+
   return {
     version: '1.0',
     strict: opts.strict,
     files: fileResults,
     fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
     fix: fixSummary,
-    summary: {
-      filesScanned: fileResults.length + fileErrors.length,
-      filesPassed: passed,
-      filesFailed: failed,
-      filesErrored: fileErrors.length,
-      totalErrors,
-      totalWarnings,
-      status: overallPass ? 'PASS' : 'FAIL',
-      elapsed: Math.round(elapsed * 1000) / 1000
-    }
+    summary
   };
 }
 
@@ -350,6 +411,36 @@ async function runCli(argv = process.argv.slice(2)) {
       console.error(`Report written to: ${reportPath}`);
     } catch (err) {
       console.error(`Failed to write report: ${err.message}`);
+      return 2;
+    }
+  }
+
+  if (args.junit) {
+    try {
+      const junitPath = generateJUnitReport(output, { junitPath: args.junit });
+      console.error(`JUnit report written to: ${junitPath}`);
+    } catch (err) {
+      console.error(`Failed to write JUnit report: ${err.message}`);
+      return 2;
+    }
+  }
+
+  if (args.sarif) {
+    try {
+      const sarifPath = generateSarifReport(output, { sarifPath: args.sarif });
+      console.error(`SARIF report written to: ${sarifPath}`);
+    } catch (err) {
+      console.error(`Failed to write SARIF report: ${err.message}`);
+      return 2;
+    }
+  }
+
+  if (args.badge) {
+    try {
+      const badge = generateBadge(output, { badgePath: args.badge, label: args.badgeLabel });
+      console.error(`Badge written to: ${badge.badgePath} (score ${badge.score})`);
+    } catch (err) {
+      console.error(`Failed to write badge: ${err.message}`);
       return 2;
     }
   }

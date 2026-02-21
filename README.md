@@ -15,6 +15,8 @@ Zero dependencies. Node.js built-in only. Works everywhere Node 20+ runs.
 - Extended placeholder detection (TODO, FIXME, TBD, WIP, and more)
 - Insecure link detection (inline, bare URLs, reference-style)
 - Optional dead link checker (`--check-links`)
+- CI-ready output exports (`--junit`, `--sarif`)
+- Local docs health badge generation (`--badge`, `--badge-label`)
 - Optional safe auto-fix mode (`--fix`, `--dry-run`)
 
 ## Quick Start
@@ -34,6 +36,12 @@ npx doclify-guardrail docs/ --report
 
 # Check dead links (HTTP status + local relative paths)
 npx doclify-guardrail docs/ --check-links
+
+# Export CI reports
+npx doclify-guardrail docs/ --junit --sarif
+
+# Generate local badge SVG
+npx doclify-guardrail docs/ --badge --badge-label "docs health"
 
 # Auto-fix safe issues (v1: http:// -> https://)
 npx doclify-guardrail docs/ --fix
@@ -60,6 +68,10 @@ doclify-guardrail --dir <path> [options]
 | `--report [path]` | Generate markdown report (default: `doclify-report.md`) |
 | `--rules <path>` | Load custom rules from JSON file |
 | `--check-links` | Validate links and fail on dead links |
+| `--junit [path]` | Export JUnit XML report (default: `doclify-junit.xml`) |
+| `--sarif [path]` | Export SARIF report (default: `doclify.sarif`) |
+| `--badge [path]` | Generate SVG docs health badge (default: `doclify-badge.svg`) |
+| `--badge-label <text>` | Custom label used in the generated badge |
 | `--fix` | Auto-fix safe issues (v1: `http://` to `https://`) |
 | `--dry-run` | Preview `--fix` changes without writing files (only valid with `--fix`) |
 | `--no-color` | Disable colored output |
@@ -156,6 +168,27 @@ Use `--check-links` to validate:
 - relative local file links (e.g. `./guide.md`)
 
 When dead links are found, they are reported as `dead-link` errors.
+
+## CI Outputs
+
+Use CI export flags for native pipeline integrations:
+
+```bash
+doclify-guardrail docs/ --junit --sarif
+```
+
+- `--junit` writes XML test output (useful for generic CI test dashboards)
+- `--sarif` writes SARIF v2.1.0 (GitHub code scanning compatible)
+
+## Badge SVG
+
+Generate a local SVG badge from the current scan score:
+
+```bash
+doclify-guardrail docs/ --badge --badge-label "docs health"
+```
+
+The value is computed from findings severity and can be embedded in your README.
 
 ## Auto-fix (safe v1)
 

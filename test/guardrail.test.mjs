@@ -12,6 +12,12 @@ import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks } from '../src/fixer.mjs';
 import { checkDeadLinks } from '../src/links.mjs';
+import {
+  computeHealthScore,
+  generateJUnitXml,
+  generateSarifJson,
+  generateBadge
+} from '../src/ci-output.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -662,4 +668,125 @@ test('CLI: --check-links fails on missing local link', () => {
   const parsed = JSON.parse(run.stdout);
   const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
   assert.ok(dead);
+});
+
+// === New features: CI outputs + badge ===
+
+test('parseArgs: --junit, --sarif and --badge default paths', () => {
+  const args = parseArgs(['doc.md', '--junit', '--sarif', '--badge']);
+  assert.equal(args.junit, 'doclify-junit.xml');
+  assert.equal(args.sarif, 'doclify.sarif');
+  assert.equal(args.badge, 'doclify-badge.svg');
+});
+
+test('parseArgs: --badge-label requires value', () => {
+  assert.throws(() => parseArgs(['doc.md', '--badge-label']), /Missing value for --badge-label/);
+});
+
+test('computeHealthScore: stays in range 0..100', () => {
+  assert.equal(computeHealthScore({ filesScanned: 1, totalErrors: 0, totalWarnings: 0 }), 100);
+  const low = computeHealthScore({ filesScanned: 1, totalErrors: 10, totalWarnings: 30 });
+  assert.ok(low >= 0 && low <= 100);
+});
+
+test('generateJUnitXml: emits testsuite and testcase', () => {
+  const output = {
+    version: '1.0',
+    files: [
+      {
+        file: 'docs/a.md',
+        findings: { errors: [], warnings: [] },
+        summary: { errors: 0, warnings: 0, status: 'PASS' }
+      }
+    ],
+    summary: {
+      filesScanned: 1,
+      filesPassed: 1,
+      filesFailed: 0,
+      filesErrored: 0,
+      totalErrors: 0,
+      totalWarnings: 0,
+      elapsed: 0.1,
+      status: 'PASS'
+    }
+  };
+
+  const xml = generateJUnitXml(output);
+  assert.ok(xml.includes('<testsuite'));
+  assert.ok(xml.includes('<testcase'));
+});
+
+test('generateSarifJson: emits valid sarif structure', () => {
+  const output = {
+    version: '1.0',
+    files: [
+      {
+        file: 'docs/a.md',
+        findings: {
+          errors: [{ code: 'single-h1', severity: 'error', message: 'Missing H1', line: 1 }],
+          warnings: []
+        },
+        summary: { errors: 1, warnings: 0, status: 'FAIL' }
+      }
+    ],
+    summary: {
+      filesScanned: 1,
+      filesPassed: 0,
+      filesFailed: 1,
+      filesErrored: 0,
+      totalErrors: 1,
+      totalWarnings: 0,
+      elapsed: 0.2,
+      status: 'FAIL'
+    }
+  };
+
+  const sarif = generateSarifJson(output);
+  assert.equal(sarif.version, '2.1.0');
+  assert.ok(Array.isArray(sarif.runs));
+  assert.ok(sarif.runs[0].results.length >= 1);
+});
+
+test('CLI: --junit --sarif --badge writes artifacts', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const junitPath = path.join(tmp, 'report.xml');
+  const sarifPath = path.join(tmp, 'report.sarif');
+  const badgePath = path.join(tmp, 'badge.svg');
+
+  fs.writeFileSync(mdPath, '---\ntitle: Test\n---\n# Title\nAll good', 'utf8');
+
+  const run = spawnSync(process.execPath, [
+    CLI_PATH,
+    mdPath,
+    '--junit', junitPath,
+    '--sarif', sarifPath,
+    '--badge', badgePath,
+    '--badge-label', 'docs health'
+  ], { encoding: 'utf8' });
+
+  assert.equal(run.status, 0);
+  assert.ok(fs.existsSync(junitPath));
+  assert.ok(fs.existsSync(sarifPath));
+  assert.ok(fs.existsSync(badgePath));
+
+  const parsed = JSON.parse(run.stdout);
+  assert.ok(typeof parsed.summary.healthScore === 'number');
+});
+
+test('generateBadge: writes SVG with custom label', () => {
+  const tmp = makeTempDir();
+  const badgePath = path.join(tmp, 'health.svg');
+  const output = {
+    summary: {
+      filesScanned: 2,
+      totalErrors: 0,
+      totalWarnings: 1
+    }
+  };
+
+  const badge = generateBadge(output, { badgePath, label: 'quality' });
+  assert.ok(fs.existsSync(badge.badgePath));
+  const svg = fs.readFileSync(badge.badgePath, 'utf8');
+  assert.ok(svg.includes('quality'));
 });
