@@ -43,6 +43,7 @@ function printHelp() {
     --config <path>          Config file ${d('(default: .doclify-guardrail.json)')}
     --rules <path>           Custom regex rules from JSON file
     --ignore-rules <list>    Disable rules ${d('(comma-separated)')}
+    --exclude <list>         Exclude files/patterns ${d('(comma-separated)')}
 
   ${y('CHECKS')}
     --check-links            Validate HTTP and local links
@@ -111,6 +112,7 @@ function parseArgs(argv) {
     badgeLabel: 'docs health',
     noColor: false,
     ignoreRules: [],
+    exclude: [],
     checkLinks: false,
     checkFreshness: false,
     fix: false,
@@ -147,6 +149,16 @@ function parseArgs(argv) {
         throw new Error('Missing value for --ignore-rules');
       }
       args.ignoreRules.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      i += 1;
+      continue;
+    }
+
+    if (a === '--exclude') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --exclude');
+      }
+      args.exclude.push(...value.split(',').map(s => s.trim()).filter(Boolean));
       i += 1;
       continue;
     }
@@ -393,6 +405,19 @@ async function runCli(argv = process.argv.slice(2)) {
   } catch (err) {
     console.error(`Error: ${err.message}`);
     return 2;
+  }
+
+  if (args.exclude.length > 0) {
+    filePaths = filePaths.filter(fp => {
+      const rel = path.relative(process.cwd(), fp);
+      return !args.exclude.some(pattern => {
+        if (pattern.includes('*')) {
+          const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
+          return regex.test(rel);
+        }
+        return rel === pattern || rel.startsWith(pattern + path.sep) || path.basename(rel) === pattern;
+      });
+    });
   }
 
   if (filePaths.length === 0) {
