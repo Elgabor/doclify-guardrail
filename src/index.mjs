@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkMarkdown } from './checker.mjs';
+import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
@@ -62,6 +62,7 @@ function printHelp() {
     --json                   Output raw JSON to stdout
 
   ${y('OTHER')}
+    --list-rules             List all built-in rules
     --no-color               Disable colored output
     --debug                  Show debug info
     -h, --help               Show this help
@@ -103,6 +104,7 @@ function parseArgs(argv) {
     maxLineLength: undefined,
     configPath: path.resolve('.doclify-guardrail.json'),
     help: false,
+    listRules: false,
     dir: null,
     report: null,
     rules: null,
@@ -125,6 +127,11 @@ function parseArgs(argv) {
 
     if (a === '-h' || a === '--help') {
       args.help = true;
+      continue;
+    }
+
+    if (a === '--list-rules') {
+      args.listRules = true;
       continue;
     }
 
@@ -394,6 +401,19 @@ async function runCli(argv = process.argv.slice(2)) {
 
   if (args.help) {
     printHelp();
+    return 0;
+  }
+
+  if (args.listRules) {
+    initColors(args.noColor);
+    console.log('');
+    console.log(`  ${c.bold('Built-in rules')}`);
+    console.log('');
+    for (const rule of RULE_CATALOG) {
+      const sev = rule.severity === 'error' ? c.red('error  ') : c.yellow('warning');
+      console.log(`  ${c.cyan(rule.id.padEnd(22))} ${sev}  ${c.dim(rule.description)}`);
+    }
+    console.log('');
     return 0;
   }
 

@@ -3,19 +3,21 @@ const DEFAULTS = {
   strict: false
 };
 
-const RULE_SEVERITY = {
-  frontmatter: 'warning',
-  'single-h1': 'error',
-  'heading-hierarchy': 'warning',
-  'duplicate-heading': 'warning',
-  'line-length': 'warning',
-  placeholder: 'warning',
-  'insecure-link': 'warning',
-  'empty-link': 'warning',
-  'img-alt': 'warning',
-  'dead-link': 'error',
-  'stale-doc': 'warning'
-};
+const RULE_CATALOG = [
+  { id: 'frontmatter',        severity: 'warning', description: 'Require YAML frontmatter block' },
+  { id: 'single-h1',          severity: 'error',   description: 'Exactly one H1 heading per file' },
+  { id: 'heading-hierarchy',  severity: 'warning', description: 'No skipped heading levels (H2 → H4)' },
+  { id: 'duplicate-heading',  severity: 'warning', description: 'No duplicate headings at same level' },
+  { id: 'line-length',        severity: 'warning', description: 'Max line length (default: 160 chars)' },
+  { id: 'placeholder',        severity: 'warning', description: 'No TODO/FIXME/WIP/TBD markers' },
+  { id: 'insecure-link',      severity: 'warning', description: 'No http:// links (use https://)' },
+  { id: 'empty-link',         severity: 'warning', description: 'No empty link text or URL' },
+  { id: 'img-alt',            severity: 'warning', description: 'Images must have alt text' },
+  { id: 'dead-link',          severity: 'error',   description: 'No broken links (requires --check-links)' },
+  { id: 'stale-doc',          severity: 'warning', description: 'Warn on stale docs (requires --check-freshness)' }
+];
+
+const RULE_SEVERITY = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.severity]));
 
 const PLACEHOLDER_PATTERNS = [
   { rx: /\bTODO\b/i,           msg: 'TODO marker found — remove before publishing' },
@@ -263,4 +265,4 @@ function checkMarkdown(rawContent, opts = {}) {
   };
 }
 
-export { DEFAULTS, RULE_SEVERITY, normalizeFinding, checkMarkdown, stripCodeBlocks, stripInlineCode };
+export { DEFAULTS, RULE_SEVERITY, RULE_CATALOG, normalizeFinding, checkMarkdown, stripCodeBlocks, stripInlineCode };
