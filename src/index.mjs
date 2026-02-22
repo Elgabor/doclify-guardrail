@@ -436,6 +436,11 @@ async function runCli(argv = process.argv.slice(2)) {
         if (fixed.modified) {
           fixSummary.filesChanged += 1;
           fixSummary.replacements += fixed.changes.length;
+          for (const change of fixed.changes) {
+            if (args.dryRun) {
+              log(c.dim('    '), c.yellow('~') + ` ${c.dim(change.from)} ${c.dim('→')} ${c.green(change.to)}`);
+            }
+          }
           if (!args.dryRun) {
             fs.writeFileSync(filePath, fixed.content, 'utf8');
           }
@@ -446,6 +451,9 @@ async function runCli(argv = process.argv.slice(2)) {
             file: filePath,
             urls: [...new Set(fixed.ambiguous)]
           });
+          for (const url of [...new Set(fixed.ambiguous)]) {
+            log(c.dim('    '), c.dim(`⊘ skipped ${url} (localhost/custom port)`));
+          }
         }
       }
 
@@ -483,6 +491,16 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   printResults(output);
+
+  if (args.fix && fixSummary.replacements > 0) {
+    const action = args.dryRun ? 'Would fix' : 'Fixed';
+    log(
+      args.dryRun ? c.yellow('~') : c.green('✓'),
+      `${action} ${c.bold(String(fixSummary.replacements))} insecure link${fixSummary.replacements === 1 ? '' : 's'} in ${c.bold(String(fixSummary.filesChanged))} file${fixSummary.filesChanged === 1 ? '' : 's'}${args.dryRun ? c.dim(' (dry-run, no files changed)') : ''}`
+    );
+  } else if (args.fix && fixSummary.replacements === 0) {
+    log(c.dim('ℹ'), c.dim('No insecure links to fix'));
+  }
 
   if (args.json) {
     console.log(JSON.stringify(output, null, 2));
