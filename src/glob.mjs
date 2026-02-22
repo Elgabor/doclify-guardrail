@@ -6,6 +6,8 @@ const IGNORED_DIRS = new Set([
   '.git',
   'Pods',
   '.symlinks',
+  '.plugin_symlinks',
+  '.dart_tool',
   'vendor',
   'build',
   'dist',
@@ -15,7 +17,8 @@ const IGNORED_DIRS = new Set([
   '.cache',
   '__pycache__',
   '.venv',
-  'venv'
+  'venv',
+  'ephemeral'
 ]);
 
 function isIgnoredPath(filePath) {
