@@ -1,6 +1,6 @@
 {
   "name": "doclify-guardrail",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "description": "Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.",
   "files": [

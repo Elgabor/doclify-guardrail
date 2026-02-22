@@ -419,7 +419,8 @@ async function runCli(argv = process.argv.slice(2)) {
   console.error('');
 
   for (const filePath of filePaths) {
-    const shortPath = path.relative(process.cwd(), filePath) || filePath;
+    const rel = path.relative(process.cwd(), filePath);
+    const shortPath = rel.startsWith('..') ? filePath : rel || filePath;
     log(c.cyan('ℹ'), `Checking ${c.bold(shortPath)}...`);
 
     try {

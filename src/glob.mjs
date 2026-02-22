@@ -1,6 +1,28 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'Pods',
+  '.symlinks',
+  'vendor',
+  'build',
+  'dist',
+  '.next',
+  '.nuxt',
+  'coverage',
+  '.cache',
+  '__pycache__',
+  '.venv',
+  'venv'
+]);
+
+function isIgnoredPath(filePath) {
+  const parts = filePath.split(path.sep);
+  return parts.some(p => IGNORED_DIRS.has(p));
+}
+
 /**
  * Find all .md files recursively in a directory.
  */
@@ -9,7 +31,8 @@ function findMarkdownFiles(dirPath) {
   const entries = fs.readdirSync(resolved, { recursive: true, withFileTypes: true });
   return entries
     .filter(e => e.isFile() && e.name.endsWith('.md'))
-    .map(e => path.join(e.parentPath || e.path, e.name));
+    .map(e => path.join(e.parentPath || e.path, e.name))
+    .filter(f => !isIgnoredPath(path.relative(resolved, f)));
 }
 
 /**
@@ -63,7 +86,8 @@ function miniGlob(pattern, basePath) {
 
   return entries
     .filter(e => e.isFile() && fileRx.test(e.name))
-    .map(e => path.join(e.parentPath || e.path, e.name));
+    .map(e => path.join(e.parentPath || e.path, e.name))
+    .filter(f => !isIgnoredPath(path.relative(searchDir, f)));
 }
 
 /**
