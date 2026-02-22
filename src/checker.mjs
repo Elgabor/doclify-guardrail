@@ -3,15 +3,21 @@ const DEFAULTS = {
   strict: false
 };
 
-const RULE_SEVERITY = {
-  frontmatter: 'warning',
-  'single-h1': 'error',
-  'line-length': 'warning',
-  placeholder: 'warning',
-  'insecure-link': 'warning',
-  'dead-link': 'error',
-  'stale-doc': 'warning'
-};
+const RULE_CATALOG = [
+  { id: 'frontmatter',        severity: 'warning', description: 'Require YAML frontmatter block' },
+  { id: 'single-h1',          severity: 'error',   description: 'Exactly one H1 heading per file' },
+  { id: 'heading-hierarchy',  severity: 'warning', description: 'No skipped heading levels (H2 → H4)' },
+  { id: 'duplicate-heading',  severity: 'warning', description: 'No duplicate headings at same level' },
+  { id: 'line-length',        severity: 'warning', description: 'Max line length (default: 160 chars)' },
+  { id: 'placeholder',        severity: 'warning', description: 'No TODO/FIXME/WIP/TBD markers' },
+  { id: 'insecure-link',      severity: 'warning', description: 'No http:// links (use https://)' },
+  { id: 'empty-link',         severity: 'warning', description: 'No empty link text or URL' },
+  { id: 'img-alt',            severity: 'warning', description: 'Images must have alt text' },
+  { id: 'dead-link',          severity: 'error',   description: 'No broken links (requires --check-links)' },
+  { id: 'stale-doc',          severity: 'warning', description: 'Warn on stale docs (requires --check-freshness)' }
+];
+
+const RULE_SEVERITY = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.severity]));
 
 const PLACEHOLDER_PATTERNS = [
   { rx: /\bTODO\b/i,           msg: 'TODO marker found — remove before publishing' },
@@ -118,6 +124,41 @@ function checkMarkdown(rawContent, opts = {}) {
     }
   }
 
+  // Rule: heading-hierarchy (h1→h3 without h2 is a skip)
+  let prevLevel = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const hMatch = lines[i].match(/^(#{1,6})\s/);
+    if (!hMatch) continue;
+    const level = hMatch[1].length;
+    if (prevLevel > 0 && level > prevLevel + 1) {
+      warnings.push(normalizeFinding(
+        'heading-hierarchy',
+        `Heading level skipped: H${prevLevel} → H${level} (expected H${prevLevel + 1}).`,
+        i + 1,
+        filePath
+      ));
+    }
+    prevLevel = level;
+  }
+
+  // Rule: duplicate-heading (same text at same level)
+  const headingSeen = new Map();
+  for (let i = 0; i < lines.length; i += 1) {
+    const hMatch = lines[i].match(/^(#{1,6})\s+(.+)$/);
+    if (!hMatch) continue;
+    const key = `${hMatch[1].length}:${hMatch[2].trim().toLowerCase()}`;
+    if (headingSeen.has(key)) {
+      warnings.push(normalizeFinding(
+        'duplicate-heading',
+        `Duplicate heading "${hMatch[2].trim()}" (also at line ${headingSeen.get(key)}).`,
+        i + 1,
+        filePath
+      ));
+    } else {
+      headingSeen.set(key, i + 1);
+    }
+  }
+
   // Rule: line-length (uses raw content — code block lines can still be too long)
   rawLines.forEach((line, idx) => {
     if (line.length > maxLineLength) {
@@ -179,6 +220,27 @@ function checkMarkdown(rawContent, opts = {}) {
     }
   });
 
+  // Rule: empty-link (uses stripped content, excludes images)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    // [](url) — empty link text (but not ![](url) which is img-alt)
+    if (/(?<!!)\[\]\([^)]+\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('empty-link', 'Link has empty text: [](url).', idx + 1, filePath));
+    }
+    // [text]() — empty link URL
+    if (/(?<!!)\[[^\]]+\]\(\s*\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('empty-link', 'Link has empty URL: [text]().', idx + 1, filePath));
+    }
+  });
+
+  // Rule: img-alt (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    if (/!\[\]\([^)]+\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('img-alt', 'Image missing alt text: ![](url).', idx + 1, filePath));
+    }
+  });
+
   // Custom rules (uses stripped content)
   if (opts.customRules && opts.customRules.length > 0) {
     lines.forEach((line, idx) => {
@@ -203,4 +265,4 @@ function checkMarkdown(rawContent, opts = {}) {
   };
 }
 
-export { DEFAULTS, RULE_SEVERITY, normalizeFinding, checkMarkdown, stripCodeBlocks, stripInlineCode };
+export { DEFAULTS, RULE_SEVERITY, RULE_CATALOG, normalizeFinding, checkMarkdown, stripCodeBlocks, stripInlineCode };

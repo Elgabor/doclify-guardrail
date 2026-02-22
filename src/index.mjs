@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkMarkdown } from './checker.mjs';
+import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
@@ -11,11 +11,14 @@ import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import {
-  computeHealthScore,
   generateJUnitReport,
   generateSarifReport,
   generateBadge
 } from './ci-output.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const VERSION = pkg.version;
 
 function printHelp() {
   const b = (t) => c.bold(t);
@@ -23,7 +26,7 @@ function printHelp() {
   const y = (t) => c.yellow(t);
 
   console.log(`
-  ${b('Doclify Guardrail')} ${d('v1.0')}
+  ${b('Doclify Guardrail')} ${d(`v${VERSION}`)}
   Quality gate for Markdown documentation.
 
   ${y('USAGE')}
@@ -38,6 +41,8 @@ function printHelp() {
     --max-line-length <n>    Max line length ${d('(default: 160)')}
     --config <path>          Config file ${d('(default: .doclify-guardrail.json)')}
     --rules <path>           Custom regex rules from JSON file
+    --ignore-rules <list>    Disable rules ${d('(comma-separated)')}
+    --exclude <list>         Exclude files/patterns ${d('(comma-separated)')}
 
   ${y('CHECKS')}
     --check-links            Validate HTTP and local links
@@ -55,7 +60,11 @@ function printHelp() {
     --badge-label <text>     Badge label ${d('(default: "docs health")')}
     --json                   Output raw JSON to stdout
 
+  ${y('SETUP')}
+    init                     Generate a .doclify-guardrail.json config
+
   ${y('OTHER')}
+    --list-rules             List all built-in rules
     --no-color               Disable colored output
     --debug                  Show debug info
     -h, --help               Show this help
@@ -97,6 +106,8 @@ function parseArgs(argv) {
     maxLineLength: undefined,
     configPath: path.resolve('.doclify-guardrail.json'),
     help: false,
+    listRules: false,
+    init: false,
     dir: null,
     report: null,
     rules: null,
@@ -105,6 +116,8 @@ function parseArgs(argv) {
     badge: null,
     badgeLabel: 'docs health',
     noColor: false,
+    ignoreRules: [],
+    exclude: [],
     checkLinks: false,
     checkFreshness: false,
     fix: false,
@@ -120,6 +133,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === '--list-rules') {
+      args.listRules = true;
+      continue;
+    }
+
     if (a === '--debug') {
       args.debug = true;
       continue;
@@ -132,6 +150,26 @@ function parseArgs(argv) {
 
     if (a === '--no-color') {
       args.noColor = true;
+      continue;
+    }
+
+    if (a === '--ignore-rules') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --ignore-rules');
+      }
+      args.ignoreRules.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      i += 1;
+      continue;
+    }
+
+    if (a === '--exclude') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --exclude');
+      }
+      args.exclude.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      i += 1;
       continue;
     }
 
@@ -258,6 +296,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === 'init') {
+      args.init = true;
+      continue;
+    }
+
     if (a.startsWith('-')) {
       throw new Error(`Unknown option: ${a}`);
     }
@@ -276,6 +319,8 @@ function resolveOptions(args) {
   const cfg = parseConfigFile(args.configPath);
   const maxLineLength = Number(args.maxLineLength ?? cfg.maxLineLength ?? 160);
   const strict = Boolean(args.strict ?? cfg.strict ?? false);
+  const cfgIgnore = Array.isArray(cfg.ignoreRules) ? cfg.ignoreRules : [];
+  const ignoreRules = new Set([...args.ignoreRules, ...cfgIgnore]);
 
   if (!Number.isInteger(maxLineLength) || maxLineLength <= 0) {
     throw new Error(`Invalid maxLineLength in config: ${cfg.maxLineLength}`);
@@ -284,28 +329,34 @@ function resolveOptions(args) {
   return {
     maxLineLength,
     strict,
+    ignoreRules,
     configPath: args.configPath,
     configLoaded: fs.existsSync(args.configPath)
   };
 }
 
+function toRelativePath(filePath) {
+  const rel = path.relative(process.cwd(), filePath);
+  return rel.startsWith('..') ? filePath : rel || filePath;
+}
+
 function buildFileResult(filePath, analysis, opts) {
-  const pass = analysis.errors.length === 0 && (!opts.strict || analysis.warnings.length === 0);
+  const ignore = opts.ignoreRules || new Set();
+  const errors = ignore.size > 0 ? analysis.errors.filter(f => !ignore.has(f.code)) : analysis.errors;
+  const warnings = ignore.size > 0 ? analysis.warnings.filter(f => !ignore.has(f.code)) : analysis.warnings;
+  const pass = errors.length === 0 && (!opts.strict || warnings.length === 0);
   const healthScore = computeDocHealthScore({
-    errors: analysis.summary.errors,
-    warnings: analysis.summary.warnings
+    errors: errors.length,
+    warnings: warnings.length
   });
 
   return {
-    file: filePath,
+    file: toRelativePath(filePath),
     pass,
-    findings: {
-      errors: analysis.errors,
-      warnings: analysis.warnings
-    },
+    findings: { errors, warnings },
     summary: {
-      errors: analysis.summary.errors,
-      warnings: analysis.summary.warnings,
+      errors: errors.length,
+      warnings: warnings.length,
       healthScore,
       status: pass ? 'PASS' : 'FAIL'
     }
@@ -333,11 +384,10 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
     elapsed: Math.round(elapsed * 1000) / 1000
   };
 
-  summary.avgHealthScore = avgHealthScore;
-  summary.healthScore = computeHealthScore(summary);
+  summary.healthScore = avgHealthScore;
 
   return {
-    version: '1.0',
+    version: VERSION,
     strict: opts.strict,
     files: fileResults,
     fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
@@ -361,6 +411,47 @@ async function runCli(argv = process.argv.slice(2)) {
     return 0;
   }
 
+  if (args.listRules) {
+    initColors(args.noColor);
+    console.log('');
+    console.log(`  ${c.bold('Built-in rules')}`);
+    console.log('');
+    for (const rule of RULE_CATALOG) {
+      const sev = rule.severity === 'error' ? c.red('error  ') : c.yellow('warning');
+      console.log(`  ${c.cyan(rule.id.padEnd(22))} ${sev}  ${c.dim(rule.description)}`);
+    }
+    console.log('');
+    return 0;
+  }
+
+  if (args.init) {
+    initColors(args.noColor);
+    const configFile = '.doclify-guardrail.json';
+    const configPath = path.resolve(configFile);
+
+    if (fs.existsSync(configPath)) {
+      console.error(`  ${c.yellow('⚠')} ${c.bold(configFile)} already exists. Remove it first to re-initialize.`);
+      return 1;
+    }
+
+    const defaultConfig = {
+      strict: false,
+      maxLineLength: 160,
+      ignoreRules: [],
+      checkLinks: false,
+      checkFreshness: false
+    };
+
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + '\n', 'utf8');
+    console.error('');
+    console.error(`  ${c.green('✓')} Created ${c.bold(configFile)}`);
+    console.error('');
+    console.error(`  ${c.dim('Edit the file to customise rules, then run:')}`)
+    console.error(`  ${c.dim('$')} ${c.cyan('doclify .')}`);
+    console.error('');
+    return 0;
+  }
+
   initColors(args.noColor);
 
   let filePaths;
@@ -369,6 +460,19 @@ async function runCli(argv = process.argv.slice(2)) {
   } catch (err) {
     console.error(`Error: ${err.message}`);
     return 2;
+  }
+
+  if (args.exclude.length > 0) {
+    filePaths = filePaths.filter(fp => {
+      const rel = path.relative(process.cwd(), fp);
+      return !args.exclude.some(pattern => {
+        if (pattern.includes('*')) {
+          const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
+          return regex.test(rel);
+        }
+        return rel === pattern || rel.startsWith(pattern + path.sep) || path.basename(rel) === pattern;
+      });
+    });
   }
 
   if (filePaths.length === 0) {
@@ -394,7 +498,7 @@ async function runCli(argv = process.argv.slice(2)) {
     }
   }
 
-  printBanner(filePaths.length);
+  printBanner(filePaths.length, VERSION);
 
   if (resolved.configLoaded) {
     log(c.cyan('ℹ'), `Loaded config from ${c.dim(resolved.configPath)}`);
@@ -432,6 +536,11 @@ async function runCli(argv = process.argv.slice(2)) {
         if (fixed.modified) {
           fixSummary.filesChanged += 1;
           fixSummary.replacements += fixed.changes.length;
+          for (const change of fixed.changes) {
+            if (args.dryRun) {
+              log(c.dim('    '), c.yellow('~') + ` ${c.dim(change.from)} ${c.dim('→')} ${c.green(change.to)}`);
+            }
+          }
           if (!args.dryRun) {
             fs.writeFileSync(filePath, fixed.content, 'utf8');
           }
@@ -442,32 +551,37 @@ async function runCli(argv = process.argv.slice(2)) {
             file: filePath,
             urls: [...new Set(fixed.ambiguous)]
           });
+          for (const url of [...new Set(fixed.ambiguous)]) {
+            log(c.dim('    '), c.dim(`⊘ skipped ${url} (localhost/custom port)`));
+          }
         }
       }
 
+      const relPath = toRelativePath(filePath);
       const analysis = checkMarkdown(content, {
         maxLineLength: resolved.maxLineLength,
-        filePath,
+        filePath: relPath,
         customRules
       });
 
       if (args.checkLinks) {
         log(c.dim('  ↳'), c.dim(`Checking links...`));
         const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
+        for (const dl of deadLinks) { dl.source = relPath; }
         analysis.errors.push(...deadLinks);
         analysis.summary.errors = analysis.errors.length;
       }
 
       if (args.checkFreshness) {
         log(c.dim('  ↳'), c.dim(`Checking freshness...`));
-        const freshnessWarnings = checkDocFreshness(content, { sourceFile: filePath });
+        const freshnessWarnings = checkDocFreshness(content, { sourceFile: relPath });
         analysis.warnings.push(...freshnessWarnings);
         analysis.summary.warnings = analysis.warnings.length;
       }
 
-      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
+      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict, ignoreRules: resolved.ignoreRules }));
     } catch (err) {
-      fileErrors.push({ file: filePath, error: err.message });
+      fileErrors.push({ file: toRelativePath(filePath), error: err.message });
     }
   }
 
@@ -479,6 +593,16 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   printResults(output);
+
+  if (args.fix && fixSummary.replacements > 0) {
+    const action = args.dryRun ? 'Would fix' : 'Fixed';
+    log(
+      args.dryRun ? c.yellow('~') : c.green('✓'),
+      `${action} ${c.bold(String(fixSummary.replacements))} insecure link${fixSummary.replacements === 1 ? '' : 's'} in ${c.bold(String(fixSummary.filesChanged))} file${fixSummary.filesChanged === 1 ? '' : 's'}${args.dryRun ? c.dim(' (dry-run, no files changed)') : ''}`
+    );
+  } else if (args.fix && fixSummary.replacements === 0) {
+    log(c.dim('ℹ'), c.dim('No insecure links to fix'));
+  }
 
   if (args.json) {
     console.log(JSON.stringify(output, null, 2));
