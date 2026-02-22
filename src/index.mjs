@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { checkMarkdown } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
-import { initColors, printResults } from './colors.mjs';
+import { initColors, c, log, printBanner, printResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
@@ -17,35 +18,60 @@ import {
 } from './ci-output.mjs';
 
 function printHelp() {
-  console.log(`Doclify Guardrail CLI v1.0
+  const b = (t) => c.bold(t);
+  const d = (t) => c.dim(t);
+  const y = (t) => c.yellow(t);
 
-Usage:
-  doclify-guardrail <file.md ...> [options]
-  doclify-guardrail --dir <path> [options]
+  console.log(`
+  ${b('Doclify Guardrail')} ${d('v1.0')}
+  Quality gate for Markdown documentation.
 
-Options:
-  --strict                 Treat warnings as failures
-  --max-line-length <n>    Maximum line length (default: 160)
-  --config <path>          Config file path (default: .doclify-guardrail.json)
-  --dir <path>             Scan all .md files in directory (recursive)
-  --report [path]          Generate markdown report (default: doclify-report.md)
-  --rules <path>           Load custom rules from JSON file
-  --check-links            Validate links and fail on dead links
-  --check-freshness        Warn on stale docs (default max age: 180 days)
-  --junit [path]           Generate JUnit XML report (default: doclify-junit.xml)
-  --sarif [path]           Generate SARIF report (default: doclify.sarif)
-  --badge [path]           Generate SVG badge (default: doclify-badge.svg)
-  --badge-label <text>     Custom label for generated badge (default: docs health)
-  --fix                    Auto-fix safe issues (v1: http:// -> https://)
-  --dry-run                Preview changes (valid only with --fix)
-  --no-color               Disable colored output
-  --debug                  Show runtime details
-  -h, --help               Show this help
+  ${y('USAGE')}
+    $ doclify [files...] [options]
+    $ doclify --dir <path> [options]
 
-Exit codes:
-  0 = PASS (all files clean)
-  1 = FAIL (errors found, or warnings in strict mode)
-  2 = Usage error / invalid input`);
+    If no files are specified, scans the current directory.
+
+  ${y('SCAN')}
+    --dir <path>             Scan .md files recursively in directory
+    --strict                 Treat warnings as errors
+    --max-line-length <n>    Max line length ${d('(default: 160)')}
+    --config <path>          Config file ${d('(default: .doclify-guardrail.json)')}
+    --rules <path>           Custom regex rules from JSON file
+
+  ${y('CHECKS')}
+    --check-links            Validate HTTP and local links
+    --check-freshness        Warn on stale docs ${d('(>180 days)')}
+
+  ${y('FIX')}
+    --fix                    Auto-fix safe issues ${d('(http → https)')}
+    --dry-run                Preview fixes without writing
+
+  ${y('OUTPUT')}
+    --report [path]          Markdown report ${d('(default: doclify-report.md)')}
+    --junit [path]           JUnit XML report ${d('(default: doclify-junit.xml)')}
+    --sarif [path]           SARIF report ${d('(default: doclify.sarif)')}
+    --badge [path]           SVG health badge ${d('(default: doclify-badge.svg)')}
+    --badge-label <text>     Badge label ${d('(default: "docs health")')}
+    --json                   Output raw JSON to stdout
+
+  ${y('OTHER')}
+    --no-color               Disable colored output
+    --debug                  Show debug info
+    -h, --help               Show this help
+
+  ${y('EXAMPLES')}
+    $ doclify README.md
+    $ doclify docs/ --strict --check-links
+    $ doclify --dir src/ --report --badge
+    $ doclify docs/ --fix --dry-run
+    $ doclify . --json > results.json
+
+  ${y('EXIT CODES')}
+    0  PASS ${d('— all files clean')}
+    1  FAIL ${d('— errors found, or warnings in strict mode')}
+    2  Usage error ${d('— invalid input')}
+`);
 }
 
 function parseConfigFile(configPath) {
@@ -82,7 +108,8 @@ function parseArgs(argv) {
     checkLinks: false,
     checkFreshness: false,
     fix: false,
-    dryRun: false
+    dryRun: false,
+    json: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -120,6 +147,11 @@ function parseArgs(argv) {
 
     if (a === '--fix') {
       args.fix = true;
+      continue;
+    }
+
+    if (a === '--json') {
+      args.json = true;
       continue;
     }
 
@@ -362,6 +394,12 @@ async function runCli(argv = process.argv.slice(2)) {
     }
   }
 
+  printBanner(filePaths.length);
+
+  if (resolved.configLoaded) {
+    log(c.cyan('ℹ'), `Loaded config from ${c.dim(resolved.configPath)}`);
+  }
+
   const startTime = process.hrtime.bigint();
   const fileResults = [];
   const fileErrors = [];
@@ -373,11 +411,22 @@ async function runCli(argv = process.argv.slice(2)) {
     ambiguousSkipped: []
   };
 
+  let customRulesCount = customRules.length;
+  if (customRulesCount > 0) {
+    log(c.cyan('ℹ'), `Loaded ${c.bold(String(customRulesCount))} custom rules from ${c.dim(args.rules)}`);
+  }
+
+  console.error('');
+
   for (const filePath of filePaths) {
+    const shortPath = path.relative(process.cwd(), filePath) || filePath;
+    log(c.cyan('ℹ'), `Checking ${c.bold(shortPath)}...`);
+
     try {
       let content = fs.readFileSync(filePath, 'utf8');
 
       if (args.fix) {
+        log(c.dim('  ↳'), c.dim(`Auto-fixing insecure links...`));
         const fixed = autoFixInsecureLinks(content);
         if (fixed.modified) {
           fixSummary.filesChanged += 1;
@@ -402,12 +451,14 @@ async function runCli(argv = process.argv.slice(2)) {
       });
 
       if (args.checkLinks) {
+        log(c.dim('  ↳'), c.dim(`Checking links...`));
         const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
         analysis.errors.push(...deadLinks);
         analysis.summary.errors = analysis.errors.length;
       }
 
       if (args.checkFreshness) {
+        log(c.dim('  ↳'), c.dim(`Checking freshness...`));
         const freshnessWarnings = checkDocFreshness(content, { sourceFile: filePath });
         analysis.warnings.push(...freshnessWarnings);
         analysis.summary.warnings = analysis.warnings.length;
@@ -427,12 +478,15 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   printResults(output);
-  console.log(JSON.stringify(output, null, 2));
+
+  if (args.json) {
+    console.log(JSON.stringify(output, null, 2));
+  }
 
   if (args.report) {
     try {
       const reportPath = generateReport(output, { reportPath: args.report });
-      console.error(`Report written to: ${reportPath}`);
+      log(c.green('✓'), `Report written ${c.dim('→')} ${reportPath}`);
     } catch (err) {
       console.error(`Failed to write report: ${err.message}`);
       return 2;
@@ -442,7 +496,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.junit) {
     try {
       const junitPath = generateJUnitReport(output, { junitPath: args.junit });
-      console.error(`JUnit report written to: ${junitPath}`);
+      log(c.green('✓'), `JUnit report written ${c.dim('→')} ${junitPath}`);
     } catch (err) {
       console.error(`Failed to write JUnit report: ${err.message}`);
       return 2;
@@ -452,7 +506,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.sarif) {
     try {
       const sarifPath = generateSarifReport(output, { sarifPath: args.sarif });
-      console.error(`SARIF report written to: ${sarifPath}`);
+      log(c.green('✓'), `SARIF report written ${c.dim('→')} ${sarifPath}`);
     } catch (err) {
       console.error(`Failed to write SARIF report: ${err.message}`);
       return 2;
@@ -462,7 +516,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.badge) {
     try {
       const badge = generateBadge(output, { badgePath: args.badge, label: args.badgeLabel });
-      console.error(`Badge written to: ${badge.badgePath} (score ${badge.score})`);
+      log(c.green('✓'), `Badge written ${c.dim('→')} ${badge.badgePath} ${c.dim(`(score ${badge.score})`)}`);
     } catch (err) {
       console.error(`Failed to write badge: ${err.message}`);
       return 2;
@@ -472,7 +526,8 @@ async function runCli(argv = process.argv.slice(2)) {
   return output.summary.status === 'PASS' ? 0 : 1;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === __filename) {
   const code = await runCli();
   process.exit(code);
 }

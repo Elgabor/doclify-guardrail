@@ -30,13 +30,23 @@ const c = {
   bold: (t) => wrap(CODES.bold, t)
 };
 
-function printResults(output) {
-  console.error('');
+function log(icon, message) {
+  console.error(`  ${icon} ${message}`);
+}
 
+function printBanner(fileCount) {
+  console.error('');
+  console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim('v1.0')}`);
+  console.error('');
+  log(c.cyan('ℹ'), `Scanning ${c.bold(String(fileCount))} file${fileCount === 1 ? '' : 's'}...`);
+}
+
+function printResults(output) {
   for (const fileResult of output.files) {
     const icon = fileResult.pass ? c.green('\u2713') : c.red('\u2717');
     const fileName = c.bold(fileResult.file);
-    console.error(`  ${icon} ${fileName}`);
+    const score = fileResult.summary.healthScore != null ? c.dim(` [${fileResult.summary.healthScore}/100]`) : '';
+    console.error(`  ${icon} ${fileName}${score}`);
 
     const allFindings = [
       ...fileResult.findings.errors,
@@ -68,7 +78,19 @@ function printResults(output) {
   console.error(
     `  ${parts.join(c.dim(' \u00B7 '))} ${c.dim('\u00B7')} ${s.filesScanned} files scanned in ${c.dim(`${s.elapsed}s`)}`
   );
+
+  const scoreValue = s.healthScore != null ? s.healthScore : s.avgHealthScore;
+  if (scoreValue != null) {
+    const scoreColor = scoreValue >= 90 ? c.green : scoreValue >= 60 ? c.yellow : c.red;
+    console.error(`  ${scoreColor(`Health score: ${scoreValue}/100`)}`);
+  }
+
+  if (s.status === 'PASS') {
+    console.error('');
+    console.error(`  ${c.green(c.bold('All files passed!'))}`);
+  }
+
   console.error('');
 }
 
-export { initColors, c, printResults };
+export { initColors, c, log, printBanner, printResults };

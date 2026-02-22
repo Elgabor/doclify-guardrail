@@ -70,7 +70,7 @@ test('CLI: strict mode trasforma warning in fail (exit 1)', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--strict'], {
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--strict', '--json'], {
     encoding: 'utf8'
   });
 
@@ -86,7 +86,7 @@ test('CLI: warning senza strict resta pass (exit 0)', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], {
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], {
     encoding: 'utf8'
   });
 
@@ -113,7 +113,7 @@ test('CLI: config strict=true applicata anche senza flag', () => {
   fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
   fs.writeFileSync(cfgPath, JSON.stringify({ strict: true }), 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath], {
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], {
     encoding: 'utf8'
   });
 
@@ -287,7 +287,7 @@ test('CLI: single file output has files[] array with 1 element', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nClean', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 0);
   const parsed = JSON.parse(run.stdout);
   assert.equal(parsed.version, '1.0');
@@ -303,7 +303,7 @@ test('CLI: multi-file JSON output has files[] array', () => {
   fs.writeFileSync(md1, '---\ntitle: T\n---\n# OK\nClean', 'utf8');
   fs.writeFileSync(md2, '---\ntitle: T\n---\n# A\n# B\nDuplicate H1', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, md1, md2], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, md1, md2, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 1);
   const parsed = JSON.parse(run.stdout);
   assert.equal(parsed.files.length, 2);
@@ -316,7 +316,7 @@ test('CLI: directory scanning works', () => {
   fs.writeFileSync(path.join(tmp, 'a.md'), '---\ntitle: A\n---\n# A\nOk', 'utf8');
   fs.writeFileSync(path.join(tmp, 'b.md'), '---\ntitle: B\n---\n# B\nOk', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, tmp], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, tmp, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 0);
   const parsed = JSON.parse(run.stdout);
   assert.equal(parsed.files.length, 2);
@@ -331,7 +331,7 @@ test('CLI: unreadable file does not crash, reported in output', () => {
   fs.writeFileSync(badPath, 'content', 'utf8');
   fs.chmodSync(badPath, 0o000);
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, badPath], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, badPath, '--json'], { encoding: 'utf8' });
   // Should not crash — exit 1 because fileErrors exist
   assert.equal(run.status, 1);
   const parsed = JSON.parse(run.stdout);
@@ -495,7 +495,7 @@ test('CLI: --rules applies custom rules', () => {
     ]
   }), 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--rules', rulesPath], {
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--rules', rulesPath, '--json'], {
     encoding: 'utf8'
   });
 
@@ -525,7 +525,7 @@ test('CLI: stdout JSON never contains ANSI escape codes', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '# Titolo\nTODO da completare', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], {
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], {
     encoding: 'utf8'
   });
 
@@ -628,7 +628,7 @@ test('CLI: --fix --dry-run does not modify file', () => {
   const original = '# Title\nVisit http://example.com';
   fs.writeFileSync(mdPath, original, 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--fix', '--dry-run'], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--fix', '--dry-run', '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 0);
   assert.equal(fs.readFileSync(mdPath, 'utf8'), original);
   const parsed = JSON.parse(run.stdout);
@@ -664,7 +664,7 @@ test('CLI: --check-links fails on missing local link', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '# Title\n[missing](./not-found.md)', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links'], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 1);
   const parsed = JSON.parse(run.stdout);
   const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
@@ -705,7 +705,7 @@ test('CLI: output includes health score fields', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nBody', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 0);
   const parsed = JSON.parse(run.stdout);
   assert.equal(typeof parsed.files[0].summary.healthScore, 'number');
@@ -717,7 +717,7 @@ test('CLI: --check-freshness adds stale-doc warning for old docs', () => {
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '---\nupdated: 2024-01-01\n---\n# Title', 'utf8');
 
-  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-freshness'], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-freshness', '--json'], { encoding: 'utf8' });
   const parsed = JSON.parse(run.stdout);
   const stale = parsed.files[0].findings.warnings.find((w) => w.code === 'stale-doc');
   assert.ok(stale);
@@ -815,7 +815,8 @@ test('CLI: --junit --sarif --badge writes artifacts', () => {
     '--junit', junitPath,
     '--sarif', sarifPath,
     '--badge', badgePath,
-    '--badge-label', 'docs health'
+    '--badge-label', 'docs health',
+    '--json'
   ], { encoding: 'utf8' });
 
   assert.equal(run.status, 0);

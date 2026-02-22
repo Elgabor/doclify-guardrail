@@ -75,7 +75,7 @@ function resolveFileList(args) {
   if (args.dir) targets.push(args.dir);
 
   if (targets.length === 0) {
-    throw new Error('No files specified. Use --help for usage information.');
+    targets.push('.');
   }
 
   const result = [];
