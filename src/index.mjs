@@ -293,6 +293,11 @@ function resolveOptions(args) {
   };
 }
 
+function toRelativePath(filePath) {
+  const rel = path.relative(process.cwd(), filePath);
+  return rel.startsWith('..') ? filePath : rel || filePath;
+}
+
 function buildFileResult(filePath, analysis, opts) {
   const pass = analysis.errors.length === 0 && (!opts.strict || analysis.warnings.length === 0);
   const healthScore = computeDocHealthScore({
@@ -301,7 +306,7 @@ function buildFileResult(filePath, analysis, opts) {
   });
 
   return {
-    file: filePath,
+    file: toRelativePath(filePath),
     pass,
     findings: {
       errors: analysis.errors,
@@ -457,29 +462,31 @@ async function runCli(argv = process.argv.slice(2)) {
         }
       }
 
+      const relPath = toRelativePath(filePath);
       const analysis = checkMarkdown(content, {
         maxLineLength: resolved.maxLineLength,
-        filePath,
+        filePath: relPath,
         customRules
       });
 
       if (args.checkLinks) {
         log(c.dim('  ↳'), c.dim(`Checking links...`));
         const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
+        for (const dl of deadLinks) { dl.source = relPath; }
         analysis.errors.push(...deadLinks);
         analysis.summary.errors = analysis.errors.length;
       }
 
       if (args.checkFreshness) {
         log(c.dim('  ↳'), c.dim(`Checking freshness...`));
-        const freshnessWarnings = checkDocFreshness(content, { sourceFile: filePath });
+        const freshnessWarnings = checkDocFreshness(content, { sourceFile: relPath });
         analysis.warnings.push(...freshnessWarnings);
         analysis.summary.warnings = analysis.warnings.length;
       }
 
       fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
     } catch (err) {
-      fileErrors.push({ file: filePath, error: err.message });
+      fileErrors.push({ file: toRelativePath(filePath), error: err.message });
     }
   }
 
