@@ -33,7 +33,7 @@ function generateJUnitXml(output) {
   const suites = [];
 
   const tests = output.files.length + (output.fileErrors?.length || 0);
-  const failures = output.files.filter((f) => f.findings.errors.length > 0 || f.findings.warnings.length > 0).length;
+  const failures = output.files.filter((f) => f.findings.errors.length > 0).length;
   const errors = output.fileErrors?.length || 0;
 
   suites.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -42,16 +42,24 @@ function generateJUnitXml(output) {
   );
 
   for (const fileResult of output.files) {
+    const hasErrors = fileResult.findings.errors.length > 0;
+    const hasWarnings = fileResult.findings.warnings.length > 0;
+
+    if (!hasErrors && !hasWarnings) {
+      suites.push(`  <testcase classname="doclify.guardrail" name="${escapeXml(fileResult.file)}"/>`);
+      continue;
+    }
+
     suites.push(`  <testcase classname="doclify.guardrail" name="${escapeXml(fileResult.file)}">`);
 
-    const findings = [
-      ...fileResult.findings.errors,
-      ...fileResult.findings.warnings
-    ];
+    if (hasErrors) {
+      const errorDetail = fileResult.findings.errors.map(makeFindingLine).join('\n');
+      suites.push(`    <failure message="${escapeXml(`${fileResult.summary.errors} error${fileResult.summary.errors === 1 ? '' : 's'}`)}">${escapeXml(errorDetail)}</failure>`);
+    }
 
-    if (findings.length > 0) {
-      const detail = findings.map(makeFindingLine).join('\n');
-      suites.push(`    <failure message="${escapeXml(`${fileResult.summary.errors} errors, ${fileResult.summary.warnings} warnings`)}">${escapeXml(detail)}</failure>`);
+    if (hasWarnings) {
+      const warnDetail = fileResult.findings.warnings.map(makeFindingLine).join('\n');
+      suites.push(`    <system-out>${escapeXml(warnDetail)}</system-out>`);
     }
 
     suites.push('  </testcase>');
