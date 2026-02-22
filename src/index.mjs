@@ -42,6 +42,7 @@ function printHelp() {
     --max-line-length <n>    Max line length ${d('(default: 160)')}
     --config <path>          Config file ${d('(default: .doclify-guardrail.json)')}
     --rules <path>           Custom regex rules from JSON file
+    --ignore-rules <list>    Disable rules ${d('(comma-separated)')}
 
   ${y('CHECKS')}
     --check-links            Validate HTTP and local links
@@ -109,6 +110,7 @@ function parseArgs(argv) {
     badge: null,
     badgeLabel: 'docs health',
     noColor: false,
+    ignoreRules: [],
     checkLinks: false,
     checkFreshness: false,
     fix: false,
@@ -136,6 +138,16 @@ function parseArgs(argv) {
 
     if (a === '--no-color') {
       args.noColor = true;
+      continue;
+    }
+
+    if (a === '--ignore-rules') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --ignore-rules');
+      }
+      args.ignoreRules.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      i += 1;
       continue;
     }
 
@@ -280,6 +292,8 @@ function resolveOptions(args) {
   const cfg = parseConfigFile(args.configPath);
   const maxLineLength = Number(args.maxLineLength ?? cfg.maxLineLength ?? 160);
   const strict = Boolean(args.strict ?? cfg.strict ?? false);
+  const cfgIgnore = Array.isArray(cfg.ignoreRules) ? cfg.ignoreRules : [];
+  const ignoreRules = new Set([...args.ignoreRules, ...cfgIgnore]);
 
   if (!Number.isInteger(maxLineLength) || maxLineLength <= 0) {
     throw new Error(`Invalid maxLineLength in config: ${cfg.maxLineLength}`);
@@ -288,6 +302,7 @@ function resolveOptions(args) {
   return {
     maxLineLength,
     strict,
+    ignoreRules,
     configPath: args.configPath,
     configLoaded: fs.existsSync(args.configPath)
   };
@@ -299,22 +314,22 @@ function toRelativePath(filePath) {
 }
 
 function buildFileResult(filePath, analysis, opts) {
-  const pass = analysis.errors.length === 0 && (!opts.strict || analysis.warnings.length === 0);
+  const ignore = opts.ignoreRules || new Set();
+  const errors = ignore.size > 0 ? analysis.errors.filter(f => !ignore.has(f.code)) : analysis.errors;
+  const warnings = ignore.size > 0 ? analysis.warnings.filter(f => !ignore.has(f.code)) : analysis.warnings;
+  const pass = errors.length === 0 && (!opts.strict || warnings.length === 0);
   const healthScore = computeDocHealthScore({
-    errors: analysis.summary.errors,
-    warnings: analysis.summary.warnings
+    errors: errors.length,
+    warnings: warnings.length
   });
 
   return {
     file: toRelativePath(filePath),
     pass,
-    findings: {
-      errors: analysis.errors,
-      warnings: analysis.warnings
-    },
+    findings: { errors, warnings },
     summary: {
-      errors: analysis.summary.errors,
-      warnings: analysis.summary.warnings,
+      errors: errors.length,
+      warnings: warnings.length,
       healthScore,
       status: pass ? 'PASS' : 'FAIL'
     }
@@ -484,7 +499,7 @@ async function runCli(argv = process.argv.slice(2)) {
         analysis.summary.warnings = analysis.warnings.length;
       }
 
-      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
+      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict, ignoreRules: resolved.ignoreRules }));
     } catch (err) {
       fileErrors.push({ file: toRelativePath(filePath), error: err.message });
     }
