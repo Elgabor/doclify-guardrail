@@ -34,9 +34,9 @@ function log(icon, message) {
   console.error(`  ${icon} ${message}`);
 }
 
-function printBanner(fileCount) {
+function printBanner(fileCount, version) {
   console.error('');
-  console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim('v1.0')}`);
+  console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim(`v${version || '?'}`)}`);
   console.error('');
   log(c.cyan('ℹ'), `Scanning ${c.bold(String(fileCount))} file${fileCount === 1 ? '' : 's'}...`);
 }

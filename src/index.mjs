@@ -17,13 +17,17 @@ import {
   generateBadge
 } from './ci-output.mjs';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const VERSION = pkg.version;
+
 function printHelp() {
   const b = (t) => c.bold(t);
   const d = (t) => c.dim(t);
   const y = (t) => c.yellow(t);
 
   console.log(`
-  ${b('Doclify Guardrail')} ${d('v1.0')}
+  ${b('Doclify Guardrail')} ${d(`v${VERSION}`)}
   Quality gate for Markdown documentation.
 
   ${y('USAGE')}
@@ -337,7 +341,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
   summary.healthScore = computeHealthScore(summary);
 
   return {
-    version: '1.0',
+    version: VERSION,
     strict: opts.strict,
     files: fileResults,
     fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
@@ -394,7 +398,7 @@ async function runCli(argv = process.argv.slice(2)) {
     }
   }
 
-  printBanner(filePaths.length);
+  printBanner(filePaths.length, VERSION);
 
   if (resolved.configLoaded) {
     log(c.cyan('ℹ'), `Loaded config from ${c.dim(resolved.configPath)}`);
