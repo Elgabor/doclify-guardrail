@@ -14,7 +14,9 @@ Zero dependencies. Node.js built-in only. Works everywhere Node 20+ runs.
 - Colored terminal output
 - Extended placeholder detection (TODO, FIXME, TBD, WIP, and more)
 - Insecure link detection (inline, bare URLs, reference-style)
+- Doc Health Score per file and project average (0–100)
 - Optional dead link checker (`--check-links`)
+- Optional freshness checker (`--check-freshness`)
 - CI-ready output exports (`--junit`, `--sarif`)
 - Local docs health badge generation (`--badge`, `--badge-label`)
 - Optional safe auto-fix mode (`--fix`, `--dry-run`)
@@ -36,6 +38,9 @@ npx doclify-guardrail docs/ --report
 
 # Check dead links (HTTP status + local relative paths)
 npx doclify-guardrail docs/ --check-links
+
+# Check document freshness (warn if stale or missing updated date)
+npx doclify-guardrail docs/ --check-freshness
 
 # Export CI reports
 npx doclify-guardrail docs/ --junit --sarif
@@ -68,6 +73,7 @@ doclify-guardrail --dir <path> [options]
 | `--report [path]` | Generate markdown report (default: `doclify-report.md`) |
 | `--rules <path>` | Load custom rules from JSON file |
 | `--check-links` | Validate links and fail on dead links |
+| `--check-freshness` | Warn if docs are stale or missing an updated date (default max age: 180 days) |
 | `--junit [path]` | Export JUnit XML report (default: `doclify-junit.xml`) |
 | `--sarif [path]` | Export SARIF report (default: `doclify.sarif`) |
 | `--badge [path]` | Generate SVG docs health badge (default: `doclify-badge.svg`) |
@@ -109,6 +115,7 @@ CLI flags override config file values.
 | `placeholder` | warning | TODO, FIXME, TBD, WIP, HACK, CHANGEME, lorem ipsum, etc. |
 | `insecure-link` | warning | HTTP links (should be HTTPS) |
 | `dead-link` | error | Broken links (enabled with `--check-links`) |
+| `stale-doc` | warning | Missing/old freshness date (enabled with `--check-freshness`) |
 
 All rules respect code block exclusion -- content inside fenced code blocks
 and inline code is never flagged.
@@ -197,6 +204,26 @@ Ambiguous URLs (for example `localhost` or custom ports) are reported and left u
 
 Use `--dry-run` only together with `--fix` to preview changes without writing files.
 Using `--dry-run` alone is a usage error (exit code `2`).
+
+## Doc Health Score
+
+Each file now includes `summary.healthScore` (0–100) in JSON output.
+Overall summary includes `summary.avgHealthScore`.
+
+Scoring is deterministic and compatibility-safe:
+- starts at `100`
+- `-25` per error
+- `-8` per warning
+- clamped to `0..100`
+
+## Doc Freshness
+
+Use `--check-freshness` to detect stale docs.
+The checker looks for dates in:
+- frontmatter keys: `updated`, `last_updated`, `lastModified`, `date`
+- body marker: `Last updated: YYYY-MM-DD`
+
+If no date is found or the doc is older than 180 days, a `stale-doc` warning is added.
 
 ## Report
 

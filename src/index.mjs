@@ -8,6 +8,7 @@ import { loadCustomRules } from './rules-loader.mjs';
 import { initColors, printResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
+import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import {
   computeHealthScore,
   generateJUnitReport,
@@ -30,6 +31,7 @@ Options:
   --report [path]          Generate markdown report (default: doclify-report.md)
   --rules <path>           Load custom rules from JSON file
   --check-links            Validate links and fail on dead links
+  --check-freshness        Warn on stale docs (default max age: 180 days)
   --junit [path]           Generate JUnit XML report (default: doclify-junit.xml)
   --sarif [path]           Generate SARIF report (default: doclify.sarif)
   --badge [path]           Generate SVG badge (default: doclify-badge.svg)
@@ -78,6 +80,7 @@ function parseArgs(argv) {
     badgeLabel: 'docs health',
     noColor: false,
     checkLinks: false,
+    checkFreshness: false,
     fix: false,
     dryRun: false
   };
@@ -107,6 +110,11 @@ function parseArgs(argv) {
 
     if (a === '--check-links') {
       args.checkLinks = true;
+      continue;
+    }
+
+    if (a === '--check-freshness') {
+      args.checkFreshness = true;
       continue;
     }
 
@@ -251,6 +259,11 @@ function resolveOptions(args) {
 
 function buildFileResult(filePath, analysis, opts) {
   const pass = analysis.errors.length === 0 && (!opts.strict || analysis.warnings.length === 0);
+  const healthScore = computeDocHealthScore({
+    errors: analysis.summary.errors,
+    warnings: analysis.summary.warnings
+  });
+
   return {
     file: filePath,
     pass,
@@ -261,6 +274,7 @@ function buildFileResult(filePath, analysis, opts) {
     summary: {
       errors: analysis.summary.errors,
       warnings: analysis.summary.warnings,
+      healthScore,
       status: pass ? 'PASS' : 'FAIL'
     }
   };
@@ -272,6 +286,9 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
   const passed = fileResults.filter(r => r.pass).length;
   const failed = fileResults.filter(r => !r.pass).length;
   const overallPass = failed === 0 && fileErrors.length === 0;
+  const avgHealthScore = fileResults.length > 0
+    ? Math.round(fileResults.reduce((s, r) => s + r.summary.healthScore, 0) / fileResults.length)
+    : 0;
 
   const summary = {
     filesScanned: fileResults.length + fileErrors.length,
@@ -284,6 +301,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
     elapsed: Math.round(elapsed * 1000) / 1000
   };
 
+  summary.avgHealthScore = avgHealthScore;
   summary.healthScore = computeHealthScore(summary);
 
   return {
@@ -387,6 +405,12 @@ async function runCli(argv = process.argv.slice(2)) {
         const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
         analysis.errors.push(...deadLinks);
         analysis.summary.errors = analysis.errors.length;
+      }
+
+      if (args.checkFreshness) {
+        const freshnessWarnings = checkDocFreshness(content, { sourceFile: filePath });
+        analysis.warnings.push(...freshnessWarnings);
+        analysis.summary.warnings = analysis.warnings.length;
       }
 
       fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict }));
