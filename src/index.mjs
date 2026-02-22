@@ -60,6 +60,9 @@ function printHelp() {
     --badge-label <text>     Badge label ${d('(default: "docs health")')}
     --json                   Output raw JSON to stdout
 
+  ${y('SETUP')}
+    init                     Generate a .doclify-guardrail.json config
+
   ${y('OTHER')}
     --list-rules             List all built-in rules
     --no-color               Disable colored output
@@ -104,6 +107,7 @@ function parseArgs(argv) {
     configPath: path.resolve('.doclify-guardrail.json'),
     help: false,
     listRules: false,
+    init: false,
     dir: null,
     report: null,
     rules: null,
@@ -292,6 +296,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === 'init') {
+      args.init = true;
+      continue;
+    }
+
     if (a.startsWith('-')) {
       throw new Error(`Unknown option: ${a}`);
     }
@@ -412,6 +421,34 @@ async function runCli(argv = process.argv.slice(2)) {
       console.log(`  ${c.cyan(rule.id.padEnd(22))} ${sev}  ${c.dim(rule.description)}`);
     }
     console.log('');
+    return 0;
+  }
+
+  if (args.init) {
+    initColors(args.noColor);
+    const configFile = '.doclify-guardrail.json';
+    const configPath = path.resolve(configFile);
+
+    if (fs.existsSync(configPath)) {
+      console.error(`  ${c.yellow('⚠')} ${c.bold(configFile)} already exists. Remove it first to re-initialize.`);
+      return 1;
+    }
+
+    const defaultConfig = {
+      strict: false,
+      maxLineLength: 160,
+      ignoreRules: [],
+      checkLinks: false,
+      checkFreshness: false
+    };
+
+    fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + '\n', 'utf8');
+    console.error('');
+    console.error(`  ${c.green('✓')} Created ${c.bold(configFile)}`);
+    console.error('');
+    console.error(`  ${c.dim('Edit the file to customise rules, then run:')}`)
+    console.error(`  ${c.dim('$')} ${c.cyan('doclify .')}`);
+    console.error('');
     return 0;
   }
 
