@@ -235,7 +235,7 @@ function generateSarifReport(output, options) {
 function generateBadge(output, options = {}) {
   const label = (options.label || 'docs health').trim() || 'docs health';
   const badgePath = path.resolve(options.badgePath || 'doclify-badge.svg');
-  const score = computeHealthScore(output.summary || {});
+  const score = output.summary?.healthScore ?? 0;
   const svg = generateBadgeSvg(score, label);
   fs.writeFileSync(badgePath, svg, 'utf8');
   return {

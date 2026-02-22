@@ -11,7 +11,6 @@ import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import {
-  computeHealthScore,
   generateJUnitReport,
   generateSarifReport,
   generateBadge
@@ -376,8 +375,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
     elapsed: Math.round(elapsed * 1000) / 1000
   };
 
-  summary.avgHealthScore = avgHealthScore;
-  summary.healthScore = computeHealthScore(summary);
+  summary.healthScore = avgHealthScore;
 
   return {
     version: VERSION,
