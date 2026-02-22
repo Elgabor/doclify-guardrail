@@ -9,7 +9,8 @@ const RULE_SEVERITY = {
   'line-length': 'warning',
   placeholder: 'warning',
   'insecure-link': 'warning',
-  'dead-link': 'error'
+  'dead-link': 'error',
+  'stale-doc': 'warning'
 };
 
 const PLACEHOLDER_PATTERNS = [

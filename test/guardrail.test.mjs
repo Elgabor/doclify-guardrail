@@ -12,6 +12,7 @@ import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks } from '../src/fixer.mjs';
 import { checkDeadLinks } from '../src/links.mjs';
+import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
 
@@ -662,4 +663,56 @@ test('CLI: --check-links fails on missing local link', () => {
   const parsed = JSON.parse(run.stdout);
   const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
   assert.ok(dead);
+});
+
+// === New features: health score + freshness ===
+
+test('computeDocHealthScore: clamps to 0..100', () => {
+  assert.equal(computeDocHealthScore({ errors: 0, warnings: 0 }), 100);
+  assert.equal(computeDocHealthScore({ errors: 1, warnings: 0 }), 75);
+  assert.equal(computeDocHealthScore({ errors: 0, warnings: 2 }), 84);
+  assert.equal(computeDocHealthScore({ errors: 10, warnings: 10 }), 0);
+});
+
+test('parseArgs: accepts --check-freshness flag', () => {
+  const args = parseArgs(['doc.md', '--check-freshness']);
+  assert.equal(args.checkFreshness, true);
+});
+
+test('checkDocFreshness: warns when missing freshness date', () => {
+  const findings = checkDocFreshness('# Title\nBody', {
+    now: new Date('2026-02-18T00:00:00Z'),
+    sourceFile: 'doc.md'
+  });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].code, 'stale-doc');
+});
+
+test('checkDocFreshness: passes when recent updated date exists', () => {
+  const md = `---\nupdated: 2026-02-10\n---\n# Title`;
+  const findings = checkDocFreshness(md, { now: new Date('2026-02-18T00:00:00Z') });
+  assert.equal(findings.length, 0);
+});
+
+test('CLI: output includes health score fields', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nBody', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(typeof parsed.files[0].summary.healthScore, 'number');
+  assert.equal(typeof parsed.summary.avgHealthScore, 'number');
+});
+
+test('CLI: --check-freshness adds stale-doc warning for old docs', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '---\nupdated: 2024-01-01\n---\n# Title', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-freshness'], { encoding: 'utf8' });
+  const parsed = JSON.parse(run.stdout);
+  const stale = parsed.files[0].findings.warnings.find((w) => w.code === 'stale-doc');
+  assert.ok(stale);
 });

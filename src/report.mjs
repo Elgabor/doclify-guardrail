@@ -17,6 +17,9 @@ function generateReport(output, options) {
   lines.push(`**Date:** ${dateStr}  `);
   lines.push(`**Files scanned:** ${output.summary.filesScanned}  `);
   lines.push(`**Result:** ${output.summary.status === 'PASS' ? '\u2713 PASS' : `\u2717 ${output.summary.totalErrors} errors, ${output.summary.totalWarnings} warnings`}`);
+  if (typeof output.summary.avgHealthScore === 'number') {
+    lines.push(`**Avg health score:** ${output.summary.avgHealthScore}/100`);
+  }
   lines.push('');
 
   // Summary table
