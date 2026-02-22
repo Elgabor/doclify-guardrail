@@ -6,9 +6,13 @@ const DEFAULTS = {
 const RULE_SEVERITY = {
   frontmatter: 'warning',
   'single-h1': 'error',
+  'heading-hierarchy': 'warning',
+  'duplicate-heading': 'warning',
   'line-length': 'warning',
   placeholder: 'warning',
   'insecure-link': 'warning',
+  'empty-link': 'warning',
+  'img-alt': 'warning',
   'dead-link': 'error',
   'stale-doc': 'warning'
 };
@@ -118,6 +122,41 @@ function checkMarkdown(rawContent, opts = {}) {
     }
   }
 
+  // Rule: heading-hierarchy (h1→h3 without h2 is a skip)
+  let prevLevel = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const hMatch = lines[i].match(/^(#{1,6})\s/);
+    if (!hMatch) continue;
+    const level = hMatch[1].length;
+    if (prevLevel > 0 && level > prevLevel + 1) {
+      warnings.push(normalizeFinding(
+        'heading-hierarchy',
+        `Heading level skipped: H${prevLevel} → H${level} (expected H${prevLevel + 1}).`,
+        i + 1,
+        filePath
+      ));
+    }
+    prevLevel = level;
+  }
+
+  // Rule: duplicate-heading (same text at same level)
+  const headingSeen = new Map();
+  for (let i = 0; i < lines.length; i += 1) {
+    const hMatch = lines[i].match(/^(#{1,6})\s+(.+)$/);
+    if (!hMatch) continue;
+    const key = `${hMatch[1].length}:${hMatch[2].trim().toLowerCase()}`;
+    if (headingSeen.has(key)) {
+      warnings.push(normalizeFinding(
+        'duplicate-heading',
+        `Duplicate heading "${hMatch[2].trim()}" (also at line ${headingSeen.get(key)}).`,
+        i + 1,
+        filePath
+      ));
+    } else {
+      headingSeen.set(key, i + 1);
+    }
+  }
+
   // Rule: line-length (uses raw content — code block lines can still be too long)
   rawLines.forEach((line, idx) => {
     if (line.length > maxLineLength) {
@@ -176,6 +215,27 @@ function checkMarkdown(rawContent, opts = {}) {
           );
         }
       }
+    }
+  });
+
+  // Rule: empty-link (uses stripped content, excludes images)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    // [](url) — empty link text (but not ![](url) which is img-alt)
+    if (/(?<!!)\[\]\([^)]+\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('empty-link', 'Link has empty text: [](url).', idx + 1, filePath));
+    }
+    // [text]() — empty link URL
+    if (/(?<!!)\[[^\]]+\]\(\s*\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('empty-link', 'Link has empty URL: [text]().', idx + 1, filePath));
+    }
+  });
+
+  // Rule: img-alt (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    if (/!\[\]\([^)]+\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('img-alt', 'Image missing alt text: ![](url).', idx + 1, filePath));
     }
   });
 
