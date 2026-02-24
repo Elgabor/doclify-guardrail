@@ -416,6 +416,7 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary) {
   };
 
   summary.healthScore = avgHealthScore;
+  summary.avgHealthScore = avgHealthScore; // Backward-compatible alias for existing integrations/tests
 
   return {
     version: VERSION,

@@ -21,6 +21,7 @@ import {
 } from '../src/ci-output.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')).version;
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-guardrail-'));
@@ -124,22 +125,21 @@ test('CLI: config strict=true applicata anche senza flag', () => {
 
 // === Line number tests ===
 
-test('frontmatter: finding has line 1', () => {
+test('frontmatter: finding has line 1 when enabled', () => {
   const md = `# Titolo\nContenuto`;
-  const res = checkMarkdown(md);
+  const res = checkMarkdown(md, { checkFrontmatter: true });
   const fm = res.warnings.find((w) => w.code === 'frontmatter');
-  assert.ok(fm, 'frontmatter warning should exist');
+  assert.ok(fm, 'frontmatter warning should exist when enabled');
   assert.equal(fm.line, 1);
 });
 
-test('single-h1: duplicate H1s produce separate findings with correct line numbers', () => {
+test('single-h1: duplicate H1s produce one aggregated finding with first line', () => {
   const md = `---\ntitle: Test\n---\n# First\nContent\n# Second\nMore\n# Third`;
   const res = checkMarkdown(md);
   const h1Errors = res.errors.filter((e) => e.code === 'single-h1');
-  assert.equal(h1Errors.length, 3);
+  assert.equal(h1Errors.length, 1);
   assert.equal(h1Errors[0].line, 4);
-  assert.equal(h1Errors[1].line, 6);
-  assert.equal(h1Errors[2].line, 8);
+  assert.ok(h1Errors[0].message.includes('lines 4, 6, 8'));
 });
 
 test('line-length: finding has correct line number', () => {
@@ -290,7 +290,7 @@ test('CLI: single file output has files[] array with 1 element', () => {
   const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 0);
   const parsed = JSON.parse(run.stdout);
-  assert.equal(parsed.version, '1.0');
+  assert.equal(parsed.version, PKG_VERSION);
   assert.ok(Array.isArray(parsed.files), 'Should have files array');
   assert.equal(parsed.files.length, 1);
   assert.equal(parsed.files[0].pass, true);
@@ -593,9 +593,9 @@ test('single-h1: message includes line numbers', () => {
   assert.ok(h1Errors[0].message.includes('2'), 'Should list actual count');
 });
 
-test('all English: frontmatter message is in English', () => {
+test('all English: frontmatter message is in English when enabled', () => {
   const md = `# Title\nContent`;
-  const res = checkMarkdown(md);
+  const res = checkMarkdown(md, { checkFrontmatter: true });
   const fm = res.warnings.find(w => w.code === 'frontmatter');
   assert.ok(fm);
   assert.ok(fm.message.includes('Missing frontmatter'), 'Frontmatter message should be in English');
@@ -843,4 +843,88 @@ test('generateBadge: writes SVG with custom label', () => {
   assert.ok(fs.existsSync(badge.badgePath));
   const svg = fs.readFileSync(badge.badgePath, 'utf8');
   assert.ok(svg.includes('quality'));
+});
+
+// === Regression tests for v1.2 behavior ===
+
+test('frontmatter: disabled by default', () => {
+  const md = `# Title\nBody`;
+  const res = checkMarkdown(md);
+  const fm = res.warnings.find((w) => w.code === 'frontmatter');
+  assert.equal(fm, undefined);
+});
+
+test('CLI: --version returns package version', () => {
+  const run = spawnSync(process.execPath, [CLI_PATH, '--version'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  assert.equal(run.stdout.trim(), PKG_VERSION);
+});
+
+test('CLI: --exclude supports simple directory names via path segments', () => {
+  const tmp = makeTempDir();
+  fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'spec'), { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'worklog'), { recursive: true });
+
+  fs.writeFileSync(path.join(tmp, 'docs', 'c.md'), '---\ntitle: C\n---\n# C\nok', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'spec', 'a.md'), '---\ntitle: A\n---\n# A\nok', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'worklog', 'b.md'), '---\ntitle: B\n---\n# B\nok', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, tmp, '--exclude', 'spec,worklog', '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.summary.filesScanned, 1);
+  assert.equal(parsed.files.length, 1);
+  const onlyFile = parsed.files[0].file;
+  assert.ok(onlyFile.endsWith('docs/c.md') || onlyFile.endsWith('docs\\c.md'));
+});
+
+test('inline suppression: doclify-disable-next-line suppresses only one TODO line', () => {
+  const md = `# Title\n<!-- doclify-disable-next-line placeholder -->\nTODO hidden\nTODO visible`;
+  const res = checkMarkdown(md);
+  const todoWarnings = res.warnings.filter((w) => w.code === 'placeholder' && w.message.includes('TODO marker'));
+  assert.equal(todoWarnings.length, 1);
+  assert.equal(todoWarnings[0].line, 4);
+});
+
+test('inline suppression: doclify-disable / doclify-enable works for TODO block scope', () => {
+  const md = `# Title\n<!-- doclify-disable placeholder -->\nTODO hidden 1\nTODO hidden 2\n<!-- doclify-enable placeholder -->\nTODO visible`;
+  const res = checkMarkdown(md);
+  const todoWarnings = res.warnings.filter((w) => w.code === 'placeholder' && w.message.includes('TODO marker'));
+  assert.equal(todoWarnings.length, 1);
+  assert.equal(todoWarnings[0].line, 6);
+});
+
+test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', async () => {
+  const server = http.createServer((_, res) => {
+    res.statusCode = 500;
+    res.end('fail');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  const { port } = server.address();
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, `---\ntitle: T\n---\n# T\n[bad](http://127.0.0.1:${port}/broken)`, 'utf8');
+
+  try {
+    const runNoAllow = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--json'], { encoding: 'utf8' });
+    assert.equal(runNoAllow.status, 1);
+    const parsedNoAllow = JSON.parse(runNoAllow.stdout);
+    assert.ok(parsedNoAllow.files[0].findings.errors.some((e) => e.code === 'dead-link'));
+
+    const runAllow = spawnSync(process.execPath, [
+      CLI_PATH,
+      mdPath,
+      '--check-links',
+      '--link-allow-list', '127.0.0.1',
+      '--json'
+    ], { encoding: 'utf8' });
+
+    assert.equal(runAllow.status, 0);
+    const parsedAllow = JSON.parse(runAllow.stdout);
+    assert.equal(parsedAllow.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
