@@ -44,6 +44,28 @@ function isSkippableUrl(url) {
   return url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#');
 }
 
+function isAllowListed(url, allowList) {
+  if (!allowList || allowList.length === 0) return false;
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  for (const pattern of allowList) {
+    // Wildcard pattern: "https://wger.de/*" → prefix match
+    if (pattern.includes('/') && pattern.endsWith('*')) {
+      const prefix = pattern.slice(0, -1);
+      if (url.startsWith(prefix)) return true;
+      continue;
+    }
+    // Full URL match
+    if (pattern.includes('/')) {
+      if (url === pattern) return true;
+      continue;
+    }
+    // Domain-only: suffix match on hostname (e.g. "wger.de" matches "api.wger.de")
+    if (parsed.hostname === pattern || parsed.hostname.endsWith('.' + pattern)) return true;
+  }
+  return false;
+}
+
 async function checkRemoteUrl(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
@@ -95,7 +117,7 @@ async function runWithConcurrency(tasks, limit) {
   return results;
 }
 
-async function checkDeadLinks(content, { sourceFile }) {
+async function checkDeadLinks(content, { sourceFile, linkAllowList } = {}) {
   const links = extractLinks(content);
   const findings = [];
   const seen = new Set();
@@ -112,6 +134,7 @@ async function checkDeadLinks(content, { sourceFile }) {
     seen.add(dedupeKey);
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (isAllowListed(url, linkAllowList)) continue;
       remoteChecks.push({ url, link });
       continue;
     }

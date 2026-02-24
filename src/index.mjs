@@ -47,6 +47,8 @@ function printHelp() {
   ${y('CHECKS')}
     --check-links            Validate HTTP and local links
     --check-freshness        Warn on stale docs ${d('(>180 days)')}
+    --check-frontmatter      Require YAML frontmatter block
+    --link-allow-list <list> Skip URLs/domains for link checks ${d('(comma-separated)')}
 
   ${y('FIX')}
     --fix                    Auto-fix safe issues ${d('(http → https)')}
@@ -106,6 +108,7 @@ function parseArgs(argv) {
     maxLineLength: undefined,
     configPath: path.resolve('.doclify-guardrail.json'),
     help: false,
+    version: false,
     listRules: false,
     init: false,
     dir: null,
@@ -120,6 +123,8 @@ function parseArgs(argv) {
     exclude: [],
     checkLinks: false,
     checkFreshness: false,
+    checkFrontmatter: false,
+    linkAllowList: [],
     fix: false,
     dryRun: false,
     json: false
@@ -130,6 +135,11 @@ function parseArgs(argv) {
 
     if (a === '-h' || a === '--help') {
       args.help = true;
+      continue;
+    }
+
+    if (a === '-v' || a === '--version') {
+      args.version = true;
       continue;
     }
 
@@ -180,6 +190,21 @@ function parseArgs(argv) {
 
     if (a === '--check-freshness') {
       args.checkFreshness = true;
+      continue;
+    }
+
+    if (a === '--check-frontmatter') {
+      args.checkFrontmatter = true;
+      continue;
+    }
+
+    if (a === '--link-allow-list') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --link-allow-list');
+      }
+      args.linkAllowList.push(...value.split(',').map(s => s.trim()).filter(Boolean));
+      i += 1;
       continue;
     }
 
@@ -326,10 +351,16 @@ function resolveOptions(args) {
     throw new Error(`Invalid maxLineLength in config: ${cfg.maxLineLength}`);
   }
 
+  const checkFrontmatter = Boolean(args.checkFrontmatter || cfg.checkFrontmatter || args.checkFreshness || cfg.checkFreshness);
+  const cfgAllowList = Array.isArray(cfg.linkAllowList) ? cfg.linkAllowList : [];
+  const linkAllowList = [...args.linkAllowList, ...cfgAllowList];
+
   return {
     maxLineLength,
     strict,
     ignoreRules,
+    checkFrontmatter,
+    linkAllowList,
     configPath: args.configPath,
     configLoaded: fs.existsSync(args.configPath)
   };
@@ -411,6 +442,11 @@ async function runCli(argv = process.argv.slice(2)) {
     return 0;
   }
 
+  if (args.version) {
+    console.log(VERSION);
+    return 0;
+  }
+
   if (args.listRules) {
     initColors(args.noColor);
     console.log('');
@@ -439,7 +475,9 @@ async function runCli(argv = process.argv.slice(2)) {
       maxLineLength: 160,
       ignoreRules: [],
       checkLinks: false,
-      checkFreshness: false
+      checkFreshness: false,
+      checkFrontmatter: false,
+      linkAllowList: []
     };
 
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + '\n', 'utf8');
@@ -470,7 +508,8 @@ async function runCli(argv = process.argv.slice(2)) {
           const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
           return regex.test(rel);
         }
-        return rel === pattern || rel.startsWith(pattern + path.sep) || path.basename(rel) === pattern;
+        const segments = rel.split(path.sep);
+        return segments.includes(pattern);
       });
     });
   }
@@ -561,12 +600,13 @@ async function runCli(argv = process.argv.slice(2)) {
       const analysis = checkMarkdown(content, {
         maxLineLength: resolved.maxLineLength,
         filePath: relPath,
-        customRules
+        customRules,
+        checkFrontmatter: resolved.checkFrontmatter
       });
 
       if (args.checkLinks) {
         log(c.dim('  ↳'), c.dim(`Checking links...`));
-        const deadLinks = await checkDeadLinks(content, { sourceFile: filePath });
+        const deadLinks = await checkDeadLinks(content, { sourceFile: filePath, linkAllowList: resolved.linkAllowList });
         for (const dl of deadLinks) { dl.source = relPath; }
         analysis.errors.push(...deadLinks);
         analysis.summary.errors = analysis.errors.length;

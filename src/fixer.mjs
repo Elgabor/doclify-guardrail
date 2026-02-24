@@ -23,7 +23,7 @@ function autoFixInsecureLinks(content) {
 
     const replaced = raw.replace('http://', 'https://');
     if (replaced !== raw) {
-      changes.push({ from: raw, to: replaced });
+      changes.push({ from: cleaned, to: cleaned.replace('http://', 'https://') });
     }
     return replaced;
   });

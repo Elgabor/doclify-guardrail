@@ -1,5 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { RULE_CATALOG } from './checker.mjs';
+
+const RULE_DESCRIPTIONS = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.description]));
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -86,7 +89,7 @@ function collectRuleCatalog(output) {
           id: finding.code,
           name: finding.code,
           shortDescription: { text: finding.code },
-          help: { text: finding.message || finding.code },
+          help: { text: RULE_DESCRIPTIONS[finding.code] || finding.message || finding.code },
           defaultConfiguration: {
             level: finding.severity === 'error' ? 'error' : 'warning'
           }
