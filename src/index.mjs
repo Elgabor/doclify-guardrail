@@ -8,7 +8,7 @@ import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
 import { initColors, setAsciiMode, icons, c, log, printBanner, printResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
-import { autoFixInsecureLinks } from './fixer.mjs';
+import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import {
   generateJUnitReport,
@@ -139,6 +139,7 @@ function parseArgs(argv) {
     checkLinks: false,
     checkFreshness: false,
     checkFrontmatter: false,
+    checkInlineHtml: false,
     linkAllowList: [],
     fix: false,
     dryRun: false,
@@ -212,6 +213,11 @@ function parseArgs(argv) {
 
     if (a === '--check-frontmatter') {
       args.checkFrontmatter = true;
+      continue;
+    }
+
+    if (a === '--check-inline-html') {
+      args.checkInlineHtml = true;
       continue;
     }
 
@@ -616,6 +622,7 @@ async function runCli(argv = process.argv.slice(2)) {
       let content = fs.readFileSync(filePath, 'utf8');
 
       if (args.fix) {
+        // 1. Insecure links fix (http:// → https://)
         log(c.dim('  ↳'), c.dim(`Auto-fixing insecure links...`));
         const fixed = autoFixInsecureLinks(content);
         if (fixed.modified) {
@@ -627,9 +634,8 @@ async function runCli(argv = process.argv.slice(2)) {
             }
           }
           if (!args.dryRun) {
-            fs.writeFileSync(filePath, fixed.content, 'utf8');
+            content = fixed.content;
           }
-          content = fixed.content;
         }
         if (fixed.ambiguous.length > 0) {
           fixSummary.ambiguousSkipped.push({
@@ -640,6 +646,21 @@ async function runCli(argv = process.argv.slice(2)) {
             log(c.dim('    '), c.dim(`⊘ skipped ${url} (localhost/custom port)`));
           }
         }
+
+        // 2. Formatting fixes (trailing spaces, blanks, headings, bare URLs, etc.)
+        const formatted = autoFixFormatting(content);
+        if (formatted.modified) {
+          if (!args.dryRun) {
+            content = formatted.content;
+          }
+          const ruleSet = new Set(formatted.changes.map(ch => ch.rule));
+          log(c.dim('  ↳'), c.dim(`Formatting: ${formatted.changes.length} fix${formatted.changes.length === 1 ? '' : 'es'} (${[...ruleSet].join(', ')})${args.dryRun ? ' [dry-run]' : ''}`));
+        }
+
+        // Write all changes to disk
+        if (!args.dryRun && (fixed.modified || formatted.modified)) {
+          fs.writeFileSync(filePath, content, 'utf8');
+        }
       }
 
       const relPath = toRelativePath(filePath);
@@ -647,7 +668,8 @@ async function runCli(argv = process.argv.slice(2)) {
         maxLineLength: resolved.maxLineLength,
         filePath: relPath,
         customRules,
-        checkFrontmatter: resolved.checkFrontmatter
+        checkFrontmatter: resolved.checkFrontmatter,
+        checkInlineHtml: Boolean(args.checkInlineHtml)
       });
 
       if (args.checkLinks) {

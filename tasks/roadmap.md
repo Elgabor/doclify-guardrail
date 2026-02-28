@@ -42,34 +42,35 @@
 
 L'obiettivo non è copiare markdownlint — è renderlo obsoleto. Doclify deve diventare l'unico tool che serve, coprendo sia lo stile sia il contenuto.
 
-### 2.1 — Colmare il gap delle regole core (da 11 a ~30)
+### 2.1 — Colmare il gap delle regole core (da 11 a ~30) ✅ COMPLETATO v1.4
 
-Non servono tutte le 59. Servono le 20 che contano davvero, quelle che gli utenti trovano ogni giorno.
+15 nuove regole implementate + 12 auto-fixable via `autoFixFormatting()`. Doclify ora ha **26 regole built-in** (vs 59 di markdownlint, ma copre il 95% dei casi reali).
 
-| Regola | Perché è critica | Auto-fixable |
-|--------|-----------------|--------------|
-| `blanks-around-headings` | 86 finding su questa repo, la violazione più visibile | Sì |
-| `blanks-around-lists` | 113 finding, la più frequente in assoluto | Sì |
-| `blanks-around-fences` | Leggibilità code block | Sì |
-| `fenced-code-language` | Docs senza linguaggio = syntax highlight rotto | No |
-| `no-trailing-spaces` | Igiene base, ogni linter la ha | Sì |
-| `no-multiple-blanks` | Rumore visivo nei file | Sì |
-| `no-bare-urls` | Link non cliccabili in molti renderer | Sì (wrap in `<>`) |
-| `no-trailing-punctuation-heading` | Heading con `.` o `:` finale | Sì |
-| `heading-start-left` | Heading indentati per errore | Sì |
-| `no-missing-space-atx` | `#Heading` senza spazio — errore comune | Sì |
-| `first-line-h1` | File senza H1 iniziale | No |
-| `no-reversed-links` | `(text)[url]` invece di `[text](url)` | Sì |
-| `no-space-in-emphasis` | `** bold **` non renderizza | Sì |
-| `no-space-in-links` | `[ text ](url)` — spazi rotti | Sì |
-| `no-inline-html` (opzionale) | HTML raw in Markdown puro | No |
-| `single-trailing-newline` | POSIX compliance | Sì |
-| `image-alt-required` | Già presente (`img-alt`), rafforzare | No |
-| `no-empty-links` | Già presente (`empty-link`) | No |
-| `table-pipe-alignment` | Tabelle rotte visivamente | Sì |
-| `ol-prefix-ordered` | Liste numerate 1-1-1 vs 1-2-3 | Sì |
+| Regola | Stato | Auto-fix |
+|--------|-------|----------|
+| `no-trailing-spaces` | ✅ | ✅ |
+| `no-multiple-blanks` | ✅ | ✅ |
+| `single-trailing-newline` | ✅ | ✅ |
+| `no-missing-space-atx` | ✅ | ✅ |
+| `heading-start-left` | ✅ | ✅ |
+| `no-trailing-punctuation-heading` | ✅ | ✅ |
+| `blanks-around-headings` | ✅ | ✅ |
+| `blanks-around-lists` | ✅ | ✅ |
+| `blanks-around-fences` | ✅ | ✅ |
+| `fenced-code-language` | ✅ | ❌ |
+| `no-bare-urls` | ✅ | ✅ (wrap `<>`) |
+| `no-reversed-links` | ✅ | ✅ |
+| `no-space-in-emphasis` | ✅ | ✅ |
+| `no-space-in-links` | ✅ | ✅ |
+| `no-inline-html` (opt-in) | ✅ | ❌ |
 
-**Risultato:** 15 regole auto-fixable vs le 31 di markdownlint. Ma queste 20 coprono il 95% dei problemi reali (le altre 39 di markdownlint sono di nicchia).
+**Regole future (v1.5+):**
+
+| Regola | Descrizione |
+|--------|-------------|
+| `table-pipe-alignment` | Tabelle rotte visivamente |
+| `ol-prefix-ordered` | Liste numerate 1-1-1 vs 1-2-3 |
+| `first-line-h1` | File senza H1 iniziale (già coperto da `single-h1`) |
 
 ### 2.2 — Auto-fix intelligente di massa (`doclify fix .`)
 
@@ -199,8 +200,8 @@ doclify . --suggest
 ## Roadmap per versione
 
 ```
-v1.3  —  Fix bug critici (JSON buffer, suppressions, stderr)
-v1.4  —  +15 regole core con auto-fix (parità markdownlint al 95%)
+v1.3  —  Fix bug critici + UX + miglioramenti funzionali ✅
+v1.4  —  +15 regole core con auto-fix (26 regole totali, parità markdownlint al 95%) ✅
 v1.5  —  doclify diff + pre-commit hook + doclify watch
 v1.6  —  Score trending + --min-score + --no-regression
 v1.7  —  GitHub Action + PR comment bot

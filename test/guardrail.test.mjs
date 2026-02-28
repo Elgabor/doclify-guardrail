@@ -10,7 +10,7 @@ import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
-import { autoFixInsecureLinks } from '../src/fixer.mjs';
+import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
 import { checkDeadLinks, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import {
@@ -30,7 +30,7 @@ function makeTempDir() {
 // === Core rules tests ===
 
 test('passa con H1 singolo', () => {
-  const md = `---\ntitle: Test\n---\n# Titolo\nContenuto`;
+  const md = `---\ntitle: Test\n---\n\n# Titolo\n\nContenuto\n`;
   const res = checkMarkdown(md);
   assert.equal(res.summary.errors, 0);
   assert.equal(res.summary.warnings, 0);
@@ -1077,4 +1077,147 @@ test('init generates config with exclude field', () => {
   assert.ok(Array.isArray(config.exclude));
   assert.equal(config.exclude.length, 0);
   fs.rmSync(tmpDir, { recursive: true });
+});
+
+// ─── v1.4: New rules tests ─────────────────────────────────────────────────
+
+test('no-trailing-spaces: detects trailing whitespace', () => {
+  const md = '# Title\n\nLine with spaces   \n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-trailing-spaces'));
+});
+
+test('no-multiple-blanks: detects consecutive blank lines', () => {
+  const md = '# Title\n\n\n\nContent\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-multiple-blanks'));
+});
+
+test('single-trailing-newline: detects missing trailing newline', () => {
+  const md = '# Title\n\nContent';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'single-trailing-newline'));
+});
+
+test('no-missing-space-atx: detects #Heading without space', () => {
+  const md = '#Title\n\nContent\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-missing-space-atx'));
+});
+
+test('heading-start-left: detects indented heading', () => {
+  const md = '  # Title\n\nContent\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'heading-start-left'));
+});
+
+test('no-trailing-punctuation-heading: detects trailing dot', () => {
+  const md = '# Title.\n\nContent\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-trailing-punctuation-heading'));
+});
+
+test('blanks-around-headings: detects missing blank around heading', () => {
+  const md = '# Title\nContent right after heading\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'blanks-around-headings'));
+});
+
+test('blanks-around-lists: detects missing blank before list', () => {
+  const md = '# Title\n\nSome text\n- item 1\n- item 2\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'blanks-around-lists'));
+});
+
+test('blanks-around-fences: detects missing blank before code block', () => {
+  const md = '# Title\n\nSome text\n```js\ncode\n```\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'blanks-around-fences'));
+});
+
+test('fenced-code-language: detects code block without language', () => {
+  const md = '# Title\n\n```\ncode\n```\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'fenced-code-language'));
+});
+
+test('no-bare-urls: detects bare URL', () => {
+  const md = '# Title\n\nVisit https://example.com for info.\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-bare-urls'));
+});
+
+test('no-bare-urls: allows URLs inside markdown links', () => {
+  const md = '# Title\n\nVisit [example](https://example.com) for info.\n';
+  const res = checkMarkdown(md);
+  assert.ok(!res.warnings.some(w => w.code === 'no-bare-urls'));
+});
+
+test('no-reversed-links: detects (text)[url]', () => {
+  const md = '# Title\n\n(click here)[https://example.com]\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-reversed-links'));
+});
+
+test('no-space-in-emphasis: detects ** text **', () => {
+  const md = '# Title\n\nThis is ** bold ** text.\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-space-in-emphasis'));
+});
+
+test('no-space-in-links: detects [ text ](url)', () => {
+  const md = '# Title\n\n[ click here ](https://example.com)\n';
+  const res = checkMarkdown(md);
+  assert.ok(res.warnings.some(w => w.code === 'no-space-in-links'));
+});
+
+test('no-inline-html: detects HTML when opt-in', () => {
+  const md = '# Title\n\n<div>content</div>\n';
+  const res = checkMarkdown(md, { checkInlineHtml: true });
+  assert.ok(res.warnings.some(w => w.code === 'no-inline-html'));
+});
+
+test('no-inline-html: silent when not opt-in', () => {
+  const md = '# Title\n\n<div>content</div>\n';
+  const res = checkMarkdown(md);
+  assert.ok(!res.warnings.some(w => w.code === 'no-inline-html'));
+});
+
+test('--list-rules shows 26+ rules', () => {
+  const result = spawnSync(process.execPath, [CLI_PATH, '--list-rules'], { encoding: 'utf8' });
+  assert.equal(result.status, 0);
+  const ruleLines = result.stdout.split('\n').filter(l => l.includes('error') || l.includes('warning'));
+  assert.ok(ruleLines.length >= 26, `Expected >= 26 rules, got ${ruleLines.length}`);
+});
+
+// ─── v1.4: Auto-fix formatting tests ───────────────────────────────────────
+
+test('autoFixFormatting: fixes trailing spaces', () => {
+  const result = autoFixFormatting('# Title\n\nLine with spaces   \n');
+  assert.ok(result.modified);
+  assert.ok(!result.content.includes('   \n'));
+});
+
+test('autoFixFormatting: fixes multiple blanks', () => {
+  const result = autoFixFormatting('# Title\n\n\n\nContent\n');
+  assert.ok(result.modified);
+  assert.ok(!result.content.includes('\n\n\n'));
+});
+
+test('autoFixFormatting: fixes missing space after #', () => {
+  const result = autoFixFormatting('#Title\n\nContent\n');
+  assert.ok(result.modified);
+  assert.ok(result.content.startsWith('# Title'));
+});
+
+test('autoFixFormatting: fixes reversed links', () => {
+  const result = autoFixFormatting('# Title\n\n(click)[url]\n');
+  assert.ok(result.modified);
+  assert.ok(result.content.includes('[click](url)'));
+});
+
+test('autoFixFormatting: wraps bare URLs in <>', () => {
+  const result = autoFixFormatting('# Title\n\nVisit https://example.com today.\n');
+  assert.ok(result.modified);
+  assert.ok(result.content.includes('<https://example.com>'));
 });

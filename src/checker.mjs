@@ -14,7 +14,22 @@ const RULE_CATALOG = [
   { id: 'empty-link',         severity: 'warning', description: 'No empty link text or URL' },
   { id: 'img-alt',            severity: 'warning', description: 'Images must have alt text' },
   { id: 'dead-link',          severity: 'error',   description: 'No broken links (requires --check-links)' },
-  { id: 'stale-doc',          severity: 'warning', description: 'Warn on stale docs (requires --check-freshness)' }
+  { id: 'stale-doc',          severity: 'warning', description: 'Warn on stale docs (requires --check-freshness)' },
+  { id: 'no-trailing-spaces',          severity: 'warning', description: 'No trailing whitespace' },
+  { id: 'no-multiple-blanks',          severity: 'warning', description: 'No multiple consecutive blank lines' },
+  { id: 'single-trailing-newline',     severity: 'warning', description: 'File must end with a single newline' },
+  { id: 'no-missing-space-atx',        severity: 'warning', description: 'Space required after # in headings' },
+  { id: 'heading-start-left',          severity: 'warning', description: 'Headings must not be indented' },
+  { id: 'no-trailing-punctuation-heading', severity: 'warning', description: 'No trailing punctuation in headings' },
+  { id: 'blanks-around-headings',      severity: 'warning', description: 'Blank line required around headings' },
+  { id: 'blanks-around-lists',         severity: 'warning', description: 'Blank line required around lists' },
+  { id: 'blanks-around-fences',        severity: 'warning', description: 'Blank line required around fenced code blocks' },
+  { id: 'fenced-code-language',        severity: 'warning', description: 'Fenced code blocks must specify a language' },
+  { id: 'no-bare-urls',                severity: 'warning', description: 'URLs must be wrapped in <> or []()' },
+  { id: 'no-reversed-links',           severity: 'warning', description: 'No reversed link syntax (text)[url]' },
+  { id: 'no-space-in-emphasis',        severity: 'warning', description: 'No spaces inside emphasis markers' },
+  { id: 'no-space-in-links',           severity: 'warning', description: 'No spaces inside link brackets' },
+  { id: 'no-inline-html',              severity: 'warning', description: 'No inline HTML (opt-in via --check-inline-html)' }
 ];
 
 const RULE_SEVERITY = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.severity]));
@@ -354,6 +369,183 @@ function checkMarkdown(rawContent, opts = {}) {
       warnings.push(normalizeFinding('img-alt', 'Image missing alt text: ![](url).', idx + 1, filePath));
     }
   });
+
+  // Rule: no-trailing-spaces (uses raw content)
+  rawLines.forEach((line, idx) => {
+    if (/[ \t]+$/.test(line)) {
+      warnings.push(normalizeFinding('no-trailing-spaces', 'Trailing whitespace found.', idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-multiple-blanks (uses raw content)
+  {
+    let consecutiveBlanks = 0;
+    rawLines.forEach((line, idx) => {
+      if (line.trim() === '') {
+        consecutiveBlanks += 1;
+        if (consecutiveBlanks >= 2) {
+          warnings.push(normalizeFinding('no-multiple-blanks', 'Multiple consecutive blank lines.', idx + 1, filePath));
+        }
+      } else {
+        consecutiveBlanks = 0;
+      }
+    });
+  }
+
+  // Rule: single-trailing-newline (uses raw content)
+  if (rawContent.length > 0) {
+    if (!rawContent.endsWith('\n')) {
+      warnings.push(normalizeFinding('single-trailing-newline', 'File must end with a single newline.', rawLines.length, filePath));
+    } else if (rawContent.endsWith('\n\n')) {
+      warnings.push(normalizeFinding('single-trailing-newline', 'File has multiple trailing newlines.', rawLines.length, filePath));
+    }
+  }
+
+  // Rule: no-missing-space-atx (uses stripped content)
+  lines.forEach((line, idx) => {
+    if (/^#{1,6}[^\s#]/.test(line)) {
+      warnings.push(normalizeFinding('no-missing-space-atx', 'Missing space after # in heading.', idx + 1, filePath));
+    }
+  });
+
+  // Rule: heading-start-left (uses stripped content)
+  lines.forEach((line, idx) => {
+    if (/^\s+#{1,6}\s/.test(line)) {
+      warnings.push(normalizeFinding('heading-start-left', 'Heading must start at the beginning of the line.', idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-trailing-punctuation-heading (uses stripped content)
+  lines.forEach((line, idx) => {
+    const hMatch = line.match(/^#{1,6}\s+(.+)$/);
+    if (hMatch) {
+      const text = hMatch[1].trim();
+      if (/[.,:;!]$/.test(text)) {
+        warnings.push(normalizeFinding('no-trailing-punctuation-heading', `Heading has trailing punctuation: "${text.slice(-1)}".`, idx + 1, filePath));
+      }
+    }
+  });
+
+  // Rule: blanks-around-headings (uses stripped content)
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^#{1,6}\s/.test(lines[i])) continue;
+    // Check line before heading (skip first line, skip frontmatter end)
+    if (i > 0 && lines[i - 1].trim() !== '' && lines[i - 1] !== '---') {
+      warnings.push(normalizeFinding('blanks-around-headings', 'Missing blank line before heading.', i + 1, filePath));
+    }
+    // Check line after heading
+    if (i < lines.length - 1 && lines[i + 1].trim() !== '') {
+      warnings.push(normalizeFinding('blanks-around-headings', 'Missing blank line after heading.', i + 1, filePath));
+    }
+  }
+
+  // Rule: blanks-around-lists (uses stripped content)
+  {
+    const isListItem = (l) => /^\s*[-*+]\s|^\s*\d+[.)]\s/.test(l);
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!isListItem(lines[i])) continue;
+      // First list item — check blank before
+      if (i > 0 && !isListItem(lines[i - 1]) && lines[i - 1].trim() !== '') {
+        warnings.push(normalizeFinding('blanks-around-lists', 'Missing blank line before list.', i + 1, filePath));
+      }
+      // Last list item — check blank after
+      if (i < lines.length - 1 && !isListItem(lines[i + 1]) && lines[i + 1].trim() !== '') {
+        warnings.push(normalizeFinding('blanks-around-lists', 'Missing blank line after list.', i + 1, filePath));
+      }
+    }
+  }
+
+  // Rule: blanks-around-fences (uses raw content to detect fence lines)
+  {
+    let inFence = false;
+    for (let i = 0; i < rawLines.length; i += 1) {
+      const isFence = /^(`{3,}|~{3,})/.test(rawLines[i]);
+      if (isFence && !inFence) {
+        // Opening fence — check blank before
+        inFence = true;
+        if (i > 0 && rawLines[i - 1].trim() !== '') {
+          warnings.push(normalizeFinding('blanks-around-fences', 'Missing blank line before code block.', i + 1, filePath));
+        }
+      } else if (isFence && inFence) {
+        // Closing fence — check blank after
+        inFence = false;
+        if (i < rawLines.length - 1 && rawLines[i + 1].trim() !== '') {
+          warnings.push(normalizeFinding('blanks-around-fences', 'Missing blank line after code block.', i + 1, filePath));
+        }
+      }
+    }
+  }
+
+  // Rule: fenced-code-language (uses raw content)
+  rawLines.forEach((line, idx) => {
+    if (/^(`{3,}|~{3,})\s*$/.test(line)) {
+      // Only flag opening fences (not closing ones). Check if we're not inside a fence.
+      // Simple heuristic: count fences above this line
+      let fenceCount = 0;
+      for (let j = 0; j < idx; j += 1) {
+        if (/^(`{3,}|~{3,})/.test(rawLines[j])) fenceCount += 1;
+      }
+      if (fenceCount % 2 === 0) {
+        // Even count → this is an opening fence
+        warnings.push(normalizeFinding('fenced-code-language', 'Fenced code block without language specification.', idx + 1, filePath));
+      }
+    }
+  });
+
+  // Rule: no-bare-urls (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    // Match bare URLs not inside []() or <>
+    const bareRx = /(?<![(<\[])\bhttps?:\/\/[^\s>)]+/g;
+    let m;
+    while ((m = bareRx.exec(cleanLine)) !== null) {
+      const url = m[0];
+      const before = cleanLine.substring(0, m.index);
+      // Skip if inside markdown link [text](url) or <url>
+      if (/\]\($/.test(before) || before.endsWith('<')) continue;
+      // Skip if inside reference-style [label]: url
+      if (/^\[[^\]]*\]:\s*/.test(cleanLine)) continue;
+      warnings.push(normalizeFinding('no-bare-urls', `Bare URL found: ${url} — wrap in <> or use [text](url).`, idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-reversed-links (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    if (/\([^)]+\)\[[^\]]+\]/.test(cleanLine)) {
+      warnings.push(normalizeFinding('no-reversed-links', 'Reversed link syntax: (text)[url] should be [text](url).', idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-space-in-emphasis (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    if (/\*\*\s+[^*]+\s+\*\*/.test(cleanLine) || /\*\s+[^*]+\s+\*(?!\*)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('no-space-in-emphasis', 'Spaces inside emphasis markers — may not render correctly.', idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-space-in-links (uses stripped content)
+  lines.forEach((line, idx) => {
+    const cleanLine = stripInlineCode(line);
+    if (/\[\s+[^\]]*\]\(/.test(cleanLine) || /\[[^\]]*\s+\]\(/.test(cleanLine)) {
+      warnings.push(normalizeFinding('no-space-in-links', 'Spaces inside link text brackets.', idx + 1, filePath));
+    }
+    if (/\]\(\s+[^)]*\)/.test(cleanLine) || /\]\([^)]*\s+\)/.test(cleanLine)) {
+      warnings.push(normalizeFinding('no-space-in-links', 'Spaces inside link URL parentheses.', idx + 1, filePath));
+    }
+  });
+
+  // Rule: no-inline-html (opt-in via --check-inline-html or config)
+  if (opts.checkInlineHtml) {
+    lines.forEach((line, idx) => {
+      const cleanLine = stripInlineCode(line);
+      // Match HTML tags but skip comments (<!-- -->)
+      if (/<[a-zA-Z/][^>]*>/.test(cleanLine) && !cleanLine.includes('<!--')) {
+        warnings.push(normalizeFinding('no-inline-html', 'Inline HTML found.', idx + 1, filePath));
+      }
+    });
+  }
 
   // Custom rules (uses stripped content)
   if (opts.customRules && opts.customRules.length > 0) {
