@@ -1,128 +1,257 @@
 # Doclify Guardrail
 
-**Quality gate for your Markdown docs. Catches errors in seconds.**
+**Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.**
 
-Zero dependencies. Node.js built-in only. Works everywhere Node 20+ runs.
+markdownlint tells you if your Markdown is well-formatted. **Doclify tells you if your documentation is healthy.**
+Style + content + links + freshness + score + CI/CD — one single tool.
 
-## Features
+Works everywhere Node.js 20+ runs.
 
-- Multi-file and directory scanning with glob support
-- Line numbers in every finding
-- Code block exclusion (no false positives on code examples)
-- Markdown report generation for CI
-- Custom regex-based rules via JSON
-- Colored terminal output
-- Extended placeholder detection (TODO, FIXME, TBD, WIP, and more)
-- Insecure link detection (inline, bare URLs, reference-style)
-- Doc Health Score per file and project average (0–100)
-- Optional dead link checker (`--check-links`)
-- Optional freshness checker (`--check-freshness`)
-- CI-ready output exports (`--junit`, `--sarif`)
-- Local docs health badge generation (`--badge`, `--badge-label`)
-- Optional safe auto-fix mode (`--fix`, `--dry-run`)
+## Why Doclify
+
+| | Doclify | markdownlint |
+|--|---------|-------------|
+| Style rules | 26 built-in | 59 |
+| Content checks | placeholders, headings, images | No |
+| Dead link checker | Built-in (`--check-links`) | No |
+| Doc freshness | Built-in (`--check-freshness`) | No |
+| Health score | 0-100 per file + average | No |
+| Auto-fix | 13 fixers (style + semantic) | 31 (style only) |
+| SARIF / JUnit / Badge | Built-in | Plugins |
+| Dependencies | **Zero** | 50+ |
+| Inline suppressions | `disable-next-line`, `disable/enable`, `disable-file` | `disable/enable` |
 
 ## Quick Start
 
 ```bash
-# Scan a single file
+# Install globally
+npm install -g doclify-guardrail
+
+# Or use directly with npx
 npx doclify-guardrail README.md
 
 # Scan an entire directory
-npx doclify-guardrail docs/
+doclify docs/
 
 # Strict mode (warnings = failure)
-npx doclify-guardrail docs/ --strict
+doclify docs/ --strict
 
-# Generate a report
-npx doclify-guardrail docs/ --report
+# Check dead links + freshness
+doclify docs/ --check-links --check-freshness
 
-# Check dead links (HTTP status + local relative paths)
-npx doclify-guardrail docs/ --check-links
+# Auto-fix all safe issues
+doclify docs/ --fix
 
-# Check document freshness (warn if stale or missing updated date)
-npx doclify-guardrail docs/ --check-freshness
+# Preview fixes without writing
+doclify docs/ --fix --dry-run
 
-# Export CI reports
-npx doclify-guardrail docs/ --junit --sarif
+# CI pipeline: strict + JUnit + SARIF + badge
+doclify docs/ --strict --junit --sarif --badge
 
-# Generate local badge SVG
-npx doclify-guardrail docs/ --badge --badge-label "docs health"
-
-# Auto-fix safe issues (v1: http:// -> https://)
-npx doclify-guardrail docs/ --fix
-
-# Preview auto-fix without writing files
-npx doclify-guardrail docs/ --fix --dry-run
+# JSON output for tooling
+doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
 
 ## Usage
 
-```
-doclify-guardrail <file.md ...> [options]
-doclify-guardrail --dir <path> [options]
+```bash
+doclify <file.md ...> [options]
+doclify --dir <path> [options]
 ```
 
-### Options
+If no files are specified, scans the current directory.
+
+### CLI Reference
+
+#### Scan
 
 | Flag | Description |
 |------|-------------|
-| `--strict` | Treat warnings as failures |
-| `--max-line-length <n>` | Maximum line length (default: 160) |
-| `--config <path>` | Config file path (default: `.doclify-guardrail.json`) |
-| `--dir <path>` | Scan all `.md` files in directory (recursive) |
-| `--report [path]` | Generate markdown report (default: `doclify-report.md`) |
-| `--rules <path>` | Load custom rules from JSON file |
-| `--check-links` | Validate links and fail on dead links |
-| `--check-freshness` | Warn if docs are stale or missing an updated date (default max age: 180 days) |
-| `--junit [path]` | Export JUnit XML report (default: `doclify-junit.xml`) |
-| `--sarif [path]` | Export SARIF report (default: `doclify.sarif`) |
-| `--badge [path]` | Generate SVG docs health badge (default: `doclify-badge.svg`) |
-| `--badge-label <text>` | Custom label used in the generated badge |
-| `--fix` | Auto-fix safe issues (v1: `http://` to `https://`) |
-| `--dry-run` | Preview `--fix` changes without writing files (only valid with `--fix`) |
+| `--dir <path>` | Scan `.md` files recursively in directory |
+| `--strict` | Treat warnings as errors |
+| `--max-line-length <n>` | Max line length (default: 160) |
+| `--config <path>` | Config file (default: `.doclify-guardrail.json`) |
+| `--rules <path>` | Custom regex rules from JSON file |
+| `--ignore-rules <list>` | Disable rules (comma-separated) |
+| `--exclude <list>` | Exclude files/patterns (comma-separated) |
+
+#### Checks
+
+| Flag | Description |
+|------|-------------|
+| `--check-links` | Validate HTTP and local links |
+| `--check-freshness` | Warn on stale docs (>180 days) |
+| `--check-frontmatter` | Require YAML frontmatter block |
+| `--check-inline-html` | Enable `no-inline-html` rule |
+| `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
+
+#### Fix
+
+| Flag | Description |
+|------|-------------|
+| `--fix` | Auto-fix safe issues (see Auto-fix section) |
+| `--dry-run` | Preview fixes without writing (requires `--fix`) |
+
+#### Output
+
+| Flag | Description |
+|------|-------------|
+| `--report [path]` | Markdown report (default: `doclify-report.md`) |
+| `--junit [path]` | JUnit XML report (default: `doclify-junit.xml`) |
+| `--sarif [path]` | SARIF v2.1.0 report (default: `doclify.sarif`) |
+| `--badge [path]` | SVG health badge (default: `doclify-badge.svg`) |
+| `--badge-label <text>` | Badge label (default: `docs health`) |
+| `--json` | Output raw JSON to stdout |
+
+#### Setup
+
+| Flag | Description |
+|------|-------------|
+| `init` | Generate a `.doclify-guardrail.json` config |
+| `init --force` | Overwrite existing config |
+
+#### Other
+
+| Flag | Description |
+|------|-------------|
+| `--list-rules` | List all built-in rules |
 | `--no-color` | Disable colored output |
-| `--debug` | Show runtime details |
+| `--ascii` | Use ASCII icons for CI without UTF-8 |
+| `--debug` | Show debug info |
 | `-h, --help` | Show help |
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | PASS -- all files clean |
-| `1` | FAIL -- errors found, or warnings in strict mode |
+| `0` | PASS — all files clean |
+| `1` | FAIL — errors found, or warnings in strict mode |
 | `2` | Usage error / invalid input |
 
 ## Configuration
 
-Create a `.doclify-guardrail.json` in your project root:
+Generate a config file:
+
+```bash
+doclify init
+```
+
+This creates `.doclify-guardrail.json`:
 
 ```json
 {
   "maxLineLength": 120,
-  "strict": true
+  "strict": true,
+  "exclude": ["node_modules/**", "vendor/**"],
+  "ignoreRules": [],
+  "linkAllowList": []
 }
 ```
 
-CLI flags override config file values.
+CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 
-## Built-in Rules
+## Built-in Rules (26)
+
+### Content Rules
 
 | Rule | Severity | Description |
 |------|----------|-------------|
-| `frontmatter` | warning | Missing YAML frontmatter block |
-| `single-h1` | error | Zero or multiple H1 headings |
-| `line-length` | warning | Lines exceeding max length |
-| `placeholder` | warning | TODO, FIXME, TBD, WIP, HACK, CHANGEME, lorem ipsum, etc. |
-| `insecure-link` | warning | HTTP links (should be HTTPS) |
-| `dead-link` | error | Broken links (enabled with `--check-links`) |
-| `stale-doc` | warning | Missing/old freshness date (enabled with `--check-freshness`) |
+| `frontmatter` | warning | Require YAML frontmatter block (opt-in via `--check-frontmatter`) |
+| `single-h1` | error | Exactly one H1 heading per file |
+| `heading-hierarchy` | warning | No skipped heading levels (H2 then H4) |
+| `duplicate-heading` | warning | No duplicate headings at same level |
+| `line-length` | warning | Max line length (default: 160 chars) |
+| `placeholder` | warning | No TODO/FIXME/WIP/TBD/HACK/CHANGEME markers |
+| `insecure-link` | warning | No `http://` links (use `https://`) |
+| `empty-link` | warning | No empty link text or URL |
+| `img-alt` | warning | Images must have alt text |
+| `dead-link` | error | No broken links (requires `--check-links`) |
+| `stale-doc` | warning | Warn on stale docs (requires `--check-freshness`) |
 
-All rules respect code block exclusion -- content inside fenced code blocks
-and inline code is never flagged.
+### Style Rules (new in v1.4)
+
+| Rule | Severity | Auto-fix |
+|------|----------|----------|
+| `no-trailing-spaces` | warning | Yes |
+| `no-multiple-blanks` | warning | Yes |
+| `single-trailing-newline` | warning | Yes |
+| `no-missing-space-atx` | warning | Yes |
+| `heading-start-left` | warning | Yes |
+| `no-trailing-punctuation-heading` | warning | Yes |
+| `blanks-around-headings` | warning | Yes |
+| `blanks-around-lists` | warning | Yes |
+| `blanks-around-fences` | warning | Yes |
+| `fenced-code-language` | warning | No |
+| `no-bare-urls` | warning | Yes (wraps in `<>`) |
+| `no-reversed-links` | warning | Yes |
+| `no-space-in-emphasis` | warning | Yes |
+| `no-space-in-links` | warning | Yes |
+| `no-inline-html` | warning | No (opt-in via `--check-inline-html`) |
+
+All rules respect code block exclusion — content inside fenced code blocks and inline code is never flagged.
+
+## Auto-fix
+
+`doclify --fix` applies 13 safe auto-fixes in a single pass:
+
+| Fix | What it does |
+|-----|-------------|
+| `http://` to `https://` | Upgrades insecure links (skips localhost/custom ports) |
+| Trailing spaces | Removes trailing whitespace |
+| Multiple blank lines | Collapses to a single blank line |
+| Missing space in heading | `#Heading` becomes `# Heading` |
+| Indented heading | Removes leading whitespace |
+| Trailing punctuation in heading | Removes `.` `:` `;` `!` `,` |
+| Blanks around headings | Ensures blank line before/after |
+| Blanks around lists | Ensures blank line before/after |
+| Blanks around fences | Ensures blank line before/after |
+| Bare URLs | Wraps in `<url>` |
+| Reversed links | `(text)[url]` becomes `[text](url)` |
+| Emphasis spacing | `** bold **` becomes `**bold**` |
+| Link spacing | `[ text ]( url )` becomes `[text](url)` |
+| Trailing newline | Ensures file ends with exactly one `\n` |
+
+```bash
+# Fix all files in place
+doclify docs/ --fix
+
+# Preview changes without writing
+doclify docs/ --fix --dry-run
+```
+
+## Inline Suppressions
+
+Suppress specific rules per-line, per-block, or per-file:
+
+```markdown
+<!-- doclify-disable-next-line placeholder -->
+This has a TODO that won't be flagged.
+
+<!-- doclify-disable placeholder,line-length -->
+This section is suppressed.
+<!-- doclify-enable placeholder,line-length -->
+
+<!-- doclify-disable-file placeholder -->
+This entire file ignores placeholder warnings.
+```
+
+## Doc Health Score
+
+Each file gets a health score from 0 to 100. The formula uses diminishing returns for warnings:
+
+```text
+errorPenalty  = errors * 20
+warningPenalty = 5 * sqrt(warnings) + warnings * 2
+score = max(0, 100 - errorPenalty - warningPenalty)
+```
+
+Example: 0 errors + 13 warnings = 54/100.
+
+Access via JSON output: `summary.healthScore` per file, `summary.avgHealthScore` overall.
 
 ## Custom Rules
 
-Create a JSON file with custom regex-based rules:
+Define regex-based rules in a JSON file:
 
 ```json
 {
@@ -131,20 +260,14 @@ Create a JSON file with custom regex-based rules:
       "id": "no-internal-urls",
       "severity": "error",
       "pattern": "https://internal\\.company\\.com",
-      "message": "Internal URL found -- remove before publishing"
-    },
-    {
-      "id": "no-draft-marker",
-      "severity": "warning",
-      "pattern": "\\[DRAFT\\]",
-      "message": "Draft marker found in document"
+      "message": "Internal URL found — remove before publishing"
     }
   ]
 }
 ```
 
 ```bash
-doclify-guardrail docs/ --rules my-rules.json
+doclify docs/ --rules my-rules.json
 ```
 
 Custom rules are applied after built-in rules and respect code block exclusion.
@@ -154,97 +277,117 @@ Custom rules are applied after built-in rules and respect code block exclusion.
 ### GitHub Actions
 
 ```yaml
-- name: Docs quality gate
-  run: npx doclify-guardrail docs/ --strict --report
+name: Docs Quality Gate
+on: [push, pull_request]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npx doclify-guardrail docs/ --strict --junit --sarif --badge --ascii
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: doclify.sarif
 ```
 
-See `.github/workflows/docs-check.yml` for a complete example workflow.
+### GitLab CI
 
-### JSON Output
+```yaml
+docs-check:
+  image: node:20-alpine
+  script:
+    - npx doclify-guardrail docs/ --strict --junit --ascii
+  artifacts:
+    reports:
+      junit: doclify-junit.xml
+```
 
-Pipe JSON output to other tools:
+### Pre-commit Hook
 
 ```bash
-doclify-guardrail docs/ 2>/dev/null | jq '.summary'
+# .husky/pre-commit or .git/hooks/pre-commit
+npx doclify-guardrail $(git diff --cached --name-only --diff-filter=AM -- '*.md') --strict --ascii
 ```
 
-## Dead Link Checker
+## Testing on Another Repository
 
-Use `--check-links` to validate:
-- `http(s)` links via HTTP status checks
-- relative local file links (e.g. `./guide.md`)
+You can test doclify-guardrail against any project with Markdown files:
 
-When dead links are found, they are reported as `dead-link` errors.
-
-## CI Outputs
-
-Use CI export flags for native pipeline integrations:
+### Quick Test (npx)
 
 ```bash
-doclify-guardrail docs/ --junit --sarif
+# Clone a target repo
+git clone https://github.com/some-org/some-project.git /tmp/test-project
+
+# Run doclify against it
+npx doclify-guardrail /tmp/test-project/docs/ --strict --check-links
+
+# With full diagnostics
+npx doclify-guardrail /tmp/test-project/ --json 2>/dev/null | jq '.summary'
 ```
 
-- `--junit` writes XML test output (useful for generic CI test dashboards)
-- `--sarif` writes SARIF v2.1.0 (GitHub code scanning compatible)
-
-## Badge SVG
-
-Generate a local SVG badge from the current scan score:
+### Local Development Test
 
 ```bash
-doclify-guardrail docs/ --badge --badge-label "docs health"
+# 1. Clone this repo
+git clone https://github.com/Elgabor/doclify-guardrail.git
+cd doclify-guardrail
+
+# 2. Link globally
+npm link
+
+# 3. Run against any project
+cd /path/to/another-project
+doclify docs/ --strict --debug
+
+# 4. Test auto-fix (dry-run first!)
+doclify docs/ --fix --dry-run
+doclify docs/ --fix
+
+# 5. Generate full CI output
+doclify docs/ --strict --junit --sarif --badge --report
 ```
 
-The value is computed from findings severity and can be embedded in your README.
-
-## Auto-fix (safe v1)
-
-Use `--fix` to automatically upgrade safe `http://` links to `https://`.
-Ambiguous URLs (for example `localhost` or custom ports) are reported and left unchanged.
-
-Use `--dry-run` only together with `--fix` to preview changes without writing files.
-Using `--dry-run` alone is a usage error (exit code `2`).
-
-## Doc Health Score
-
-Each file now includes `summary.healthScore` (0–100) in JSON output.
-Overall summary includes `summary.avgHealthScore`.
-
-Scoring is deterministic and compatibility-safe:
-- starts at `100`
-- `-25` per error
-- `-8` per warning
-- clamped to `0..100`
-
-## Doc Freshness
-
-Use `--check-freshness` to detect stale docs.
-The checker looks for dates in:
-- frontmatter keys: `updated`, `last_updated`, `lastModified`, `date`
-- body marker: `Last updated: YYYY-MM-DD`
-
-If no date is found or the doc is older than 180 days, a `stale-doc` warning is added.
-
-## Report
-
-Use `--report` to generate a markdown report:
+### Run the Test Suite
 
 ```bash
-doclify-guardrail docs/ --report quality-report.md
+# Run all 116 tests
+node --test
+
+# Run with verbose output
+node --test --test-reporter spec
 ```
 
-The report includes a summary table, per-file details with line numbers,
-and execution metadata.
+### Verify All Rules Work
+
+```bash
+# List all 26 built-in rules
+doclify --list-rules
+
+# Scan with all optional checks enabled
+doclify docs/ --strict --check-links --check-freshness --check-frontmatter --check-inline-html
+```
+
+## Project Architecture
+
+```text
+src/
+  index.mjs        CLI orchestrator, arg parsing, main flow
+  checker.mjs      26-rule lint engine + inline suppressions
+  fixer.mjs        13 auto-fix functions (insecure links + formatting)
+  links.mjs        Dead link checker (HTTP + local file paths)
+  quality.mjs      Health score + freshness checker
+  colors.mjs       ANSI colors + ASCII mode + icons
+  ci-output.mjs    JUnit XML, SARIF v2.1.0, SVG badge generators
+  report.mjs       Markdown report generator
+  glob.mjs         File discovery with glob patterns
+  rules-loader.mjs Custom rules JSON loader
+```
 
 ## License
 
 MIT
-
----
-
-## Italiano
-
-Doclify Guardrail e' un quality gate per la documentazione Markdown.
-Zero dipendenze esterne, funziona ovunque giri Node.js 20+.
-Rileva errori, placeholder dimenticati, link insicuri e problemi di
-formattazione con numeri di riga precisi e report in formato Markdown.
