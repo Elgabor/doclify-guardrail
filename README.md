@@ -21,6 +21,9 @@ Works everywhere Node.js 20+ runs.
 | Watch mode | Built-in (`--watch`) | No |
 | Quality gate | `--min-score` + `--strict` | No |
 | Programmatic API | `import { lint, fix, score }` | No |
+| Score trending | Built-in (`--track`, `--trend`) | No |
+| Regression gate | Built-in (`--fail-on-regression`) | No |
+| GitHub Action | Built-in (`action/`) | Plugin |
 | SARIF / JUnit / Badge | Built-in | Plugins |
 | Dependencies | **Zero** | 50+ |
 | Inline suppressions | `disable-next-line`, `disable/enable`, `disable-file` | `disable/enable` |
@@ -63,6 +66,15 @@ doclify docs/ --watch
 
 # Compact output (one line per finding)
 doclify docs/ --format compact
+
+# Track score history
+doclify docs/ --track
+
+# Show score trend graph
+doclify --trend
+
+# Fail if score dropped
+doclify docs/ --fail-on-regression
 
 # JSON output for tooling
 doclify docs/ --json 2>/dev/null | jq '.summary'
@@ -136,6 +148,9 @@ If no files are specified, scans the current directory.
 | Flag | Description |
 |------|-------------|
 | `--watch` | Watch for file changes and re-scan |
+| `--track` | Save score to `.doclify-history.json` |
+| `--trend` | Show ASCII score trend graph |
+| `--fail-on-regression` | Fail if score dropped vs last tracked run |
 | `--list-rules` | List all built-in rules |
 | `--no-color` | Disable colored output |
 | `--ascii` | Use ASCII icons for CI without UTF-8 |
@@ -297,6 +312,66 @@ doclify docs/ --min-score 80 --strict
 
 Exit code 1 if the average health score is below 80.
 
+## Score Trending
+
+Track your documentation quality over time:
+
+```bash
+# Save score after each run
+doclify docs/ --track
+
+# View ASCII trend graph
+doclify --trend
+
+# Fail CI if score dropped vs last tracked run
+doclify docs/ --fail-on-regression
+```
+
+Score history is saved to `.doclify-history.json` in the current directory.
+Each entry records date, commit hash, average score, errors, warnings,
+and files scanned.
+
+## GitHub Action
+
+Use the built-in GitHub Action for automated quality gates on pull requests:
+
+```yaml
+name: Docs Quality Gate
+on: [pull_request]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Doclify
+        uses: Elgabor/doclify-guardrail@v1.6
+        with:
+          path: 'docs/'
+          strict: 'false'
+          min-score: '70'
+          sarif: 'true'
+          pr-comment: 'true'
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: doclify.sarif
+```
+
+The action automatically:
+
+- Posts a quality report comment on the PR with file scores
+- Generates SARIF for GitHub Code Scanning
+- Sets outputs: `score`, `status`, `errors`, `warnings`
+
 ## Programmatic API
 
 Use doclify as a library in your own tools:
@@ -368,7 +443,11 @@ Custom rules are applied after built-in rules and respect code block exclusion.
 
 ## CI Integration
 
-### GitHub Actions
+### GitHub Actions (recommended: use the built-in action)
+
+See the [GitHub Action](#github-action) section above for the recommended approach with PR comments and SARIF upload.
+
+For manual setup with `npx`:
 
 ```yaml
 name: Docs Quality Gate
@@ -449,8 +528,8 @@ doclify docs/ --strict --junit --sarif --badge --report
 ### Run the Test Suite
 
 ```bash
-# Run all 137 tests
-node --test
+# Run all 152 tests
+node --test test/guardrail.test.mjs
 
 # Run with verbose output
 node --test --test-reporter spec
@@ -474,6 +553,7 @@ src/
   checker.mjs      31-rule lint engine + inline suppressions
   fixer.mjs        13 auto-fix functions (insecure links + formatting)
   diff.mjs         Git diff integration (--diff, --staged)
+  trend.mjs        Score history tracking + ASCII trend graph
   api.mjs          Programmatic API (lint, fix, score)
   links.mjs        Dead link checker (HTTP + local file paths)
   quality.mjs      Health score + freshness checker
@@ -482,6 +562,10 @@ src/
   report.mjs       Markdown report generator
   glob.mjs         File discovery with glob patterns
   rules-loader.mjs Custom rules JSON loader
+action/
+  action.yml       GitHub Action manifest
+  entrypoint.mjs   Action runner (Node.js)
+  pr-comment.mjs   PR comment builder + poster
 ```
 
 ## License

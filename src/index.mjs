@@ -11,6 +11,7 @@ import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import { getChangedMarkdownFiles } from './diff.mjs';
+import { loadHistory, appendHistory, getCurrentCommit, checkRegression, renderTrend } from './trend.mjs';
 import {
   generateJUnitReport,
   generateSarifReport,
@@ -95,6 +96,11 @@ function printHelp() {
   ${y('WATCH')}
     --watch                  Watch for file changes and re-scan
 
+  ${y('TREND')}
+    --track                  Save score to .doclify-history.json
+    --trend                  Show ASCII score trend graph
+    --fail-on-regression     Fail if score dropped vs last tracked run
+
   ${y('EXAMPLES')}
     $ doclify README.md
     $ doclify docs/ --strict --check-links
@@ -103,6 +109,9 @@ function printHelp() {
     $ doclify . --json > results.json
     $ doclify --diff --staged --strict
     $ doclify docs/ --min-score 80
+    $ doclify docs/ --track
+    $ doclify --trend
+    $ doclify docs/ --fail-on-regression
 
   ${y('EXIT CODES')}
     0  PASS ${d('— all files clean')}
@@ -162,7 +171,10 @@ function parseArgs(argv) {
     staged: false,
     minScore: null,
     format: 'default',
-    watch: false
+    watch: false,
+    track: false,
+    trend: false,
+    failOnRegression: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -322,6 +334,21 @@ function parseArgs(argv) {
 
     if (a === '--watch') {
       args.watch = true;
+      continue;
+    }
+
+    if (a === '--track') {
+      args.track = true;
+      continue;
+    }
+
+    if (a === '--trend') {
+      args.trend = true;
+      continue;
+    }
+
+    if (a === '--fail-on-regression') {
+      args.failOnRegression = true;
       continue;
     }
 
@@ -659,6 +686,17 @@ async function runCli(argv = process.argv.slice(2)) {
   initColors(args.noColor);
   setAsciiMode(args.ascii);
 
+  // --trend: show score history graph and exit
+  if (args.trend) {
+    const history = loadHistory();
+    if (history.length === 0) {
+      console.error('No history found. Run with --track to start recording.');
+      return 1;
+    }
+    console.error(renderTrend(history, { ascii: args.ascii }));
+    return 0;
+  }
+
   let filePaths;
 
   // Diff/staged mode: only scan git-changed files
@@ -698,6 +736,14 @@ async function runCli(argv = process.argv.slice(2)) {
         return segments.includes(pattern);
       });
     });
+  }
+
+  // In diff/staged mode, zero changed files is a valid success (not an error)
+  if ((args.diff || args.staged) && filePaths.length === 0) {
+    printBanner(0, VERSION);
+    log(c.dim(icons.info), 'No changed markdown files found.');
+    console.error('');
+    return 0;
   }
 
   if (filePaths.length === 0) {
@@ -965,6 +1011,30 @@ async function runCli(argv = process.argv.slice(2)) {
     } catch (err) {
       console.error(`Failed to write badge: ${err.message}`);
       return 2;
+    }
+  }
+
+  // Score tracking: --track
+  if (args.track) {
+    const commit = getCurrentCommit();
+    appendHistory({
+      date: new Date().toISOString(),
+      commit,
+      avgScore: output.summary.avgHealthScore,
+      errors: output.summary.totalErrors,
+      warnings: output.summary.totalWarnings,
+      filesScanned: output.summary.filesScanned
+    });
+    log(c.green(icons.pass), `Score tracked ${c.dim('→')} .doclify-history.json`);
+  }
+
+  // Regression check: --fail-on-regression
+  if (args.failOnRegression) {
+    const history = loadHistory();
+    const { regression, delta, prev, current } = checkRegression(history, output.summary.avgHealthScore);
+    if (regression) {
+      log(c.red(icons.fail), `Score regression: ${c.bold(String(prev))} → ${c.bold(String(current))} (${delta})`);
+      return 1;
     }
   }
 

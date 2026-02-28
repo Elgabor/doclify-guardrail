@@ -1,0 +1,55 @@
+name: 'Doclify Guardrail'
+description: 'Quality gate for Markdown documentation. Lint, score, and enforce doc quality in your CI pipeline.'
+author: 'Elgabor'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Directory or files to scan'
+    default: '.'
+  strict:
+    description: 'Treat warnings as errors'
+    default: 'false'
+  min-score:
+    description: 'Fail if health score is below this value (0-100)'
+    default: ''
+  check-links:
+    description: 'Validate HTTP and local links'
+    default: 'false'
+  check-freshness:
+    description: 'Check document freshness via frontmatter dates'
+    default: 'false'
+  check-frontmatter:
+    description: 'Require YAML frontmatter block'
+    default: 'false'
+  format:
+    description: 'Output format: default, compact'
+    default: 'compact'
+  sarif:
+    description: 'Generate SARIF report for GitHub Code Scanning'
+    default: 'true'
+  sarif-file:
+    description: 'SARIF output file path'
+    default: 'doclify.sarif'
+  pr-comment:
+    description: 'Post quality report as PR comment'
+    default: 'true'
+  token:
+    description: 'GitHub token for PR comments'
+    default: ${{ github.token }}
+
+outputs:
+  score:
+    description: 'Average health score (0-100)'
+  status:
+    description: 'PASS or FAIL'
+  errors:
+    description: 'Total error count'
+  warnings:
+    description: 'Total warning count'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.mjs'

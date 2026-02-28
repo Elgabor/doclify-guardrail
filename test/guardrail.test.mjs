@@ -13,6 +13,8 @@ import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
 import { lint, fix, score } from '../src/api.mjs';
 import { getChangedMarkdownFiles } from '../src/diff.mjs';
+import { loadHistory, appendHistory, checkRegression, renderTrend } from '../src/trend.mjs';
+import { buildPrCommentBody } from '../action/pr-comment.mjs';
 import { checkDeadLinks, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import {
@@ -1379,4 +1381,169 @@ test('CLI: --list-rules shows all 31 rules', () => {
   // Count rule lines (each has an ID padded to 22 chars)
   const ruleLines = r.stdout.split('\n').filter(l => l.includes('warning') || l.includes('error'));
   assert.ok(ruleLines.length >= 31, `Expected >=31 rules, got ${ruleLines.length}`);
+});
+
+// ===== v1.6 — Trend & Score Tracking =====
+
+// trend.mjs unit tests
+test('trend: loadHistory returns [] if file does not exist', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  const result = loadHistory(historyPath);
+  assert.deepEqual(result, []);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: appendHistory creates file and adds entry', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  const entry = { date: '2026-02-28T10:00:00Z', commit: 'abc1234', avgScore: 85, errors: 1, warnings: 3, filesScanned: 5 };
+  appendHistory(entry, historyPath);
+  const history = loadHistory(historyPath);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].avgScore, 85);
+  assert.equal(history[0].commit, 'abc1234');
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: appendHistory appends to existing history', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  appendHistory({ date: '2026-01-01T00:00:00Z', commit: 'aaa', avgScore: 80, errors: 0, warnings: 0, filesScanned: 1 }, historyPath);
+  appendHistory({ date: '2026-02-01T00:00:00Z', commit: 'bbb', avgScore: 90, errors: 0, warnings: 0, filesScanned: 1 }, historyPath);
+  const history = loadHistory(historyPath);
+  assert.equal(history.length, 2);
+  assert.equal(history[0].avgScore, 80);
+  assert.equal(history[1].avgScore, 90);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: checkRegression detects score drop', () => {
+  const history = [
+    { avgScore: 90 },
+    { avgScore: 85 }
+  ];
+  const result = checkRegression(history, 80);
+  assert.equal(result.regression, true);
+  assert.equal(result.delta, -5);
+  assert.equal(result.prev, 85);
+  assert.equal(result.current, 80);
+});
+
+test('trend: checkRegression passes when score improves', () => {
+  const history = [{ avgScore: 80 }];
+  const result = checkRegression(history, 90);
+  assert.equal(result.regression, false);
+  assert.equal(result.delta, 10);
+});
+
+test('trend: checkRegression passes with empty history', () => {
+  const result = checkRegression([], 85);
+  assert.equal(result.regression, false);
+});
+
+test('trend: renderTrend produces output with entries', () => {
+  const history = [
+    { date: '2026-01-01T00:00:00Z', avgScore: 70 },
+    { date: '2026-01-15T00:00:00Z', avgScore: 80 },
+    { date: '2026-02-01T00:00:00Z', avgScore: 90 }
+  ];
+  const output = renderTrend(history);
+  assert.ok(output.includes('Score Trend'));
+  assert.ok(output.includes('Latest:'));
+  assert.ok(output.includes('90/100'));
+});
+
+test('trend: renderTrend handles single entry', () => {
+  const output = renderTrend([{ date: '2026-01-01T00:00:00Z', avgScore: 85 }]);
+  assert.ok(output.includes('85/100'));
+});
+
+test('trend: renderTrend handles empty history', () => {
+  const output = renderTrend([]);
+  assert.ok(output.includes('No data'));
+});
+
+// CLI: --track flag
+test('CLI: --track creates .doclify-history.json', () => {
+  const tmpDir = makeTempDir();
+  const mdFile = path.join(tmpDir, 'test.md');
+  fs.writeFileSync(mdFile, '# Title\n\nContent here.\n');
+  const r = spawnSync('node', [CLI_PATH, mdFile, '--track', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 0, `Expected exit 0, got ${r.status}. stderr: ${r.stderr}`);
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  assert.ok(fs.existsSync(historyPath), 'History file should be created');
+  const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+  assert.equal(history.length, 1);
+  assert.ok(history[0].avgScore >= 0);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// CLI: --trend with no history
+test('CLI: --trend exits 1 when no history exists', () => {
+  const tmpDir = makeTempDir();
+  const r = spawnSync('node', [CLI_PATH, '--trend', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 1);
+  assert.ok(r.stderr.includes('No history'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// CLI: --trend with history
+test('CLI: --trend shows graph when history exists', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  fs.writeFileSync(historyPath, JSON.stringify([
+    { date: '2026-01-01T00:00:00Z', avgScore: 80 },
+    { date: '2026-02-01T00:00:00Z', avgScore: 90 }
+  ]));
+  const r = spawnSync('node', [CLI_PATH, '--trend', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 0);
+  assert.ok(r.stderr.includes('Score Trend'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// parseArgs: new trend flags
+test('parseArgs: --track, --trend, --fail-on-regression flags', () => {
+  const args = parseArgs(['--track', '--fail-on-regression']);
+  assert.equal(args.track, true);
+  assert.equal(args.failOnRegression, true);
+  const args2 = parseArgs(['--trend']);
+  assert.equal(args2.trend, true);
+});
+
+// PR comment body
+test('PR comment: buildPrCommentBody generates markdown table', () => {
+  const output = {
+    version: '1.6.0',
+    files: [
+      { file: 'README.md', pass: true, findings: { errors: [], warnings: [] }, summary: { errors: 0, warnings: 1, healthScore: 95, status: 'PASS' } },
+      { file: 'docs/api.md', pass: false, findings: { errors: [{}], warnings: [] }, summary: { errors: 1, warnings: 0, healthScore: 80, status: 'FAIL' } }
+    ],
+    summary: { filesScanned: 2, filesPassed: 1, filesFailed: 1, totalErrors: 1, totalWarnings: 1, status: 'FAIL', elapsed: '0.12', avgHealthScore: 87 }
+  };
+  const body = buildPrCommentBody(output);
+  assert.ok(body.includes('Doclify Quality Report'));
+  assert.ok(body.includes('README.md'));
+  assert.ok(body.includes('docs/api.md'));
+  assert.ok(body.includes('87/100'));
+  assert.ok(body.includes('FAIL'));
+});
+
+test('PR comment: buildPrCommentBody includes delta when baseScore provided', () => {
+  const output = {
+    version: '1.6.0',
+    files: [],
+    summary: { filesScanned: 0, filesPassed: 0, filesFailed: 0, totalErrors: 0, totalWarnings: 0, status: 'PASS', elapsed: '0.01', avgHealthScore: 90 }
+  };
+  const body = buildPrCommentBody(output, { baseScore: 80 });
+  assert.ok(body.includes('+10 vs base'));
 });

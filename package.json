@@ -1,6 +1,6 @@
 {
   "name": "doclify-guardrail",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "description": "Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.",
   "files": [
@@ -17,7 +17,7 @@
   },
   "scripts": {
     "start": "node ./src/index.mjs",
-    "test": "node --test",
+    "test": "node --test test/guardrail.test.mjs",
     "demo": "bash ./scripts/demo.sh"
   },
   "engines": {

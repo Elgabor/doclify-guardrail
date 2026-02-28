@@ -40,38 +40,19 @@
 
 26 regole totali (11 content + 15 style), 13 auto-fix. Parità markdownlint al 95%.
 
-Regole aggiunte: `no-trailing-spaces`, `no-multiple-blanks`, `single-trailing-newline`, `no-missing-space-atx`, `heading-start-left`, `no-trailing-punctuation-heading`, `blanks-around-headings`, `blanks-around-lists`, `blanks-around-fences`, `fenced-code-language`, `no-bare-urls`, `no-reversed-links`, `no-space-in-emphasis`, `no-space-in-links`, `no-inline-html`.
+### v1.5 "Foundation" — CLI imbattibile ✅
+
+31 regole, diff/staged, watch, min-score, format compact, API programmatica, config gerarchica, 137 test.
+
+Feature completate: `--diff`/`--base`/`--staged`, `--watch`, `--min-score`, `--format compact`, `api.mjs` (`lint`, `fix`, `score`), +5 regole (`no-empty-sections`, `heading-increment`, `no-duplicate-links`, `list-marker-consistency`, `link-title-style`), config gerarchica con subdirectory override.
 
 ---
 
-## v1.5 "Foundation" — CLI imbattibile
-
-**Tema:** Superare markdownlint su ogni fronte. Nessun motivo per usare altro.
-
-| Feature | Complessità | Stato |
-|---------|-------------|-------|
-| `doclify diff` (`--diff`, `--base`, `--staged`) | Media | |
-| `doclify watch` (fs.watch con debounce) | Media | |
-| `--min-score <n>` quality gate | Bassa | |
-| `--format compact\|tap` | Bassa | |
-| Pre-commit hook nativo | Bassa | |
-| API programmatica (`api.mjs`) | Media | |
-| +5 regole (`list-marker-consistency`, `no-empty-sections`, `heading-increment`, `no-duplicate-links`, `link-title-style`) | Media | |
-| Config gerarchica (subdirectory override) | Media | |
-
----
-
-## v1.6 "Automate" — GitHub Action + PR Bot
+## v1.6 "Automate" — GitHub Action + PR Bot ✅
 
 **Tema:** Quality gate automatico in ogni pull request.
 
-| Feature | Complessità | Stato |
-|---------|-------------|-------|
-| GitHub Action ufficiale (repo separato) | Media | |
-| PR Comment Bot (score delta, tabella file) | Alta | |
-| Score trending locale (`.doclify-history.json`, `--track`, `--trend`) | Media | |
-| `--fail-on-regression` | Bassa | |
-| GitLab CI template | Bassa | |
+Feature completate: GitHub Action (`action/`), PR Comment Bot con commento idempotente, score trending locale (`--track`, `--trend`, `renderTrend` ASCII), `--fail-on-regression`, 152 test.
 
 ---
 
@@ -162,13 +143,11 @@ Regole aggiunte: `no-trailing-spaces`, `no-multiple-blanks`, `single-trailing-ne
 ## Sequenza e dipendenze
 
 ```text
-v1.4 ✅ (oggi — 26 regole, 13 fix, 116 test)
+v1.4 ✅ (26 regole, 13 fix, 116 test)
   │
-v1.5 Foundation (2-3 mesi)
-  │   diff, watch, min-score, API, +5 regole
+v1.5 ✅ (31 regole, diff, watch, min-score, API, 137 test)
   │
-v1.6 Automate (1-2 mesi)
-  │   GitHub Action, PR bot, score trending
+v1.6 ✅ (GitHub Action, PR bot, score trending, 152 test)
   │
 v1.7 Extend (2-3 mesi)
   │   Plugin system, shared configs, presets
