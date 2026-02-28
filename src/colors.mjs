@@ -112,4 +112,27 @@ function printResults(output) {
   console.error('');
 }
 
-export { initColors, setAsciiMode, icons, c, log, printBanner, printResults };
+function printCompactResults(output) {
+  for (const fileResult of output.files) {
+    const allFindings = [
+      ...fileResult.findings.errors,
+      ...fileResult.findings.warnings
+    ];
+    for (const f of allFindings) {
+      const lineStr = f.line != null ? `:${f.line}` : '';
+      const sev = f.severity === 'error' ? 'error' : 'warning';
+      console.error(`${fileResult.file}${lineStr}: ${sev} [${f.code}] ${f.message}`);
+    }
+  }
+
+  if (output.fileErrors) {
+    for (const fe of output.fileErrors) {
+      console.error(`${fe.file}: error ${fe.error}`);
+    }
+  }
+
+  const s = output.summary;
+  console.error(`${s.filesScanned} files, ${s.totalErrors} errors, ${s.totalWarnings} warnings, score ${s.avgHealthScore}/100`);
+}
+
+export { initColors, setAsciiMode, icons, c, log, printBanner, printResults, printCompactResults };

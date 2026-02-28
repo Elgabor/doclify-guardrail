@@ -1,213 +1,209 @@
 # Roadmap doclify-guardrail
 
 > **Visione:** markdownlint ti dice se il tuo Markdown è ben formattato. doclify ti dice se la tua documentazione è sana.
-> Stile + contenuto + link + freshness + coverage + score + CI/CD — un solo tool.
+> L'unico quality gate AI per documentazione Markdown, pensato per team di sviluppo.
+> Stile + contenuto + link + freshness + prose quality + coverage + score + CI/CD + AI — un solo tool.
 
 ---
 
-## Parte 1 — Bug e miglioramenti immediati
+## Modello di Business
 
-### P0 — Bug critici (bloccanti per produzione) ✅ COMPLETATI
+| Tier | Prezzo | Target |
+|------|--------|--------|
+| **Free** (OSS) | $0 | Developer individuali, open source |
+| **Pro** | $29/mese per repo | Team piccoli, startup |
+| **Org** | $199/mese (50 repo, 10 membri) | Team medi |
+| **Enterprise** | Da $999/mese (custom) | Grandi aziende, compliance |
 
-| # | Feature | Stato | Note |
-|---|---------|-------|------|
-| 1 | Fix JSON output buffer | ✅ Risolto v1.3 | Sostituito `console.log` con `process.stdout.write` + gestione backpressure/drain |
-| 2 | Fix inline suppressions | ✅ Già risolto v1.2 | `buildSuppressionMap()` in checker.mjs implementa disable-next-line e disable/enable |
-| 3 | Log su stderr, JSON su stdout | ✅ Già risolto v1.2 | `log()` usa `console.error()`, JSON su stdout |
-| NEW | Fix `--fix` dentro code block | ✅ Risolto v1.3 | `autoFixInsecureLinks` ora salta fenced e inline code block |
-
-### P1 — Bug minori (qualità UX) ✅ COMPLETATI
-
-| # | Feature | Stato | Note |
-|---|---------|-------|------|
-| 4 | Strict mode: mostrare "error" nei finding | ✅ Risolto v1.3 | Warning promossi mostrano `✗ error [strict]` in rosso |
-| 5 | Warning per regole inesistenti in `--ignore-rules` | ✅ Risolto v1.3 | Warning su stderr per ID non trovati in RULE_CATALOG |
-| 6 | Fix messaggio duplicato in `doclify init` | ✅ Già risolto | `return 1` immediato previene doppio print |
-| 7 | Fix messaggio "PLACEHOLDER" per TODO | ✅ Già risolto | Ogni pattern ha il proprio messaggio specifico |
-| 17 | Score 0/100 meno punitivo | ✅ Risolto v1.3 | Formula con rendimenti decrescenti (√warnings), 13 warn → 54/100 |
-| 18 | Parsing URL migliorato | ✅ Risolto v1.3 | Regex con parentesi annidate + cleanup solo per bare/ref URL |
-
-### P2 — Miglioramenti funzionali ✅ COMPLETATI
-
-| # | Feature | Stato | Note |
-|---|---------|-------|------|
-| 13 | `doclify init --force` | ✅ Risolto v1.3 | Sovrascrive config con `--force`, messaggio aggiornato |
-| 14 | `exclude` nel config JSON | ✅ Risolto v1.3 | `exclude` in config mergiato con `--exclude` CLI |
-| 15 | `--ascii` output mode | ✅ Risolto v1.3 | `--ascii` sostituisce Unicode con `[PASS] [FAIL] [WARN] [INFO]` |
-| 22 | `disable-file` suppression | ✅ Risolto v1.3 | `<!-- doclify-disable-file [rules] -->` sopprime file interi |
+**Principio:** Il CLI free è MEGLIO di markdownlint. Si paga per team features, AI, cloud dashboard, compliance.
 
 ---
 
-## Parte 2 — Strategia per superare markdownlint
+## Changelog versioni completate
 
-L'obiettivo non è copiare markdownlint — è renderlo obsoleto. Doclify deve diventare l'unico tool che serve, coprendo sia lo stile sia il contenuto.
+### v1.2 — Core features + inline suppressions ✅
 
-### 2.1 — Colmare il gap delle regole core (da 11 a ~30) ✅ COMPLETATO v1.4
+### v1.3 — Bug fix critici + UX ✅
 
-15 nuove regole implementate + 12 auto-fixable via `autoFixFormatting()`. Doclify ora ha **26 regole built-in** (vs 59 di markdownlint, ma copre il 95% dei casi reali).
+- Fix JSON output buffer (backpressure/drain)
+- Fix `--fix` dentro code block
+- Strict mode labeling `✗ error [strict]`
+- Warning per regole inesistenti in `--ignore-rules`
+- Score con rendimenti decrescenti (√warnings)
+- Parsing URL con parentesi annidate
+- `doclify init --force`
+- `exclude` nel config JSON
+- `--ascii` output mode
+- `disable-file` suppression
 
-| Regola | Stato | Auto-fix |
-|--------|-------|----------|
-| `no-trailing-spaces` | ✅ | ✅ |
-| `no-multiple-blanks` | ✅ | ✅ |
-| `single-trailing-newline` | ✅ | ✅ |
-| `no-missing-space-atx` | ✅ | ✅ |
-| `heading-start-left` | ✅ | ✅ |
-| `no-trailing-punctuation-heading` | ✅ | ✅ |
-| `blanks-around-headings` | ✅ | ✅ |
-| `blanks-around-lists` | ✅ | ✅ |
-| `blanks-around-fences` | ✅ | ✅ |
-| `fenced-code-language` | ✅ | ❌ |
-| `no-bare-urls` | ✅ | ✅ (wrap `<>`) |
-| `no-reversed-links` | ✅ | ✅ |
-| `no-space-in-emphasis` | ✅ | ✅ |
-| `no-space-in-links` | ✅ | ✅ |
-| `no-inline-html` (opt-in) | ✅ | ❌ |
+### v1.4 — +15 regole core con auto-fix ✅
 
-**Regole future (v1.5+):**
+26 regole totali (11 content + 15 style), 13 auto-fix. Parità markdownlint al 95%.
 
-| Regola | Descrizione |
-|--------|-------------|
-| `table-pipe-alignment` | Tabelle rotte visivamente |
-| `ol-prefix-ordered` | Liste numerate 1-1-1 vs 1-2-3 |
-| `first-line-h1` | File senza H1 iniziale (già coperto da `single-h1`) |
-
-### 2.2 — Auto-fix intelligente di massa (`doclify fix .`)
-
-Markdownlint ha 31 fix, ma sono tutti stilistici. Doclify deve avere fix **semantici**:
-
-| Fix | Cosa fa | markdownlint |
-|-----|---------|--------------|
-| Trailing spaces, blank lines, heading spacing | Fix strutturali base | Ha equivalente |
-| `http://` → `https://` | Già presente | No |
-| Bare URL → `<url>` | Wrap automatico | No |
-| Link rotti → suggerimento | Trova il file rinominato/spostato e suggerisce fix | No |
-| TOC auto-generation | `<!-- toc -->` genera table of contents dai heading | No |
-| Frontmatter auto-inject | Aggiunge `title`, `updated`, `created` dove manca | No |
-| Date freshness auto-update | Aggiorna `updated: YYYY-MM-DD` al momento del fix | No |
-
-**Il messaggio killer:** `doclify fix .` sistema tutto in un colpo — stile, link, date, frontmatter.
-
-### 2.3 — Watch mode (`doclify watch`)
-
-```bash
-doclify watch docs/ --strict
-```
-
-- Monitora file in tempo reale con `fs.watch`
-- Mostra errori incrementalmente quando salvi un file
-- Output compatto: solo i delta (nuovi errori / errori risolti)
-- Markdownlint non ha nulla di simile (richiede VS Code extension)
-
-### 2.4 — Diff mode (`doclify diff`)
-
-```bash
-doclify diff                    # confronta con HEAD
-doclify diff --base main        # confronta con branch main
-doclify diff --staged           # solo file staged
-```
-
-- Scansiona solo i file Markdown modificati rispetto a un ref git
-- Perfetto per pre-commit hook e CI su PR
-- Markdownlint non ha integrazione git nativa
-
-### 2.5 — Documentation coverage (`doclify coverage`)
-
-```bash
-doclify coverage --source src/
-```
-
-| Metrica | Cosa misura |
-|---------|-------------|
-| File coverage | Ogni modulo in `src/` ha un `.md` corrispondente? |
-| Export coverage | Le funzioni/classi esportate sono documentate? |
-| Changelog coverage | Ogni versione in CHANGELOG ha una entry? |
-| API coverage | Ogni endpoint ha documentazione? |
-
-**Output:** `Documentation coverage: 73% (22/30 modules documented)`
-
-Nessun linter Markdown fa questo. Game-changer per team enterprise.
-
-### 2.6 — Score con trend tracking (`doclify score`)
-
-```bash
-doclify score --history
-```
-
-```
-docs health  84/100  ██████████████████░░  (+3 vs last week)
-
-Trend (last 5 runs):
-  Feb 20: 78  ████████████████░░░░
-  Feb 22: 81  ████████████████░░░░
-  Feb 24: 81  ████████████████░░░░
-  Feb 25: 84  █████████████████░░░
-  Feb 26: 84  █████████████████░░░
-```
-
-- Salva lo score in `.doclify-history.json` ad ogni run
-- Mostra trend nel tempo
-- `--min-score 80` come quality gate: fail se lo score scende sotto soglia
-- `--no-regression` fail se lo score è calato rispetto all'ultimo run
-
-### 2.7 — AI-powered suggestions (opzionale, con LLM)
-
-```bash
-doclify . --suggest
-```
-
-| Check | Cosa fa |
-|-------|---------|
-| Readability score | Flesch-Kincaid / livello di leggibilità del testo |
-| Broken anchor suggest | Link a `#sezione-xyz` rotto → "Forse intendevi `#sezione-x-y-z`?" |
-| Stale content detection | Rileva codice/API deprecate menzionate nella doc |
-| Missing sections | "Questo README non ha sezione Installation o Usage" |
-| Duplicate content | Due file con contenuto >80% simile |
+Regole aggiunte: `no-trailing-spaces`, `no-multiple-blanks`, `single-trailing-newline`, `no-missing-space-atx`, `heading-start-left`, `no-trailing-punctuation-heading`, `blanks-around-headings`, `blanks-around-lists`, `blanks-around-fences`, `fenced-code-language`, `no-bare-urls`, `no-reversed-links`, `no-space-in-emphasis`, `no-space-in-links`, `no-inline-html`.
 
 ---
 
-## Parte 3 — CI/CD first-class
+## v1.5 "Foundation" — CLI imbattibile
 
-| Feature | Stato attuale | Da aggiungere |
-|---------|---------------|---------------|
-| JUnit XML | Presente | OK |
-| SARIF | Presente | OK |
-| Badge SVG | Presente | OK |
-| GitHub Action ufficiale | Assente | `uses: doclify/action@v1` con PR comment automatico |
-| GitLab CI template | Assente | Template `.gitlab-ci.yml` preconfigurato |
-| PR comment bot | Assente | Commento automatico sulla PR con diff dello score e nuovi finding |
-| GitHub Code Scanning | SARIF presente | Upload automatico con `--sarif --upload` |
-| Pre-commit hook | Assente | `doclify diff --staged --strict` come hook nativo |
-| `--fail-on-regression` | Assente | Fail se lo score cala rispetto a baseline |
+**Tema:** Superare markdownlint su ogni fronte. Nessun motivo per usare altro.
 
----
-
-## Parte 4 — Developer experience
-
-| Feature | Impatto |
-|---------|---------|
-| VS Code extension | Real-time squiggles, quick-fix, hover con spiegazione regola |
-| Config wizard interattivo | `doclify init --interactive` con domande su stack (SSG, CMS, docs-as-code) |
-| `doclify ignore <file>` | Aggiunge il file a `exclude` nel config senza editare JSON |
-| `doclify explain <rule>` | Mostra descrizione dettagliata, esempi buoni/cattivi, link a docs |
-| Autodetect framework | Rileva Docusaurus/VitePress/MkDocs e applica regole appropriate |
-| Custom rules in JS | Regex-only è limitante. Supportare funzioni JS per regole complesse |
-| Config gerarchica | Permettere `.doclify-guardrail.json` in sotto-directory per override locali |
-| Documentazione web | Sito con esempi, ricette CI/CD, confronto con alternative |
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| `doclify diff` (`--diff`, `--base`, `--staged`) | Media | |
+| `doclify watch` (fs.watch con debounce) | Media | |
+| `--min-score <n>` quality gate | Bassa | |
+| `--format compact\|tap` | Bassa | |
+| Pre-commit hook nativo | Bassa | |
+| API programmatica (`api.mjs`) | Media | |
+| +5 regole (`list-marker-consistency`, `no-empty-sections`, `heading-increment`, `no-duplicate-links`, `link-title-style`) | Media | |
+| Config gerarchica (subdirectory override) | Media | |
 
 ---
 
-## Roadmap per versione
+## v1.6 "Automate" — GitHub Action + PR Bot
 
-```
-v1.3  —  Fix bug critici + UX + miglioramenti funzionali ✅
-v1.4  —  +15 regole core con auto-fix (26 regole totali, parità markdownlint al 95%) ✅
-v1.5  —  doclify diff + pre-commit hook + doclify watch
-v1.6  —  Score trending + --min-score + --no-regression
-v1.7  —  GitHub Action + PR comment bot
-v1.8  —  doclify coverage (documentation coverage analysis)
-v2.0  —  VS Code extension + config wizard + AI suggestions
+**Tema:** Quality gate automatico in ogni pull request.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| GitHub Action ufficiale (repo separato) | Media | |
+| PR Comment Bot (score delta, tabella file) | Alta | |
+| Score trending locale (`.doclify-history.json`, `--track`, `--trend`) | Media | |
+| `--fail-on-regression` | Bassa | |
+| GitLab CI template | Bassa | |
+
+---
+
+## v1.7 "Extend" — Plugin System + Presets
+
+**Tema:** La community estende doclify senza forkare.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| Plugin system JS (moduli ES con `{ rules, fixers }`) | Alta | |
+| Reporter plugins (`--reporter ./custom.mjs`) | Media | |
+| Shared config presets (`"extends": "doclify-config-strict"`) | Media | |
+| Rule severity override (`"rules": { "line-length": "off" }`) | Bassa | |
+| `doclify init --preset strict\|docs-site\|api-docs` | Bassa | |
+| Framework autodetect (Docusaurus/VitePress/MkDocs) | Media | |
+
+---
+
+## v2.0 "Intelligence" — VS Code + Prose Quality + Inclusive Language
+
+**Tema:** Non solo formattazione, ma qualità della prosa. Zero dipendenze.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| VS Code Extension (diagnostics, quick fixes, score bar) | Alta | |
+| Prose quality locale (Flesch-Kincaid, passive voice, sentence length) | Alta | |
+| Inclusive language (database JSON, ispirato a alex.js) | Media | |
+| Content dedup detection (n-gram fingerprinting cross-file) | Media | |
+| `doclify coverage` (rapporto exports vs docs) | Media | |
+| `doclify explain <rule>` | Bassa | |
+
+**Business:** Primo revenue — Pro tier $29/mese per dedup, coverage, prose trending.
+
+---
+
+## v2.1 "Teams" — Cloud Dashboard + Governance
+
+**Tema:** I manager vedono la qualità. I team collaborano.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| Cloud dashboard (doclify.dev, Next.js + GitHub OAuth) | Molto Alta | |
+| Team style guides (config condivisa via cloud) | Alta | |
+| Multi-repo overview (ranking per qualità) | Media | |
+| Notifiche (email/Slack per score drop, stale docs) | Media | |
+| Score trending cloud (grafici storici per repo/branch) | Media | |
+
+**Business:** Revenue significativo — Org tier $199/mese.
+
+---
+
+## v2.5 "AI Guard" — Feature AI-powered
+
+**Tema:** AI come copilota per la qualità. Opt-in via `--ai` + `DOCLIFY_AI_KEY`.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| AI prose quality scoring (LLM: chiarezza, completezza, tono) | Alta | |
+| Brand voice consistency (`--brand-voice ./voice.md`) | Alta | |
+| Auto-generated doc suggestions (bozze per funzioni non documentate) | Alta | |
+| Semantic staleness (AI confronta codice vs docs) | Media | |
+| Smart anchor suggestions (link rotto → suggerimento AI) | Media | |
+| Translation quality check (confronto file multilingua) | Alta | |
+
+**Business:** Pro $39/mese (AI 100 file/mese), Org $299/mese (illimitato).
+
+---
+
+## v3.0 "Enterprise" — SSO, Audit, Compliance
+
+**Tema:** Enterprise-ready. Governance, compliance, audit trail.
+
+| Feature | Complessità | Stato |
+|---------|-------------|-------|
+| SSO (SAML/OIDC: Okta, Azure AD, Google) | Alta | |
+| Audit logs (ogni azione loggata, export CSV/JSON) | Alta | |
+| Approval workflows (PR regression → doc owner approval) | Alta | |
+| Compliance policies (template SOC2, ISO 27001, GDPR) | Media | |
+| RBAC (admin, editor, viewer) | Media | |
+| Custom AI models (Ollama/vLLM self-hosted) | Media | |
+| REST API pubblica + SDK (Node.js/Python/Go) | Media | |
+| Webhook system (Zapier, PagerDuty, Jira) | Bassa | |
+
+**Business:** Enterprise $999+/mese. SSO, SLA 99.9%, dedicated support.
+
+---
+
+## Sequenza e dipendenze
+
+```text
+v1.4 ✅ (oggi — 26 regole, 13 fix, 116 test)
+  │
+v1.5 Foundation (2-3 mesi)
+  │   diff, watch, min-score, API, +5 regole
+  │
+v1.6 Automate (1-2 mesi)
+  │   GitHub Action, PR bot, score trending
+  │
+v1.7 Extend (2-3 mesi)
+  │   Plugin system, shared configs, presets
+  │
+v2.0 Intelligence (3-4 mesi)  ← PRIMO REVENUE
+  │   VS Code, prose quality, inclusive lang, dedup
+  │
+v2.1 Teams (3-4 mesi)  ← REVENUE SIGNIFICATIVO
+  │   Cloud dashboard, team style guides
+  │
+v2.5 AI Guard (2-3 mesi)
+  │   AI prose, brand voice, translation
+  │
+v3.0 Enterprise (4-6 mesi)  ← ENTERPRISE REVENUE
+      SSO, audit, compliance, API pubblica
 ```
 
-> **I primi 3 item (P0) sono bloccanti:** senza fix JSON e suppressions, il tool non è affidabile per CI/CD.
-> Tutto il resto può essere prioritizzato in base al feedback utenti.
+**Timeline totale:** 18-24 mesi da v1.4 a v3.0.
+
+---
+
+## Strategia competitiva
+
+| Competitor | Cosa fa | Come lo superiamo |
+|-----------|---------|-------------------|
+| markdownlint | 50 regole sintassi | Doclify: 26+ regole + prose + links + score + AI |
+| vale | Prose linting (Go) | Doclify: prose + sintassi + team + AI in un tool |
+| remark-lint | AST-based, 70+ plugin | Doclify: zero dipendenze, setup immediato |
+| GitBook ($65+/mese) | CMS + AI Agent | Doclify: quality gate, non CMS. Complementare. |
+| ReadMe ($99+/mese) | API docs platform | Doclify: Markdown-focused, non API platform. |
+| Grammarly ($12/user) | AI prose (API deprecata) | Doclify: API funzionante + tecnico + team |
+
+**Lock-in tramite valore:**
+1. v1.5-1.7: Superiorità tecnica del CLI free
+2. v2.0: VS Code + prose quality indispensabile
+3. v2.1: Dati storici nel cloud (perdere mesi di trend se cambi)
+4. v2.5: Brand voice personalizzata
+5. v3.0: Audit trail e compliance non migrabili

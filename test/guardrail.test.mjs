@@ -5,12 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import http from 'node:http';
-import { checkMarkdown, parseArgs, resolveOptions } from '../src/index.mjs';
+import { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
+import { lint, fix, score } from '../src/api.mjs';
+import { getChangedMarkdownFiles } from '../src/diff.mjs';
 import { checkDeadLinks, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import {
@@ -1220,4 +1222,161 @@ test('autoFixFormatting: wraps bare URLs in <>', () => {
   const result = autoFixFormatting('# Title\n\nVisit https://example.com today.\n');
   assert.ok(result.modified);
   assert.ok(result.content.includes('<https://example.com>'));
+});
+
+// ─── v1.5 Tests ───────────────────────────────────────────────────────────────
+
+// New rules
+test('no-empty-sections: warns on heading with no content before next heading', () => {
+  const md = '# Title\n\nIntro paragraph.\n\n## Section A\n\n## Section B\n\nContent here.\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'no-empty-sections');
+  assert.equal(w.length, 1);
+  assert.ok(w[0].message.includes('Empty section'));
+});
+
+test('no-empty-sections: no warning when all sections have content', () => {
+  const md = '# Title\n\nIntro.\n\n## Section A\n\nContent A.\n\n## Section B\n\nContent B.\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'no-empty-sections');
+  assert.equal(w.length, 0);
+});
+
+test('heading-increment: warns on heading level skip', () => {
+  const md = '# Title\n\n### Skipped H2\n\nContent.\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'heading-increment');
+  assert.equal(w.length, 1);
+  assert.ok(w[0].message.includes('H1 to H3'));
+});
+
+test('heading-increment: no warning for sequential headings', () => {
+  const md = '# Title\n\n## Section\n\n### Subsection\n\nContent.\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'heading-increment');
+  assert.equal(w.length, 0);
+});
+
+test('no-duplicate-links: warns on same URL appearing twice', () => {
+  const md = '# Title\n\n[Link1](https://example.com)\n\n[Link2](https://example.com)\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'no-duplicate-links');
+  assert.equal(w.length, 1);
+});
+
+test('list-marker-consistency: warns on mixed list markers', () => {
+  const md = '# Title\n\n- Item A\n* Item B\n- Item C\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'list-marker-consistency');
+  assert.equal(w.length, 1); // * is the outlier
+});
+
+test('list-marker-consistency: no warning for consistent markers', () => {
+  const md = '# Title\n\n- Item A\n- Item B\n- Item C\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'list-marker-consistency');
+  assert.equal(w.length, 0);
+});
+
+// --min-score quality gate
+test('CLI: --min-score fails when score is below threshold', () => {
+  const tmpDir = makeTempDir();
+  const file = path.join(tmpDir, 'low.md');
+  // Many issues to get a low score
+  fs.writeFileSync(file, '# Title\n\nTODO fix this\n\nFIXME broken\n\nWIP section\n\nTBD later\n\nHACK workaround\n\nhttp://insecure.com\n\nCHANGEME placeholder\n', 'utf8');
+  const r = spawnSync('node', [CLI_PATH, file, '--min-score', '95', '--ascii'], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('CLI: --min-score passes when score is above threshold', () => {
+  const tmpDir = makeTempDir();
+  const file = path.join(tmpDir, 'good.md');
+  fs.writeFileSync(file, '# Title\n\nGood content here.\n', 'utf8');
+  const r = spawnSync('node', [CLI_PATH, file, '--min-score', '50', '--ascii'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// --format compact
+test('CLI: --format compact produces single-line output', () => {
+  const tmpDir = makeTempDir();
+  const file = path.join(tmpDir, 'test.md');
+  fs.writeFileSync(file, '# Title\n\nTODO fix.\n', 'utf8');
+  const r = spawnSync('node', [CLI_PATH, file, '--format', 'compact', '--ascii'], { encoding: 'utf8' });
+  assert.ok(r.stderr.includes('warning'));
+  assert.ok(r.stderr.includes('[placeholder]'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// --diff (tests in a git repo context)
+test('CLI: --diff flag is accepted without error', () => {
+  const r = spawnSync('node', [CLI_PATH, '--diff', '--ascii'], { encoding: 'utf8' });
+  // Should not return exit code 2 (usage error)
+  assert.notEqual(r.status, 2);
+});
+
+test('CLI: --staged flag is accepted without error', () => {
+  const r = spawnSync('node', [CLI_PATH, '--staged', '--ascii'], { encoding: 'utf8' });
+  // Exit 2 is OK if "no markdown files found" (no staged .md files), but not if it's an unknown option error
+  assert.ok(!r.stderr.includes('Unknown option'), '--staged should be recognized');
+});
+
+// parseArgs: new flags
+test('parseArgs: --diff, --base, --staged, --min-score, --format, --watch', () => {
+  const args = parseArgs(['--diff', '--base', 'main', '--min-score', '80', '--format', 'compact']);
+  assert.equal(args.diff, true);
+  assert.equal(args.base, 'main');
+  assert.equal(args.minScore, 80);
+  assert.equal(args.format, 'compact');
+});
+
+test('parseArgs: --min-score rejects invalid values', () => {
+  assert.throws(() => parseArgs(['--min-score', '150']), /must be 0-100/);
+  assert.throws(() => parseArgs(['--min-score', 'abc']), /Invalid --min-score/);
+});
+
+test('parseArgs: --format rejects invalid values', () => {
+  assert.throws(() => parseArgs(['--format', 'invalid']), /must be: default, compact/);
+});
+
+// Programmatic API
+test('API: lint() returns findings and score', () => {
+  const result = lint('# Title\n\nTODO fix this.\n');
+  assert.ok(result.warnings.length > 0);
+  assert.ok(result.healthScore <= 100);
+  assert.equal(typeof result.pass, 'boolean');
+});
+
+test('API: lint() respects ignoreRules', () => {
+  const result = lint('# Title\n\nTODO fix this.\n', { ignoreRules: ['placeholder'] });
+  const placeholders = result.warnings.filter(w => w.code === 'placeholder');
+  assert.equal(placeholders.length, 0);
+});
+
+test('API: fix() fixes formatting issues', () => {
+  const result = fix('##Bad heading\n\nContent.  \n');
+  assert.ok(result.modified);
+  assert.ok(result.content.includes('## Bad heading'));
+});
+
+test('API: score() computes health score', () => {
+  assert.equal(score({ errors: 0, warnings: 0 }), 100);
+  assert.ok(score({ errors: 5, warnings: 0 }) === 0);
+});
+
+// getChangedMarkdownFiles
+test('diff: getChangedMarkdownFiles returns array', () => {
+  // This test runs in a git repo, so it should work
+  const files = getChangedMarkdownFiles({ base: 'HEAD' });
+  assert.ok(Array.isArray(files));
+});
+
+// --list-rules shows 31 rules (26 + 5 new)
+test('CLI: --list-rules shows all 31 rules', () => {
+  const r = spawnSync('node', [CLI_PATH, '--list-rules', '--ascii'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  // Count rule lines (each has an ID padded to 22 chars)
+  const ruleLines = r.stdout.split('\n').filter(l => l.includes('warning') || l.includes('error'));
+  assert.ok(ruleLines.length >= 31, `Expected >=31 rules, got ${ruleLines.length}`);
 });

@@ -29,7 +29,12 @@ const RULE_CATALOG = [
   { id: 'no-reversed-links',           severity: 'warning', description: 'No reversed link syntax (text)[url]' },
   { id: 'no-space-in-emphasis',        severity: 'warning', description: 'No spaces inside emphasis markers' },
   { id: 'no-space-in-links',           severity: 'warning', description: 'No spaces inside link brackets' },
-  { id: 'no-inline-html',              severity: 'warning', description: 'No inline HTML (opt-in via --check-inline-html)' }
+  { id: 'no-inline-html',              severity: 'warning', description: 'No inline HTML (opt-in via --check-inline-html)' },
+  { id: 'no-empty-sections',            severity: 'warning', description: 'No empty sections (heading with no content before next heading)' },
+  { id: 'heading-increment',            severity: 'warning', description: 'Heading levels should increment by one' },
+  { id: 'no-duplicate-links',           severity: 'warning', description: 'No identical links repeated in same section' },
+  { id: 'list-marker-consistency',       severity: 'warning', description: 'Consistent list markers (all - or all * or all +)' },
+  { id: 'link-title-style',             severity: 'warning', description: 'Link titles should use consistent quotes' }
 ];
 
 const RULE_SEVERITY = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.severity]));
@@ -545,6 +550,127 @@ function checkMarkdown(rawContent, opts = {}) {
         warnings.push(normalizeFinding('no-inline-html', 'Inline HTML found.', idx + 1, filePath));
       }
     });
+  }
+
+  // Rule: no-empty-sections (heading followed immediately by another heading of SAME or HIGHER level)
+  // Uses rawLines to avoid false positives on code blocks.
+  // A heading followed by a deeper heading (subsection) is a valid container pattern.
+  {
+    let lastHeadingIdx = -1;
+    let lastHeadingLevel = 0;
+    let lastHeadingHadContent = true;
+    for (let i = 0; i < rawLines.length; i += 1) {
+      const line = rawLines[i];
+      const hm = line.match(/^(#{1,6})\s/);
+      if (hm) {
+        const level = hm[1].length;
+        if (lastHeadingIdx >= 0 && !lastHeadingHadContent && level <= lastHeadingLevel) {
+          warnings.push(normalizeFinding('no-empty-sections', 'Empty section — heading has no content before next heading.', lastHeadingIdx + 1, filePath));
+        }
+        lastHeadingIdx = i;
+        lastHeadingLevel = level;
+        lastHeadingHadContent = false;
+      } else if (line.trim() !== '' && lastHeadingIdx >= 0) {
+        lastHeadingHadContent = true;
+      }
+    }
+  }
+
+  // Rule: heading-increment (heading level should only increase by 1)
+  {
+    let prevLevel = 0;
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = lines[i].match(/^(#{1,6})\s/);
+      if (m) {
+        const level = m[1].length;
+        if (prevLevel > 0 && level > prevLevel + 1) {
+          warnings.push(normalizeFinding('heading-increment', `Heading level jumped from H${prevLevel} to H${level}.`, i + 1, filePath));
+        }
+        prevLevel = level;
+      }
+    }
+  }
+
+  // Rule: no-duplicate-links (same URL appearing multiple times)
+  {
+    const linkUrls = new Map();
+    lines.forEach((line, idx) => {
+      const cleanLine = stripInlineCode(line);
+      const linkRx = /\[([^\]]*)\]\(([^)]+)\)/g;
+      let lm;
+      while ((lm = linkRx.exec(cleanLine)) !== null) {
+        const url = lm[2].split(/[#?]/)[0].trim();
+        if (url.length === 0) continue;
+        if (linkUrls.has(url)) {
+          warnings.push(normalizeFinding('no-duplicate-links', `Duplicate link: ${url} (also on line ${linkUrls.get(url)}).`, idx + 1, filePath));
+        } else {
+          linkUrls.set(url, idx + 1);
+        }
+      }
+    });
+  }
+
+  // Rule: list-marker-consistency (all unordered lists should use same marker)
+  {
+    const markers = new Map();
+    rawLines.forEach((line, idx) => {
+      const m = line.match(/^(\s*)([-*+])\s/);
+      if (m) {
+        const marker = m[2];
+        if (!markers.has(marker)) markers.set(marker, []);
+        markers.get(marker).push(idx + 1);
+      }
+    });
+    if (markers.size > 1) {
+      // Find the most common marker
+      let dominantMarker = '-';
+      let maxCount = 0;
+      for (const [marker, lineNums] of markers) {
+        if (lineNums.length > maxCount) {
+          maxCount = lineNums.length;
+          dominantMarker = marker;
+        }
+      }
+      for (const [marker, lineNums] of markers) {
+        if (marker !== dominantMarker) {
+          for (const lineNum of lineNums) {
+            warnings.push(normalizeFinding('list-marker-consistency', `List marker '${marker}' differs from dominant '${dominantMarker}'.`, lineNum, filePath));
+          }
+        }
+      }
+    }
+  }
+
+  // Rule: link-title-style (link titles should use consistent quotes)
+  {
+    const titleStyles = new Map();
+    lines.forEach((line, idx) => {
+      const cleanLine = stripInlineCode(line);
+      const rx = /\]\([^)]*\s+(["'])[^"']*\1\s*\)/g;
+      let tm;
+      while ((tm = rx.exec(cleanLine)) !== null) {
+        const quoteChar = tm[1];
+        if (!titleStyles.has(quoteChar)) titleStyles.set(quoteChar, []);
+        titleStyles.get(quoteChar).push(idx + 1);
+      }
+    });
+    if (titleStyles.size > 1) {
+      let dominantQuote = '"';
+      let maxCount = 0;
+      for (const [q, lineNums] of titleStyles) {
+        if (lineNums.length > maxCount) {
+          maxCount = lineNums.length;
+          dominantQuote = q;
+        }
+      }
+      for (const [q, lineNums] of titleStyles) {
+        if (q !== dominantQuote) {
+          for (const lineNum of lineNums) {
+            warnings.push(normalizeFinding('link-title-style', `Link title uses '${q}' but '${dominantQuote}' is dominant.`, lineNum, filePath));
+          }
+        }
+      }
+    }
   }
 
   // Custom rules (uses stripped content)

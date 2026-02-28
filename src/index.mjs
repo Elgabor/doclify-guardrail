@@ -6,10 +6,11 @@ import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
-import { initColors, setAsciiMode, icons, c, log, printBanner, printResults } from './colors.mjs';
+import { initColors, setAsciiMode, icons, c, log, printBanner, printResults, printCompactResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
+import { getChangedMarkdownFiles } from './diff.mjs';
 import {
   generateJUnitReport,
   generateSarifReport,
@@ -50,7 +51,11 @@ function printHelp() {
 
   ${y('SCAN')}
     --dir <path>             Scan .md files recursively in directory
+    --diff                   Only scan git-changed .md files ${d('(vs HEAD)')}
+    --base <ref>             Base git ref for --diff ${d('(default: HEAD)')}
+    --staged                 Only scan git-staged .md files
     --strict                 Treat warnings as errors
+    --min-score <n>          Fail if health score < n ${d('(0-100)')}
     --max-line-length <n>    Max line length ${d('(default: 160)')}
     --config <path>          Config file ${d('(default: .doclify-guardrail.json)')}
     --rules <path>           Custom regex rules from JSON file
@@ -74,6 +79,7 @@ function printHelp() {
     --badge [path]           SVG health badge ${d('(default: doclify-badge.svg)')}
     --badge-label <text>     Badge label ${d('(default: "docs health")')}
     --json                   Output raw JSON to stdout
+    --format <mode>          Output format: ${d('default, compact')}
 
   ${y('SETUP')}
     init                     Generate a .doclify-guardrail.json config
@@ -86,12 +92,17 @@ function printHelp() {
     --debug                  Show debug info
     -h, --help               Show this help
 
+  ${y('WATCH')}
+    --watch                  Watch for file changes and re-scan
+
   ${y('EXAMPLES')}
     $ doclify README.md
     $ doclify docs/ --strict --check-links
     $ doclify --dir src/ --report --badge
     $ doclify docs/ --fix --dry-run
     $ doclify . --json > results.json
+    $ doclify --diff --staged --strict
+    $ doclify docs/ --min-score 80
 
   ${y('EXIT CODES')}
     0  PASS ${d('— all files clean')}
@@ -145,7 +156,13 @@ function parseArgs(argv) {
     dryRun: false,
     json: false,
     force: false,
-    ascii: false
+    ascii: false,
+    diff: false,
+    base: 'HEAD',
+    staged: false,
+    minScore: null,
+    format: 'default',
+    watch: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -253,6 +270,58 @@ function parseArgs(argv) {
 
     if (a === '--ascii') {
       args.ascii = true;
+      continue;
+    }
+
+    if (a === '--diff') {
+      args.diff = true;
+      continue;
+    }
+
+    if (a === '--base') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --base');
+      }
+      args.base = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--staged') {
+      args.staged = true;
+      continue;
+    }
+
+    if (a === '--min-score') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --min-score');
+      }
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 100) {
+        throw new Error(`Invalid --min-score: ${value} (must be 0-100)`);
+      }
+      args.minScore = parsed;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--format') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --format');
+      }
+      if (!['default', 'compact'].includes(value)) {
+        throw new Error(`Invalid --format: ${value} (must be: default, compact)`);
+      }
+      args.format = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--watch') {
+      args.watch = true;
       continue;
     }
 
@@ -373,6 +442,24 @@ function parseArgs(argv) {
   return args;
 }
 
+function findParentConfigs(startDir) {
+  const configs = [];
+  const configName = '.doclify-guardrail.json';
+  let dir = path.resolve(startDir);
+  const root = path.parse(dir).root;
+
+  while (dir !== root) {
+    const configPath = path.join(dir, configName);
+    if (fs.existsSync(configPath)) {
+      configs.unshift(configPath); // parent configs first
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return configs;
+}
+
 function resolveOptions(args) {
   const cfg = parseConfigFile(args.configPath);
   const maxLineLength = Number(args.maxLineLength ?? cfg.maxLineLength ?? 160);
@@ -399,6 +486,44 @@ function resolveOptions(args) {
     exclude,
     configPath: args.configPath,
     configLoaded: fs.existsSync(args.configPath)
+  };
+}
+
+/**
+ * Resolve options for a specific file, merging parent config if available.
+ * Returns overridden options if a closer config is found in the file's directory.
+ */
+function resolveFileOptions(filePath, baseResolved, args) {
+  const fileDir = path.dirname(path.resolve(filePath));
+  const baseDir = path.dirname(args.configPath);
+
+  // Skip if the file is in the same directory as the base config
+  if (fileDir === baseDir) return baseResolved;
+
+  const closestConfig = path.join(fileDir, '.doclify-guardrail.json');
+  if (!fs.existsSync(closestConfig) || closestConfig === args.configPath) return baseResolved;
+
+  // Merge: closest config overrides base config
+  const localCfg = parseConfigFile(closestConfig);
+  const maxLineLength = Number(localCfg.maxLineLength ?? baseResolved.maxLineLength);
+  const strict = localCfg.strict !== undefined ? Boolean(localCfg.strict) : baseResolved.strict;
+  const localIgnore = Array.isArray(localCfg.ignoreRules) ? localCfg.ignoreRules : [];
+  const ignoreRules = new Set([...baseResolved.ignoreRules, ...localIgnore]);
+  const checkFrontmatter = localCfg.checkFrontmatter !== undefined ? Boolean(localCfg.checkFrontmatter) : baseResolved.checkFrontmatter;
+  const localAllowList = Array.isArray(localCfg.linkAllowList) ? localCfg.linkAllowList : [];
+  const linkAllowList = [...baseResolved.linkAllowList, ...localAllowList];
+  const localExclude = Array.isArray(localCfg.exclude) ? localCfg.exclude : [];
+  const exclude = [...baseResolved.exclude, ...localExclude];
+
+  return {
+    maxLineLength,
+    strict,
+    ignoreRules,
+    checkFrontmatter,
+    linkAllowList,
+    exclude,
+    configPath: closestConfig,
+    configLoaded: true
   };
 }
 
@@ -535,11 +660,22 @@ async function runCli(argv = process.argv.slice(2)) {
   setAsciiMode(args.ascii);
 
   let filePaths;
-  try {
-    filePaths = resolveFileList(args);
-  } catch (err) {
-    console.error(`Error: ${err.message}`);
-    return 2;
+
+  // Diff/staged mode: only scan git-changed files
+  if (args.diff || args.staged) {
+    try {
+      filePaths = getChangedMarkdownFiles({ base: args.base, staged: args.staged });
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+      return 2;
+    }
+  } else {
+    try {
+      filePaths = resolveFileList(args);
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+      return 2;
+    }
   }
 
   let resolved;
@@ -577,6 +713,77 @@ async function runCli(argv = process.argv.slice(2)) {
       console.error(`Custom rules error: ${err.message}`);
       return 2;
     }
+  }
+
+  // Watch mode: monitor files and re-scan on change
+  if (args.watch) {
+    const watchDir = args.dir || args.files[0] || '.';
+    const watchPath = path.resolve(watchDir);
+    console.error('');
+    console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim(`v${VERSION}`)}`);
+    console.error('');
+    log(c.cyan(icons.info), `Watching ${c.bold(watchPath)} for changes... ${c.dim('(Ctrl+C to stop)')}`);
+    console.error('');
+
+    let debounceTimer = null;
+
+    const runScan = async (changedFile) => {
+      const scanPaths = changedFile ? [changedFile] : filePaths;
+      const validPaths = scanPaths.filter(fp => fs.existsSync(fp));
+      if (validPaths.length === 0) return;
+
+      const start = process.hrtime.bigint();
+      const results = [];
+      const errors = [];
+
+      for (const fp of validPaths) {
+        try {
+          const content = fs.readFileSync(fp, 'utf8');
+          const relPath = toRelativePath(fp);
+          const analysis = checkMarkdown(content, {
+            maxLineLength: resolved.maxLineLength,
+            filePath: relPath,
+            customRules,
+            checkFrontmatter: resolved.checkFrontmatter,
+            checkInlineHtml: Boolean(args.checkInlineHtml)
+          });
+          results.push(buildFileResult(fp, analysis, { strict: resolved.strict, ignoreRules: resolved.ignoreRules }));
+        } catch (err) {
+          errors.push({ file: toRelativePath(fp), error: err.message });
+        }
+      }
+
+      const el = Number(process.hrtime.bigint() - start) / 1e9;
+      const out = buildOutput(results, errors, { strict: resolved.strict }, el, { enabled: false, dryRun: false, filesChanged: 0, replacements: 0, ambiguousSkipped: [] });
+
+      if (args.format === 'compact') {
+        printCompactResults(out);
+      } else {
+        printResults(out);
+      }
+    };
+
+    // Initial scan
+    await runScan();
+
+    const { watch } = await import('node:fs');
+    try {
+      watch(watchPath, { recursive: true }, (eventType, filename) => {
+        if (!filename || !filename.endsWith('.md')) return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const fullPath = path.resolve(watchPath, filename);
+          log(c.dim(icons.info), c.dim(`Changed: ${filename}`));
+          runScan(fullPath);
+        }, 300);
+      });
+    } catch (err) {
+      console.error(`Watch error: ${err.message}`);
+      return 2;
+    }
+
+    // Keep process alive
+    await new Promise(() => {});
   }
 
   printBanner(filePaths.length, VERSION);
@@ -664,11 +871,12 @@ async function runCli(argv = process.argv.slice(2)) {
       }
 
       const relPath = toRelativePath(filePath);
+      const fileOpts = resolveFileOptions(filePath, resolved, args);
       const analysis = checkMarkdown(content, {
-        maxLineLength: resolved.maxLineLength,
+        maxLineLength: fileOpts.maxLineLength,
         filePath: relPath,
         customRules,
-        checkFrontmatter: resolved.checkFrontmatter,
+        checkFrontmatter: fileOpts.checkFrontmatter,
         checkInlineHtml: Boolean(args.checkInlineHtml)
       });
 
@@ -687,7 +895,7 @@ async function runCli(argv = process.argv.slice(2)) {
         analysis.summary.warnings = analysis.warnings.length;
       }
 
-      fileResults.push(buildFileResult(filePath, analysis, { strict: resolved.strict, ignoreRules: resolved.ignoreRules }));
+      fileResults.push(buildFileResult(filePath, analysis, { strict: fileOpts.strict, ignoreRules: fileOpts.ignoreRules }));
     } catch (err) {
       fileErrors.push({ file: toRelativePath(filePath), error: err.message });
     }
@@ -700,7 +908,11 @@ async function runCli(argv = process.argv.slice(2)) {
     console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
   }
 
-  printResults(output);
+  if (args.format === 'compact') {
+    printCompactResults(output);
+  } else {
+    printResults(output);
+  }
 
   if (args.fix && fixSummary.replacements > 0) {
     const action = args.dryRun ? 'Would fix' : 'Fixed';
@@ -756,6 +968,12 @@ async function runCli(argv = process.argv.slice(2)) {
     }
   }
 
+  // Quality gate: --min-score
+  if (args.minScore !== null && output.summary.avgHealthScore < args.minScore) {
+    log(c.red(icons.fail), `Health score ${c.bold(String(output.summary.avgHealthScore))} is below minimum ${c.bold(String(args.minScore))}`);
+    return 1;
+  }
+
   return output.summary.status === 'PASS' ? 0 : 1;
 }
 
@@ -765,4 +983,4 @@ if (process.argv[1] && fs.realpathSync(process.argv[1]) === __filename) {
   process.exit(code);
 }
 
-export { checkMarkdown, parseArgs, resolveOptions, runCli, buildFileResult, buildOutput };
+export { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions, findParentConfigs, runCli, buildFileResult, buildOutput };

@@ -11,12 +11,16 @@ Works everywhere Node.js 20+ runs.
 
 | | Doclify | markdownlint |
 |--|---------|-------------|
-| Style rules | 26 built-in | 59 |
+| Style rules | 31 built-in | 59 |
 | Content checks | placeholders, headings, images | No |
 | Dead link checker | Built-in (`--check-links`) | No |
 | Doc freshness | Built-in (`--check-freshness`) | No |
 | Health score | 0-100 per file + average | No |
 | Auto-fix | 13 fixers (style + semantic) | 31 (style only) |
+| Git diff mode | Built-in (`--diff`, `--staged`) | No |
+| Watch mode | Built-in (`--watch`) | No |
+| Quality gate | `--min-score` + `--strict` | No |
+| Programmatic API | `import { lint, fix, score }` | No |
 | SARIF / JUnit / Badge | Built-in | Plugins |
 | Dependencies | **Zero** | 50+ |
 | Inline suppressions | `disable-next-line`, `disable/enable`, `disable-file` | `disable/enable` |
@@ -48,6 +52,18 @@ doclify docs/ --fix --dry-run
 # CI pipeline: strict + JUnit + SARIF + badge
 doclify docs/ --strict --junit --sarif --badge
 
+# Git diff mode: scan only changed files
+doclify --diff --staged --strict
+
+# Quality gate: fail if score below 80
+doclify docs/ --min-score 80
+
+# Watch mode: re-scan on file changes
+doclify docs/ --watch
+
+# Compact output (one line per finding)
+doclify docs/ --format compact
+
 # JSON output for tooling
 doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
@@ -68,7 +84,11 @@ If no files are specified, scans the current directory.
 | Flag | Description |
 |------|-------------|
 | `--dir <path>` | Scan `.md` files recursively in directory |
+| `--diff` | Only scan git-changed `.md` files (vs HEAD) |
+| `--base <ref>` | Base git ref for `--diff` (default: HEAD) |
+| `--staged` | Only scan git-staged `.md` files |
 | `--strict` | Treat warnings as errors |
+| `--min-score <n>` | Fail if health score is below n (0-100) |
 | `--max-line-length <n>` | Max line length (default: 160) |
 | `--config <path>` | Config file (default: `.doclify-guardrail.json`) |
 | `--rules <path>` | Custom regex rules from JSON file |
@@ -102,6 +122,7 @@ If no files are specified, scans the current directory.
 | `--badge [path]` | SVG health badge (default: `doclify-badge.svg`) |
 | `--badge-label <text>` | Badge label (default: `docs health`) |
 | `--json` | Output raw JSON to stdout |
+| `--format <mode>` | Output format: `default`, `compact` |
 
 #### Setup
 
@@ -114,6 +135,7 @@ If no files are specified, scans the current directory.
 
 | Flag | Description |
 |------|-------------|
+| `--watch` | Watch for file changes and re-scan |
 | `--list-rules` | List all built-in rules |
 | `--no-color` | Disable colored output |
 | `--ascii` | Use ASCII icons for CI without UTF-8 |
@@ -150,7 +172,7 @@ This creates `.doclify-guardrail.json`:
 
 CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 
-## Built-in Rules (26)
+## Built-in Rules (31)
 
 ### Content Rules
 
@@ -187,6 +209,11 @@ CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAl
 | `no-space-in-emphasis` | warning | Yes |
 | `no-space-in-links` | warning | Yes |
 | `no-inline-html` | warning | No (opt-in via `--check-inline-html`) |
+| `no-empty-sections` | warning | No |
+| `heading-increment` | warning | No |
+| `no-duplicate-links` | warning | No |
+| `list-marker-consistency` | warning | No |
+| `link-title-style` | warning | No |
 
 All rules respect code block exclusion — content inside fenced code blocks and inline code is never flagged.
 
@@ -234,6 +261,73 @@ This section is suppressed.
 <!-- doclify-disable-file placeholder -->
 This entire file ignores placeholder warnings.
 ```
+
+## Git Diff Mode
+
+Scan only files changed in git, perfect for pre-commit hooks and CI on pull requests:
+
+```bash
+# Scan files changed vs HEAD
+doclify --diff
+
+# Scan files changed vs a specific branch
+doclify --diff --base main
+
+# Scan only staged files (pre-commit hook)
+doclify --staged --strict --ascii
+```
+
+## Watch Mode
+
+Monitor files and re-scan automatically on save:
+
+```bash
+doclify docs/ --watch --strict
+```
+
+Output is incremental: only changed files are re-scanned with a 300ms debounce.
+
+## Quality Gate
+
+Fail the scan if the health score drops below a threshold:
+
+```bash
+doclify docs/ --min-score 80 --strict
+```
+
+Exit code 1 if the average health score is below 80.
+
+## Programmatic API
+
+Use doclify as a library in your own tools:
+
+```javascript
+import { lint, fix, score, RULE_CATALOG } from 'doclify-guardrail/api';
+
+const result = lint('# Hello\n\nWorld\n');
+// { errors: [], warnings: [], healthScore: 100, pass: true }
+
+const fixed = fix('##Bad heading\n\nContent.  \n');
+// { content: '## Bad heading\n\nContent.\n', modified: true, changes: [...] }
+
+const s = score({ errors: 0, warnings: 3 });
+// 89
+```
+
+## Hierarchical Config
+
+Place `.doclify-guardrail.json` in subdirectories for local overrides. Child configs merge with parent configs:
+
+```text
+project/
+  .doclify-guardrail.json      (base config)
+  docs/
+    .doclify-guardrail.json    (overrides for docs/)
+    api/
+      .doclify-guardrail.json  (overrides for docs/api/)
+```
+
+Arrays (`ignoreRules`, `exclude`, `linkAllowList`) are merged. Scalar values are overridden.
 
 ## Doc Health Score
 
@@ -355,7 +449,7 @@ doclify docs/ --strict --junit --sarif --badge --report
 ### Run the Test Suite
 
 ```bash
-# Run all 116 tests
+# Run all 137 tests
 node --test
 
 # Run with verbose output
@@ -365,7 +459,7 @@ node --test --test-reporter spec
 ### Verify All Rules Work
 
 ```bash
-# List all 26 built-in rules
+# List all 31 built-in rules
 doclify --list-rules
 
 # Scan with all optional checks enabled
@@ -377,11 +471,13 @@ doclify docs/ --strict --check-links --check-freshness --check-frontmatter --che
 ```text
 src/
   index.mjs        CLI orchestrator, arg parsing, main flow
-  checker.mjs      26-rule lint engine + inline suppressions
+  checker.mjs      31-rule lint engine + inline suppressions
   fixer.mjs        13 auto-fix functions (insecure links + formatting)
+  diff.mjs         Git diff integration (--diff, --staged)
+  api.mjs          Programmatic API (lint, fix, score)
   links.mjs        Dead link checker (HTTP + local file paths)
   quality.mjs      Health score + freshness checker
-  colors.mjs       ANSI colors + ASCII mode + icons
+  colors.mjs       ANSI colors + ASCII mode + compact output
   ci-output.mjs    JUnit XML, SARIF v2.1.0, SVG badge generators
   report.mjs       Markdown report generator
   glob.mjs         File discovery with glob patterns
