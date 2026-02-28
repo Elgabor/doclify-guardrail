@@ -89,6 +89,7 @@ function stripInlineCode(line) {
 const SUPPRESS_NEXT_LINE_RX = /<!--\s*doclify-disable-next-line\s*(.*?)\s*-->/;
 const SUPPRESS_BLOCK_START_RX = /<!--\s*doclify-disable\s*(.*?)\s*-->/;
 const SUPPRESS_BLOCK_END_RX = /<!--\s*doclify-enable\s*(.*?)\s*-->/;
+const SUPPRESS_FILE_RX = /<!--\s*doclify-disable-file\s*(.*?)\s*-->/;
 
 function parseRuleIds(raw) {
   const trimmed = raw.trim();
@@ -172,6 +173,19 @@ function isSuppressed(suppressions, finding) {
 function checkMarkdown(rawContent, opts = {}) {
   const maxLineLength = Number(opts.maxLineLength ?? DEFAULTS.maxLineLength);
   const filePath = opts.filePath || undefined;
+
+  // File-level suppression: <!-- doclify-disable-file [rules] -->
+  const fileDisableMatch = rawContent.match(SUPPRESS_FILE_RX);
+  let fileDisabledRules = null;
+  if (fileDisableMatch) {
+    const ruleIds = parseRuleIds(fileDisableMatch[1]);
+    if (ruleIds === null) {
+      // All rules disabled — short-circuit
+      return { errors: [], warnings: [], summary: { errors: 0, warnings: 0 } };
+    }
+    fileDisabledRules = new Set(ruleIds);
+  }
+
   const errors = [];
   const warnings = [];
 
@@ -355,9 +369,11 @@ function checkMarkdown(rawContent, opts = {}) {
     });
   }
 
-  // Apply inline suppressions
-  const filteredErrors = errors.filter(f => !isSuppressed(suppressions, f));
-  const filteredWarnings = warnings.filter(f => !isSuppressed(suppressions, f));
+  // Apply inline suppressions + file-level suppression
+  const isFileSuppressed = (f) =>
+    fileDisabledRules && (fileDisabledRules.has(f.code));
+  const filteredErrors = errors.filter(f => !isSuppressed(suppressions, f) && !isFileSuppressed(f));
+  const filteredWarnings = warnings.filter(f => !isSuppressed(suppressions, f) && !isFileSuppressed(f));
 
   return {
     errors: filteredErrors,

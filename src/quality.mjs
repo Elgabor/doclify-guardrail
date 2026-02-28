@@ -7,7 +7,11 @@ function clamp(value, min, max) {
 }
 
 function computeDocHealthScore({ errors = 0, warnings = 0 }) {
-  const raw = 100 - (errors * 25) - (warnings * 8);
+  const errorPenalty = errors * 20;
+  const warningPenalty = warnings > 0
+    ? 5 * Math.sqrt(warnings) + (warnings * 2)
+    : 0;
+  const raw = 100 - errorPenalty - warningPenalty;
   return clamp(Math.round(raw), 0, 100);
 }
 

@@ -9,11 +9,16 @@ const CODES = {
 };
 
 let enabled = true;
+let asciiMode = false;
 
 function initColors(noColorFlag) {
   if (noColorFlag || !process.stderr.isTTY || process.env.NO_COLOR !== undefined) {
     enabled = false;
   }
+}
+
+function setAsciiMode(flag) {
+  asciiMode = Boolean(flag);
 }
 
 function wrap(code, text) {
@@ -30,6 +35,14 @@ const c = {
   bold: (t) => wrap(CODES.bold, t)
 };
 
+const icons = {
+  get pass() { return asciiMode ? '[PASS]' : '\u2713'; },
+  get fail() { return asciiMode ? '[FAIL]' : '\u2717'; },
+  get warn() { return asciiMode ? '[WARN]' : '\u26A0'; },
+  get info() { return asciiMode ? '[INFO]' : '\u2139'; },
+  get dot()  { return asciiMode ? '-' : '\u00B7'; }
+};
+
 function log(icon, message) {
   console.error(`  ${icon} ${message}`);
 }
@@ -38,12 +51,13 @@ function printBanner(fileCount, version) {
   console.error('');
   console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim(`v${version || '?'}`)}`);
   console.error('');
-  log(c.cyan('ℹ'), `Scanning ${c.bold(String(fileCount))} file${fileCount === 1 ? '' : 's'}...`);
+  log(c.cyan(icons.info), `Scanning ${c.bold(String(fileCount))} file${fileCount === 1 ? '' : 's'}...`);
 }
 
 function printResults(output) {
+  const strict = output.strict;
   for (const fileResult of output.files) {
-    const icon = fileResult.pass ? c.green('\u2713') : c.red('\u2717');
+    const icon = fileResult.pass ? c.green(icons.pass) : c.red(icons.fail);
     const fileName = c.bold(fileResult.file);
     const score = fileResult.summary.healthScore != null ? c.dim(` [${fileResult.summary.healthScore}/100]`) : '';
     console.error(`  ${icon} ${fileName}${score}`);
@@ -55,16 +69,21 @@ function printResults(output) {
 
     for (const f of allFindings) {
       const lineStr = f.line != null ? c.dim(`:${f.line}`) : '';
-      const sevLabel = f.severity === 'error'
-        ? c.red(`\u2717 ${f.severity}`)
-        : c.yellow(`\u26A0 ${f.severity}`);
+      let sevLabel;
+      if (f.severity === 'error') {
+        sevLabel = c.red(`${icons.fail} error`);
+      } else if (strict) {
+        sevLabel = c.red(`${icons.fail} error [strict]`);
+      } else {
+        sevLabel = c.yellow(`${icons.warn} warning`);
+      }
       console.error(`      ${sevLabel}  ${c.cyan(f.code)}${lineStr}  ${f.message}`);
     }
   }
 
   if (output.fileErrors) {
     for (const fe of output.fileErrors) {
-      console.error(`  ${c.red('\u2717')} ${c.bold(fe.file)}  ${c.red(fe.error)}`);
+      console.error(`  ${c.red(icons.fail)} ${c.bold(fe.file)}  ${c.red(fe.error)}`);
     }
   }
 
@@ -72,11 +91,11 @@ function printResults(output) {
 
   const s = output.summary;
   const parts = [];
-  if (s.filesPassed > 0) parts.push(c.green(`\u2713 ${s.filesPassed} passed`));
-  if (s.filesFailed > 0) parts.push(c.red(`\u2717 ${s.filesFailed} failed`));
+  if (s.filesPassed > 0) parts.push(c.green(`${icons.pass} ${s.filesPassed} passed`));
+  if (s.filesFailed > 0) parts.push(c.red(`${icons.fail} ${s.filesFailed} failed`));
   if (s.filesErrored > 0) parts.push(c.red(`${s.filesErrored} errored`));
   console.error(
-    `  ${parts.join(c.dim(' \u00B7 '))} ${c.dim('\u00B7')} ${s.filesScanned} files scanned in ${c.dim(`${s.elapsed}s`)}`
+    `  ${parts.join(c.dim(` ${icons.dot} `))} ${c.dim(icons.dot)} ${s.filesScanned} files scanned in ${c.dim(`${s.elapsed}s`)}`
   );
 
   const scoreValue = s.healthScore != null ? s.healthScore : s.avgHealthScore;
@@ -93,4 +112,4 @@ function printResults(output) {
   console.error('');
 }
 
-export { initColors, c, log, printBanner, printResults };
+export { initColors, setAsciiMode, icons, c, log, printBanner, printResults };

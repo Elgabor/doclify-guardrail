@@ -6,7 +6,7 @@ import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
 import { generateReport } from './report.mjs';
 import { loadCustomRules } from './rules-loader.mjs';
-import { initColors, c, log, printBanner, printResults } from './colors.mjs';
+import { initColors, setAsciiMode, icons, c, log, printBanner, printResults } from './colors.mjs';
 import { checkDeadLinks } from './links.mjs';
 import { autoFixInsecureLinks } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
@@ -17,6 +17,19 @@ import {
 } from './ci-output.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function writeJsonToStdout(data) {
+  return new Promise((resolve, reject) => {
+    const json = JSON.stringify(data, null, 2) + '\n';
+    const flushed = process.stdout.write(json, 'utf8');
+    if (flushed) {
+      resolve();
+    } else {
+      process.stdout.once('drain', resolve);
+      process.stdout.once('error', reject);
+    }
+  });
+}
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 const VERSION = pkg.version;
 
@@ -64,10 +77,12 @@ function printHelp() {
 
   ${y('SETUP')}
     init                     Generate a .doclify-guardrail.json config
+    init --force             Overwrite existing config
 
   ${y('OTHER')}
     --list-rules             List all built-in rules
     --no-color               Disable colored output
+    --ascii                  Use ASCII icons ${d('(for CI without UTF-8)')}
     --debug                  Show debug info
     -h, --help               Show this help
 
@@ -127,7 +142,9 @@ function parseArgs(argv) {
     linkAllowList: [],
     fix: false,
     dryRun: false,
-    json: false
+    json: false,
+    force: false,
+    ascii: false
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -220,6 +237,16 @@ function parseArgs(argv) {
 
     if (a === '--dry-run') {
       args.dryRun = true;
+      continue;
+    }
+
+    if (a === '--force') {
+      args.force = true;
+      continue;
+    }
+
+    if (a === '--ascii') {
+      args.ascii = true;
       continue;
     }
 
@@ -354,6 +381,8 @@ function resolveOptions(args) {
   const checkFrontmatter = Boolean(args.checkFrontmatter || cfg.checkFrontmatter || args.checkFreshness || cfg.checkFreshness);
   const cfgAllowList = Array.isArray(cfg.linkAllowList) ? cfg.linkAllowList : [];
   const linkAllowList = [...args.linkAllowList, ...cfgAllowList];
+  const cfgExclude = Array.isArray(cfg.exclude) ? cfg.exclude : [];
+  const exclude = [...args.exclude, ...cfgExclude];
 
   return {
     maxLineLength,
@@ -361,6 +390,7 @@ function resolveOptions(args) {
     ignoreRules,
     checkFrontmatter,
     linkAllowList,
+    exclude,
     configPath: args.configPath,
     configLoaded: fs.existsSync(args.configPath)
   };
@@ -450,6 +480,7 @@ async function runCli(argv = process.argv.slice(2)) {
 
   if (args.listRules) {
     initColors(args.noColor);
+    setAsciiMode(args.ascii);
     console.log('');
     console.log(`  ${c.bold('Built-in rules')}`);
     console.log('');
@@ -463,11 +494,13 @@ async function runCli(argv = process.argv.slice(2)) {
 
   if (args.init) {
     initColors(args.noColor);
+    setAsciiMode(args.ascii);
     const configFile = '.doclify-guardrail.json';
     const configPath = path.resolve(configFile);
 
-    if (fs.existsSync(configPath)) {
-      console.error(`  ${c.yellow('⚠')} ${c.bold(configFile)} already exists. Remove it first to re-initialize.`);
+    const configExists = fs.existsSync(configPath);
+    if (configExists && !args.force) {
+      console.error(`  ${c.yellow(icons.warn)} ${c.bold(configFile)} already exists. Use ${c.bold('--force')} to overwrite.`);
       return 1;
     }
 
@@ -475,6 +508,7 @@ async function runCli(argv = process.argv.slice(2)) {
       strict: false,
       maxLineLength: 160,
       ignoreRules: [],
+      exclude: [],
       checkLinks: false,
       checkFreshness: false,
       checkFrontmatter: false,
@@ -483,7 +517,7 @@ async function runCli(argv = process.argv.slice(2)) {
 
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2) + '\n', 'utf8');
     console.error('');
-    console.error(`  ${c.green('✓')} Created ${c.bold(configFile)}`);
+    console.error(`  ${c.green(icons.pass)} ${configExists ? 'Overwrote' : 'Created'} ${c.bold(configFile)}`);
     console.error('');
     console.error(`  ${c.dim('Edit the file to customise rules, then run:')}`)
     console.error(`  ${c.dim('$')} ${c.cyan('doclify .')}`);
@@ -492,6 +526,7 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   initColors(args.noColor);
+  setAsciiMode(args.ascii);
 
   let filePaths;
   try {
@@ -501,10 +536,18 @@ async function runCli(argv = process.argv.slice(2)) {
     return 2;
   }
 
-  if (args.exclude.length > 0) {
+  let resolved;
+  try {
+    resolved = resolveOptions(args);
+  } catch (err) {
+    console.error(err.message);
+    return 2;
+  }
+
+  if (resolved.exclude.length > 0) {
     filePaths = filePaths.filter(fp => {
       const rel = path.relative(process.cwd(), fp);
-      return !args.exclude.some(pattern => {
+      return !resolved.exclude.some(pattern => {
         if (pattern.includes('*')) {
           const regex = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
           return regex.test(rel);
@@ -517,14 +560,6 @@ async function runCli(argv = process.argv.slice(2)) {
 
   if (filePaths.length === 0) {
     console.error('Error: no markdown files found.');
-    return 2;
-  }
-
-  let resolved;
-  try {
-    resolved = resolveOptions(args);
-  } catch (err) {
-    console.error(err.message);
     return 2;
   }
 
@@ -541,7 +576,7 @@ async function runCli(argv = process.argv.slice(2)) {
   printBanner(filePaths.length, VERSION);
 
   if (resolved.configLoaded) {
-    log(c.cyan('ℹ'), `Loaded config from ${c.dim(resolved.configPath)}`);
+    log(c.cyan(icons.info), `Loaded config from ${c.dim(resolved.configPath)}`);
   }
 
   const startTime = process.hrtime.bigint();
@@ -557,7 +592,17 @@ async function runCli(argv = process.argv.slice(2)) {
 
   let customRulesCount = customRules.length;
   if (customRulesCount > 0) {
-    log(c.cyan('ℹ'), `Loaded ${c.bold(String(customRulesCount))} custom rules from ${c.dim(args.rules)}`);
+    log(c.cyan(icons.info), `Loaded ${c.bold(String(customRulesCount))} custom rules from ${c.dim(args.rules)}`);
+  }
+
+  if (resolved.ignoreRules.size > 0) {
+    const knownIds = new Set(RULE_CATALOG.map(r => r.id));
+    for (const id of customRules) knownIds.add(id.id);
+    for (const id of resolved.ignoreRules) {
+      if (!knownIds.has(id)) {
+        log(c.yellow(icons.warn), `Unknown rule "${c.bold(id)}" in --ignore-rules (ignored)`);
+      }
+    }
   }
 
   console.error('');
@@ -565,7 +610,7 @@ async function runCli(argv = process.argv.slice(2)) {
   for (const filePath of filePaths) {
     const rel = path.relative(process.cwd(), filePath);
     const shortPath = rel.startsWith('..') ? filePath : rel || filePath;
-    log(c.cyan('ℹ'), `Checking ${c.bold(shortPath)}...`);
+    log(c.cyan(icons.info), `Checking ${c.bold(shortPath)}...`);
 
     try {
       let content = fs.readFileSync(filePath, 'utf8');
@@ -638,21 +683,21 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.fix && fixSummary.replacements > 0) {
     const action = args.dryRun ? 'Would fix' : 'Fixed';
     log(
-      args.dryRun ? c.yellow('~') : c.green('✓'),
+      args.dryRun ? c.yellow('~') : c.green(icons.pass),
       `${action} ${c.bold(String(fixSummary.replacements))} insecure link${fixSummary.replacements === 1 ? '' : 's'} in ${c.bold(String(fixSummary.filesChanged))} file${fixSummary.filesChanged === 1 ? '' : 's'}${args.dryRun ? c.dim(' (dry-run, no files changed)') : ''}`
     );
   } else if (args.fix && fixSummary.replacements === 0) {
-    log(c.dim('ℹ'), c.dim('No insecure links to fix'));
+    log(c.dim(icons.info), c.dim('No insecure links to fix'));
   }
 
   if (args.json) {
-    console.log(JSON.stringify(output, null, 2));
+    await writeJsonToStdout(output);
   }
 
   if (args.report) {
     try {
       const reportPath = generateReport(output, { reportPath: args.report });
-      log(c.green('✓'), `Report written ${c.dim('→')} ${reportPath}`);
+      log(c.green(icons.pass), `Report written ${c.dim('→')} ${reportPath}`);
     } catch (err) {
       console.error(`Failed to write report: ${err.message}`);
       return 2;
@@ -662,7 +707,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.junit) {
     try {
       const junitPath = generateJUnitReport(output, { junitPath: args.junit });
-      log(c.green('✓'), `JUnit report written ${c.dim('→')} ${junitPath}`);
+      log(c.green(icons.pass), `JUnit report written ${c.dim('→')} ${junitPath}`);
     } catch (err) {
       console.error(`Failed to write JUnit report: ${err.message}`);
       return 2;
@@ -672,7 +717,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.sarif) {
     try {
       const sarifPath = generateSarifReport(output, { sarifPath: args.sarif });
-      log(c.green('✓'), `SARIF report written ${c.dim('→')} ${sarifPath}`);
+      log(c.green(icons.pass), `SARIF report written ${c.dim('→')} ${sarifPath}`);
     } catch (err) {
       console.error(`Failed to write SARIF report: ${err.message}`);
       return 2;
@@ -682,7 +727,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.badge) {
     try {
       const badge = generateBadge(output, { badgePath: args.badge, label: args.badgeLabel });
-      log(c.green('✓'), `Badge written ${c.dim('→')} ${badge.badgePath} ${c.dim(`(score ${badge.score})`)}`);
+      log(c.green(icons.pass), `Badge written ${c.dim('→')} ${badge.badgePath} ${c.dim(`(score ${badge.score})`)}`);
     } catch (err) {
       console.error(`Failed to write badge: ${err.message}`);
       return 2;

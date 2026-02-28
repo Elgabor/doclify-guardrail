@@ -14,7 +14,7 @@ function extractLinks(content) {
     const line = stripInlineCode(lines[idx]);
     const lineNumber = idx + 1;
 
-    const inlineRx = /\[[^\]]*\]\(([^)]+)\)/g;
+    const inlineRx = /\[[^\]]*\]\(([^()\s]*(?:\([^)]*\)[^()\s]*)*)\)/g;
     let inline;
     while ((inline = inlineRx.exec(line)) !== null) {
       links.push({ url: inline[1].trim(), line: lineNumber, kind: 'inline' });
@@ -33,10 +33,10 @@ function extractLinks(content) {
     }
   }
 
-  // Remove trailing punctuation from bare URL captures
+  // Remove trailing punctuation from bare/reference URL captures (not inline — already delimited by markdown syntax)
   return links.map((l) => ({
     ...l,
-    url: l.url.replace(/[),.;!?]+$/g, '')
+    url: l.kind === 'inline' ? l.url : l.url.replace(/[),.;!?]+$/g, '')
   }));
 }
 

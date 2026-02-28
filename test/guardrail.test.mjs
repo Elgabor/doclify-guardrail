@@ -11,7 +11,7 @@ import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks } from '../src/fixer.mjs';
-import { checkDeadLinks } from '../src/links.mjs';
+import { checkDeadLinks, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import {
   computeHealthScore,
@@ -673,11 +673,14 @@ test('CLI: --check-links fails on missing local link', () => {
 
 // === New features: health score + freshness ===
 
-test('computeDocHealthScore: clamps to 0..100', () => {
+test('computeDocHealthScore: clamps to 0..100 with diminishing warning penalty', () => {
   assert.equal(computeDocHealthScore({ errors: 0, warnings: 0 }), 100);
-  assert.equal(computeDocHealthScore({ errors: 1, warnings: 0 }), 75);
-  assert.equal(computeDocHealthScore({ errors: 0, warnings: 2 }), 84);
+  assert.equal(computeDocHealthScore({ errors: 1, warnings: 0 }), 80);
+  assert.equal(computeDocHealthScore({ errors: 0, warnings: 2 }), 89);
   assert.equal(computeDocHealthScore({ errors: 10, warnings: 10 }), 0);
+  // Many warnings alone should not zero the score
+  const manyWarnings = computeDocHealthScore({ errors: 0, warnings: 13 });
+  assert.ok(manyWarnings > 40, `13 warnings should score > 40, got ${manyWarnings}`);
 });
 
 test('parseArgs: accepts --check-freshness flag', () => {
@@ -895,6 +898,70 @@ test('inline suppression: doclify-disable / doclify-enable works for TODO block 
   assert.equal(todoWarnings[0].line, 6);
 });
 
+// === autoFixInsecureLinks code block awareness ===
+
+test('autoFixInsecureLinks: does not modify http:// inside fenced code block', () => {
+  const md = '# Title\n```bash\ncurl http://internal-server/api\n```\nVisit http://example.com';
+  const fixed = autoFixInsecureLinks(md);
+  assert.ok(fixed.content.includes('http://internal-server/api'), 'URL inside fenced block must remain unchanged');
+  assert.ok(fixed.content.includes('https://example.com'), 'URL outside block must be upgraded');
+  assert.equal(fixed.changes.length, 1);
+});
+
+test('autoFixInsecureLinks: does not modify http:// inside inline code', () => {
+  const md = '# Title\nUse `http://example.com/api` as example\nVisit http://example.com';
+  const fixed = autoFixInsecureLinks(md);
+  assert.ok(fixed.content.includes('`http://example.com/api`'), 'URL inside inline code must remain unchanged');
+  assert.ok(fixed.content.includes('Visit https://example.com'), 'URL outside inline code must be upgraded');
+});
+
+test('autoFixInsecureLinks: does not modify http:// inside tilde fenced block', () => {
+  const md = '# Title\n~~~\nhttp://example-internal.com\n~~~\nhttp://example.com';
+  const fixed = autoFixInsecureLinks(md);
+  assert.ok(fixed.content.includes('http://example-internal.com'), 'URL inside tilde block must remain unchanged');
+  assert.ok(fixed.content.includes('https://example.com'), 'URL outside block must be upgraded');
+});
+
+test('CLI: --json output is valid JSON even for many files', () => {
+  const tmp = makeTempDir();
+  for (let i = 0; i < 20; i++) {
+    fs.writeFileSync(path.join(tmp, `doc${i}.md`), `# Title ${i}\nTODO fix this\n[link](http://example-${i}.com)\n${'x'.repeat(200)}`, 'utf8');
+  }
+  const run = spawnSync(process.execPath, [CLI_PATH, tmp, '--json'], { encoding: 'utf8' });
+  assert.doesNotThrow(() => JSON.parse(run.stdout), 'Large JSON output must be valid and complete');
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.files.length, 20, 'Must include all 20 files');
+});
+
+// === P1 UX fixes ===
+
+test('CLI: --strict promotes warning labels to "error [strict]" on stderr', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\nTODO fix this\n', 'utf8');
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--strict'], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  assert.ok(run.stderr.includes('error [strict]'), 'stderr should show "error [strict]" for promoted warnings');
+  assert.ok(!run.stderr.includes('\u26A0 warning'), 'stderr should not show "warning" label in strict mode');
+});
+
+test('CLI: --ignore-rules warns for unknown rule IDs on stderr', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n', 'utf8');
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--ignore-rules', 'nonexistent-rule'], { encoding: 'utf8' });
+  assert.ok(run.stderr.includes('Unknown rule'), 'stderr should warn about unknown rule ID');
+  assert.ok(run.stderr.includes('nonexistent-rule'), 'stderr should include the unknown rule name');
+});
+
+test('extractLinks: handles Wikipedia-style URLs with nested parentheses', () => {
+  const md = '# Title\n[Rust](https://en.wikipedia.org/wiki/Rust_(programming_language))';
+  const links = extractLinks(md);
+  const inlineLinks = links.filter(l => l.kind === 'inline');
+  assert.equal(inlineLinks.length, 1);
+  assert.equal(inlineLinks[0].url, 'https://en.wikipedia.org/wiki/Rust_(programming_language)');
+});
+
 test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', async () => {
   const server = http.createServer((_, res) => {
     res.statusCode = 500;
@@ -927,4 +994,87 @@ test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', a
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// ─── P2: init --force ──────────────────────────────────────────────────────
+
+test('init --force overwrites existing config', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-init-'));
+  const configPath = path.join(tmpDir, '.doclify-guardrail.json');
+  fs.writeFileSync(configPath, '{"strict": true}\n', 'utf8');
+
+  // Without --force → error
+  const r1 = spawnSync(process.execPath, [CLI_PATH, 'init'], { cwd: tmpDir, encoding: 'utf8' });
+  assert.equal(r1.status, 1);
+  assert.ok(r1.stderr.includes('--force'));
+
+  // With --force → success
+  const r2 = spawnSync(process.execPath, [CLI_PATH, 'init', '--force'], { cwd: tmpDir, encoding: 'utf8' });
+  assert.equal(r2.status, 0);
+  assert.ok(r2.stderr.includes('Overwrote'));
+
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  assert.equal(config.strict, false); // reset to default
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// ─── P2: exclude in config ─────────────────────────────────────────────────
+
+test('resolveOptions merges exclude from config and CLI', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-excl-'));
+  const configPath = path.join(tmpDir, '.doclify-guardrail.json');
+  fs.writeFileSync(configPath, JSON.stringify({ exclude: ['spec', 'worklog'] }), 'utf8');
+
+  const args = parseArgs(['docs/', '--exclude', 'vendor']);
+  args.configPath = configPath;
+  const resolved = resolveOptions(args);
+
+  assert.deepStrictEqual(resolved.exclude, ['vendor', 'spec', 'worklog']);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// ─── P2: disable-file suppression ──────────────────────────────────────────
+
+test('doclify-disable-file suppresses all rules', () => {
+  const content = '<!-- doclify-disable-file -->\nno heading here\nTODO something\n';
+  const result = checkMarkdown(content);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.warnings.length, 0);
+});
+
+test('doclify-disable-file with specific rules only suppresses those', () => {
+  const content = '<!-- doclify-disable-file line-length -->\n# Title\n' + 'x'.repeat(200) + '\n';
+  const result = checkMarkdown(content);
+  // single-h1 should NOT be suppressed (it passes), line-length SHOULD be suppressed
+  assert.equal(result.warnings.filter(w => w.code === 'line-length').length, 0);
+  assert.equal(result.errors.length, 0); // single-h1 passes (1 H1)
+});
+
+// ─── P2: --ascii output mode ───────────────────────────────────────────────
+
+test('--ascii flag replaces Unicode icons with ASCII labels', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-ascii-'));
+  const mdPath = path.join(tmpDir, 'test.md');
+  fs.writeFileSync(mdPath, '# Title\nSome content\n', 'utf8');
+
+  const result = spawnSync(process.execPath, [CLI_PATH, mdPath, '--ascii', '--no-color'], { encoding: 'utf8' });
+  assert.equal(result.status, 0);
+  assert.ok(result.stderr.includes('[PASS]'), 'should contain [PASS]');
+  assert.ok(result.stderr.includes('[INFO]'), 'should contain [INFO]');
+  assert.ok(!result.stderr.includes('\u2713'), 'should not contain Unicode checkmark');
+
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// ─── P2: init generates config with exclude field ──────────────────────────
+
+test('init generates config with exclude field', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-init2-'));
+  const r = spawnSync(process.execPath, [CLI_PATH, 'init'], { cwd: tmpDir, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+
+  const config = JSON.parse(fs.readFileSync(path.join(tmpDir, '.doclify-guardrail.json'), 'utf8'));
+  assert.ok(Array.isArray(config.exclude));
+  assert.equal(config.exclude.length, 0);
+  fs.rmSync(tmpDir, { recursive: true });
 });
