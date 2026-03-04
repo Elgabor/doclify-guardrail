@@ -21,6 +21,7 @@ import { computeDocHealthScore } from './quality.mjs';
  * @param {string} [opts.filePath='<input>']
  * @param {boolean} [opts.checkFrontmatter=false]
  * @param {boolean} [opts.checkInlineHtml=false]
+ * @param {string} [opts.absoluteFilePath] - Absolute file path for cross-file anchor checks
  * @param {Array}  [opts.customRules=[]]
  * @param {Set|string[]} [opts.ignoreRules=[]]
  * @returns {{ errors: object[], warnings: object[], healthScore: number, pass: boolean }}
@@ -29,6 +30,7 @@ function lint(content, opts = {}) {
   const {
     maxLineLength = 160,
     filePath = '<input>',
+    absoluteFilePath = undefined,
     checkFrontmatter = false,
     checkInlineHtml = false,
     customRules = [],
@@ -40,6 +42,7 @@ function lint(content, opts = {}) {
   const analysis = checkMarkdown(content, {
     maxLineLength,
     filePath,
+    absoluteFilePath,
     customRules,
     checkFrontmatter,
     checkInlineHtml

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "deterministic": {
+    "requireDeterminism": true,
+    "maxCrashRatePct": 0,
+    "maxP95RegressionPct": 20,
+    "maxP95RegressionMs": 2500,
+    "maxPeakMemoryRegressionPct": 25,
+    "maxNewFindingsDelta": 0,
+    "categoryP95BudgetMs": {
+      "small": 10000,
+      "medium": 45000,
+      "large": 180000
+    }
+  },
+  "network": {
+    "maxCrashRatePct": 0,
+    "maxTimeoutRatePct": 1.0
+  }
+}

@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { getFenceOpen, isFenceClose } from './fences.mjs';
+
 const DEFAULTS = {
   maxLineLength: 160,
   strict: false
@@ -34,7 +38,10 @@ const RULE_CATALOG = [
   { id: 'heading-increment',            severity: 'warning', description: 'Heading levels should increment by one' },
   { id: 'no-duplicate-links',           severity: 'warning', description: 'No identical links repeated in same section' },
   { id: 'list-marker-consistency',       severity: 'warning', description: 'Consistent list markers (all - or all * or all +)' },
-  { id: 'link-title-style',             severity: 'warning', description: 'Link titles should use consistent quotes' }
+  { id: 'link-title-style',             severity: 'warning', description: 'Link titles should use consistent quotes' },
+  { id: 'dangling-reference-link',      severity: 'warning', description: 'Reference links must have matching definitions' },
+  { id: 'broken-local-anchor',          severity: 'warning', description: 'Local heading anchors must resolve to existing headings' },
+  { id: 'duplicate-section-intent',     severity: 'warning', description: 'Avoid near-duplicate section intent across headings' }
 ];
 
 const RULE_SEVERITY = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.severity]));
@@ -70,27 +77,20 @@ function normalizeFinding(rule, message, line, source, severityOverride) {
 function stripCodeBlocks(content) {
   const lines = content.split('\n');
   const result = [];
-  let inCodeBlock = false;
-  let fenceChar = null;
-  let fenceLen = 0;
+  let activeFence = null;
 
   for (const line of lines) {
-    if (!inCodeBlock) {
-      const fenceMatch = line.match(/^(`{3,}|~{3,})/);
-      if (fenceMatch) {
-        inCodeBlock = true;
-        fenceChar = fenceMatch[1][0];
-        fenceLen = fenceMatch[1].length;
+    if (!activeFence) {
+      const open = getFenceOpen(line);
+      if (open) {
+        activeFence = { char: open.char, length: open.length };
         result.push('');
       } else {
         result.push(line);
       }
     } else {
-      const closeMatch = line.match(/^(`{3,}|~{3,})\s*$/);
-      if (closeMatch && closeMatch[1][0] === fenceChar && closeMatch[1].length >= fenceLen) {
-        inCodeBlock = false;
-        fenceChar = null;
-        fenceLen = 0;
+      if (isFenceClose(line, activeFence)) {
+        activeFence = null;
       }
       result.push('');
     }
@@ -114,7 +114,153 @@ const SUPPRESS_FILE_RX = /<!--\s*doclify-disable-file\s*(.*?)\s*-->/;
 function parseRuleIds(raw) {
   const trimmed = raw.trim();
   if (!trimmed) return null; // null means "all rules"
-  return trimmed.split(/\s+/);
+  return trimmed.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
+}
+
+function normalizeReferenceLabel(label) {
+  return String(label || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function cleanupHeadingText(rawHeadingText) {
+  return String(rawHeadingText || '')
+    .trim()
+    .replace(/\s+#+\s*$/, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[>*_~]/g, '')
+    .trim();
+}
+
+function slugifyHeading(rawHeadingText) {
+  const cleaned = cleanupHeadingText(rawHeadingText)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&amp;/g, ' and ')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+  return cleaned;
+}
+
+function buildHeadingAnchorSet(lines) {
+  const anchors = new Set();
+  const slugCounts = new Map();
+  for (const line of lines) {
+    const hm = line.match(/^(#{1,6})\s+(.+)$/);
+    if (!hm) continue;
+    const baseSlug = slugifyHeading(hm[2]);
+    if (!baseSlug) continue;
+    const count = slugCounts.get(baseSlug) || 0;
+    const slug = count === 0 ? baseSlug : `${baseSlug}-${count}`;
+    slugCounts.set(baseSlug, count + 1);
+    anchors.add(slug);
+  }
+  return anchors;
+}
+
+function normalizeAnchorFragment(fragment) {
+  let out = String(fragment || '').trim();
+  if (!out) return '';
+  try {
+    out = decodeURIComponent(out);
+  } catch {
+    // Keep original fragment if malformed percent-encoding.
+  }
+  return out
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function parseLocalAnchorTarget(url, sourceAbsolutePath) {
+  const value = String(url || '').trim().replace(/^<|>$/g, '');
+  if (!value || !value.includes('#')) return null;
+  if (/^(?:https?:|mailto:|tel:|data:|javascript:)/i.test(value)) return null;
+
+  const hashIdx = value.indexOf('#');
+  const targetRaw = value.slice(0, hashIdx);
+  const fragmentRaw = value.slice(hashIdx + 1);
+  const fragment = normalizeAnchorFragment(fragmentRaw);
+  if (!fragment) return null;
+
+  const target = targetRaw.trim();
+  if (!target) {
+    return { targetPath: sourceAbsolutePath || '__self__', anchor: fragment };
+  }
+  if (!sourceAbsolutePath) return null;
+  if (target.startsWith('/')) return null;
+  if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(target)) return null;
+
+  const targetWithoutQuery = target.split('?')[0];
+  const resolvedPath = path.resolve(path.dirname(sourceAbsolutePath), targetWithoutQuery);
+  return { targetPath: resolvedPath, anchor: fragment };
+}
+
+function extractInlineLinkTargets(line) {
+  const urls = [];
+  const inlineRx = /\[[^\]]*\]\(([^()\s]*(?:\([^)]*\)[^()\s]*)*)\)/g;
+  let match;
+  while ((match = inlineRx.exec(line)) !== null) {
+    urls.push(match[1].trim());
+  }
+  return urls;
+}
+
+function collectReferenceLinks(lines) {
+  const definitions = new Map();
+  const uses = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = stripInlineCode(lines[i]);
+
+    const defMatch = line.match(/^\s*\[([^\]]+)\]:\s*(\S+)/);
+    if (defMatch) {
+      const label = normalizeReferenceLabel(defMatch[1]);
+      if (label) definitions.set(label, { url: defMatch[2].trim(), line: i + 1 });
+    }
+
+    const fullRefRx = /\[[^\]]+\]\[([^\]]+)\]/g;
+    let fullRef;
+    while ((fullRef = fullRefRx.exec(line)) !== null) {
+      const label = normalizeReferenceLabel(fullRef[1]);
+      if (!label || label.startsWith('^')) continue;
+      uses.push({ label, line: i + 1 });
+    }
+
+    const collapsedRefRx = /\[([^\]]+)\]\[\]/g;
+    let collapsed;
+    while ((collapsed = collapsedRefRx.exec(line)) !== null) {
+      const label = normalizeReferenceLabel(collapsed[1]);
+      if (!label || label.startsWith('^')) continue;
+      uses.push({ label, line: i + 1 });
+    }
+  }
+
+  return { definitions, uses };
+}
+
+function normalizeSectionIntent(rawHeadingText) {
+  const STOP_WORDS = new Set([
+    'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for',
+    'from', 'in', 'is', 'of', 'on', 'or', 'the', 'to', 'vs', 'with'
+  ]);
+  const words = cleanupHeadingText(rawHeadingText)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w))
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w))
+    .sort();
+
+  return words.join(' ');
 }
 
 /**
@@ -160,7 +306,7 @@ function buildSuppressionMap(lines) {
     if (blockEndMatch) {
       const ruleIds = parseRuleIds(blockEndMatch[1]);
       if (ruleIds === null) {
-        activeDisables.delete('*');
+        activeDisables.clear();
       } else {
         for (const id of ruleIds) {
           const count = activeDisables.get(id) || 0;
@@ -183,6 +329,13 @@ function buildSuppressionMap(lines) {
   return suppressions;
 }
 
+function isSuppressionDirective(line) {
+  return SUPPRESS_NEXT_LINE_RX.test(line)
+    || SUPPRESS_BLOCK_START_RX.test(line)
+    || SUPPRESS_BLOCK_END_RX.test(line)
+    || SUPPRESS_FILE_RX.test(line);
+}
+
 function isSuppressed(suppressions, finding) {
   if (!finding.line) return false;
   const set = suppressions.get(finding.line);
@@ -193,6 +346,7 @@ function isSuppressed(suppressions, finding) {
 function checkMarkdown(rawContent, opts = {}) {
   const maxLineLength = Number(opts.maxLineLength ?? DEFAULTS.maxLineLength);
   const filePath = opts.filePath || undefined;
+  const absoluteFilePath = opts.absoluteFilePath ? path.resolve(opts.absoluteFilePath) : null;
 
   // File-level suppression: <!-- doclify-disable-file [rules] -->
   const fileDisableMatch = rawContent.match(SUPPRESS_FILE_RX);
@@ -213,6 +367,7 @@ function checkMarkdown(rawContent, opts = {}) {
   const content = stripCodeBlocks(rawContent);
   const lines = content.split('\n');
   const rawLines = rawContent.split('\n');
+  const referenceData = collectReferenceLinks(lines);
 
   // Build suppression map from inline comments (uses stripped content)
   const suppressions = buildSuppressionMap(lines);
@@ -244,11 +399,13 @@ function checkMarkdown(rawContent, opts = {}) {
 
   // Rule: heading-hierarchy (h1→h3 without h2 is a skip)
   let prevLevel = 0;
+  const headingJumpLines = new Set();
   for (let i = 0; i < lines.length; i += 1) {
     const hMatch = lines[i].match(/^(#{1,6})\s/);
     if (!hMatch) continue;
     const level = hMatch[1].length;
     if (prevLevel > 0 && level > prevLevel + 1) {
+      headingJumpLines.add(i + 1);
       warnings.push(normalizeFinding(
         'heading-hierarchy',
         `Heading level skipped: H${prevLevel} → H${level} (expected H${prevLevel + 1}).`,
@@ -309,6 +466,7 @@ function checkMarkdown(rawContent, opts = {}) {
 
   // Rule: placeholder (uses stripped content)
   lines.forEach((line, idx) => {
+    if (isSuppressionDirective(line)) return;
     const cleanLine = stripInlineCode(line);
     for (const { rx, msg } of PLACEHOLDER_PATTERNS) {
       if (rx.test(cleanLine)) {
@@ -462,18 +620,19 @@ function checkMarkdown(rawContent, opts = {}) {
 
   // Rule: blanks-around-fences (uses raw content to detect fence lines)
   {
-    let inFence = false;
+    let activeFence = null;
     for (let i = 0; i < rawLines.length; i += 1) {
-      const isFence = /^(`{3,}|~{3,})/.test(rawLines[i]);
-      if (isFence && !inFence) {
+      const line = rawLines[i];
+      const open = !activeFence ? getFenceOpen(line) : null;
+      if (open) {
         // Opening fence — check blank before
-        inFence = true;
+        activeFence = { char: open.char, length: open.length };
         if (i > 0 && rawLines[i - 1].trim() !== '') {
           warnings.push(normalizeFinding('blanks-around-fences', 'Missing blank line before code block.', i + 1, filePath));
         }
-      } else if (isFence && inFence) {
+      } else if (activeFence && isFenceClose(line, activeFence)) {
         // Closing fence — check blank after
-        inFence = false;
+        activeFence = null;
         if (i < rawLines.length - 1 && rawLines[i + 1].trim() !== '') {
           warnings.push(normalizeFinding('blanks-around-fences', 'Missing blank line after code block.', i + 1, filePath));
         }
@@ -482,20 +641,24 @@ function checkMarkdown(rawContent, opts = {}) {
   }
 
   // Rule: fenced-code-language (uses raw content)
-  rawLines.forEach((line, idx) => {
-    if (/^(`{3,}|~{3,})\s*$/.test(line)) {
-      // Only flag opening fences (not closing ones). Check if we're not inside a fence.
-      // Simple heuristic: count fences above this line
-      let fenceCount = 0;
-      for (let j = 0; j < idx; j += 1) {
-        if (/^(`{3,}|~{3,})/.test(rawLines[j])) fenceCount += 1;
+  {
+    let activeFence = null;
+    rawLines.forEach((line, idx) => {
+      if (!activeFence) {
+        const open = getFenceOpen(line);
+        if (!open) return;
+        activeFence = { char: open.char, length: open.length };
+        if (open.info.trim().length === 0) {
+          warnings.push(normalizeFinding('fenced-code-language', 'Fenced code block without language specification.', idx + 1, filePath));
+        }
+        return;
       }
-      if (fenceCount % 2 === 0) {
-        // Even count → this is an opening fence
-        warnings.push(normalizeFinding('fenced-code-language', 'Fenced code block without language specification.', idx + 1, filePath));
+
+      if (isFenceClose(line, activeFence)) {
+        activeFence = null;
       }
-    }
-  });
+    });
+  }
 
   // Rule: no-bare-urls (uses stripped content)
   lines.forEach((line, idx) => {
@@ -574,6 +737,9 @@ function checkMarkdown(rawContent, opts = {}) {
         lastHeadingHadContent = true;
       }
     }
+    if (lastHeadingIdx >= 0 && !lastHeadingHadContent) {
+      warnings.push(normalizeFinding('no-empty-sections', 'Empty section — heading has no content before end of file.', lastHeadingIdx + 1, filePath));
+    }
   }
 
   // Rule: heading-increment (heading level should only increase by 1)
@@ -583,7 +749,7 @@ function checkMarkdown(rawContent, opts = {}) {
       const m = lines[i].match(/^(#{1,6})\s/);
       if (m) {
         const level = m[1].length;
-        if (prevLevel > 0 && level > prevLevel + 1) {
+        if (prevLevel > 0 && level > prevLevel + 1 && !headingJumpLines.has(i + 1)) {
           warnings.push(normalizeFinding('heading-increment', `Heading level jumped from H${prevLevel} to H${level}.`, i + 1, filePath));
         }
         prevLevel = level;
@@ -669,6 +835,108 @@ function checkMarkdown(rawContent, opts = {}) {
             warnings.push(normalizeFinding('link-title-style', `Link title uses '${q}' but '${dominantQuote}' is dominant.`, lineNum, filePath));
           }
         }
+      }
+    }
+  }
+
+  // Rule: dangling-reference-link (reference-style usage without definition)
+  {
+    const seen = new Set();
+    for (const use of referenceData.uses) {
+      if (referenceData.definitions.has(use.label)) continue;
+      const dedupe = `${use.line}:${use.label}`;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      warnings.push(normalizeFinding(
+        'dangling-reference-link',
+        `Reference link "[${use.label}]" has no matching definition.`,
+        use.line,
+        filePath
+      ));
+    }
+  }
+
+  // Rule: broken-local-anchor (local links with #fragment must match a heading anchor)
+  {
+    const anchorCache = new Map();
+    const selfAnchors = buildHeadingAnchorSet(lines);
+    if (absoluteFilePath) anchorCache.set(absoluteFilePath, selfAnchors);
+
+    const resolveAnchorsFor = (targetPath) => {
+      if (!targetPath) return null;
+      if (targetPath === '__self__') return selfAnchors;
+      if (anchorCache.has(targetPath)) return anchorCache.get(targetPath);
+      if (!fs.existsSync(targetPath)) return null;
+      try {
+        const targetContent = fs.readFileSync(targetPath, 'utf8');
+        const targetLines = stripCodeBlocks(targetContent).split('\n');
+        const set = buildHeadingAnchorSet(targetLines);
+        anchorCache.set(targetPath, set);
+        return set;
+      } catch {
+        return null;
+      }
+    };
+
+    const candidateLinks = [];
+    for (let i = 0; i < lines.length; i += 1) {
+      for (const url of extractInlineLinkTargets(stripInlineCode(lines[i]))) {
+        candidateLinks.push({ line: i + 1, url });
+      }
+    }
+    for (const use of referenceData.uses) {
+      const def = referenceData.definitions.get(use.label);
+      if (!def) continue;
+      candidateLinks.push({ line: use.line, url: def.url });
+    }
+
+    const seen = new Set();
+    for (const link of candidateLinks) {
+      const parsed = parseLocalAnchorTarget(link.url, absoluteFilePath);
+      if (!parsed) continue;
+      const dedupe = `${link.line}:${parsed.targetPath}#${parsed.anchor}`;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+
+      const anchors = resolveAnchorsFor(parsed.targetPath);
+      if (!anchors) continue; // Missing file is handled by dead-link checks.
+      if (!anchors.has(parsed.anchor)) {
+        warnings.push(normalizeFinding(
+          'broken-local-anchor',
+          `Anchor not found: ${link.url}`,
+          link.line,
+          filePath
+        ));
+      }
+    }
+  }
+
+  // Rule: duplicate-section-intent (near-duplicate heading semantics)
+  {
+    const seenIntent = new Map();
+    for (let i = 0; i < lines.length; i += 1) {
+      const hm = lines[i].match(/^(#{1,6})\s+(.+)$/);
+      if (!hm) continue;
+      const level = hm[1].length;
+      if (level > 3) continue; // Keep signal high on structural headings.
+
+      const rawText = cleanupHeadingText(hm[2]);
+      const exact = rawText.toLowerCase().replace(/\s+/g, ' ');
+      const intent = normalizeSectionIntent(rawText);
+      if (!intent) continue;
+
+      if (seenIntent.has(intent)) {
+        const prev = seenIntent.get(intent);
+        if (prev.exact !== exact) {
+          warnings.push(normalizeFinding(
+            'duplicate-section-intent',
+            `Section intent duplicates "${prev.text}" (line ${prev.line}).`,
+            i + 1,
+            filePath
+          ));
+        }
+      } else {
+        seenIntent.set(intent, { line: i + 1, text: rawText, exact });
       }
     }
   }

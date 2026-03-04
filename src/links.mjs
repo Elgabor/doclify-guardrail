@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { stripCodeBlocks, stripInlineCode } from './checker.mjs';
 
-const LINK_TIMEOUT_MS = 8000;
-const CONCURRENCY = 5;
+const DEFAULT_LINK_TIMEOUT_MS = 8000;
+const DEFAULT_LINK_CONCURRENCY = 5;
 
 function extractLinks(content) {
   const stripped = stripCodeBlocks(content);
@@ -66,29 +66,34 @@ function isAllowListed(url, allowList) {
   return false;
 }
 
-async function checkRemoteUrl(url) {
+async function fetchWithTimeout(url, opts, timeoutMs) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function checkRemoteUrl(url, opts = {}) {
+  const timeoutMs = Number.isInteger(opts.timeoutMs) ? opts.timeoutMs : DEFAULT_LINK_TIMEOUT_MS;
 
   try {
-    const headRes = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: controller.signal });
-    clearTimeout(timer);
+    const headRes = await fetchWithTimeout(url, { method: 'HEAD', redirect: 'follow' }, timeoutMs);
     if (headRes.status < 400) {
       return null;
     }
 
     if (headRes.status === 405 || headRes.status === 501) {
-      const timer2 = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
-      const getRes = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal });
-      clearTimeout(timer2);
+      const getRes = await fetchWithTimeout(url, { method: 'GET', redirect: 'follow' }, timeoutMs);
       if (getRes.status < 400) return null;
       return `HTTP ${getRes.status}`;
     }
 
     return `HTTP ${headRes.status}`;
   } catch (err) {
-    clearTimeout(timer);
-    if (err.name === 'AbortError') return `Timeout (${LINK_TIMEOUT_MS / 1000}s)`;
+    if (err.name === 'AbortError') return `Timeout (${timeoutMs / 1000}s)`;
     return err.message;
   }
 }
@@ -117,13 +122,27 @@ async function runWithConcurrency(tasks, limit) {
   return results;
 }
 
-async function checkDeadLinks(content, { sourceFile, linkAllowList } = {}) {
+function buildEmptyStats() {
+  return {
+    remoteLinksChecked: 0,
+    remoteCacheHits: 0,
+    remoteCacheMisses: 0,
+    remoteTimeouts: 0
+  };
+}
+
+async function checkDeadLinksDetailed(content, { sourceFile, linkAllowList, timeoutMs, concurrency, remoteCache } = {}) {
   const links = extractLinks(content);
   const findings = [];
   const seen = new Set();
+  const cache = remoteCache instanceof Map ? remoteCache : new Map();
+  const concurrencyLimit = Number.isInteger(concurrency) && concurrency > 0
+    ? concurrency
+    : DEFAULT_LINK_CONCURRENCY;
+  const stats = buildEmptyStats();
 
   // Local links first (sync, fast)
-  const remoteChecks = [];
+  const remoteChecks = new Map(); // URL -> first link occurrence
 
   for (const link of links) {
     const url = link.url;
@@ -135,7 +154,9 @@ async function checkDeadLinks(content, { sourceFile, linkAllowList } = {}) {
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
       if (isAllowListed(url, linkAllowList)) continue;
-      remoteChecks.push({ url, link });
+      if (!remoteChecks.has(url)) {
+        remoteChecks.set(url, link);
+      }
       continue;
     }
 
@@ -156,13 +177,26 @@ async function checkDeadLinks(content, { sourceFile, linkAllowList } = {}) {
   }
 
   // Remote links in parallel with concurrency limit
-  if (remoteChecks.length > 0) {
-    const tasks = remoteChecks.map(({ url, link }) => async () => {
-      const error = await checkRemoteUrl(url);
+  if (remoteChecks.size > 0) {
+    const entries = Array.from(remoteChecks.entries());
+    const tasks = entries.map(([url, link]) => async () => {
+      let error;
+      stats.remoteLinksChecked += 1;
+      if (cache.has(url)) {
+        error = cache.get(url);
+        stats.remoteCacheHits += 1;
+      } else {
+        stats.remoteCacheMisses += 1;
+        error = await checkRemoteUrl(url, { timeoutMs });
+        cache.set(url, error);
+      }
+      if (typeof error === 'string' && error.startsWith('Timeout')) {
+        stats.remoteTimeouts += 1;
+      }
       return { url, link, error };
     });
 
-    const results = await runWithConcurrency(tasks, CONCURRENCY);
+    const results = await runWithConcurrency(tasks, concurrencyLimit);
     for (const { url, link, error } of results) {
       if (error) {
         findings.push({
@@ -176,7 +210,14 @@ async function checkDeadLinks(content, { sourceFile, linkAllowList } = {}) {
     }
   }
 
+  return { findings, stats };
+}
+
+async function checkDeadLinks(content, opts = {}) {
+  const { findings } = await checkDeadLinksDetailed(content, opts);
   return findings;
 }
 
 export { extractLinks, checkDeadLinks };
+export { checkDeadLinksDetailed };
+export { DEFAULT_LINK_TIMEOUT_MS, DEFAULT_LINK_CONCURRENCY };

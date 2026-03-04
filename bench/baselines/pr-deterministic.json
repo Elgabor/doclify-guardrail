@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-04T18:08:11.015Z",
+  "manifestPath": "bench/corpus.manifest.json",
+  "profile": "deterministic",
+  "tag": "pr-sample",
+  "repeat": 3,
+  "repos": [
+    {
+      "id": "markdownlint",
+      "url": "https://github.com/markdownlint/markdownlint.git",
+      "commit": "94bee4780918f3ca69ff672fb23f9b18a23ef889",
+      "category": "small",
+      "inferredCategory": "small",
+      "markdownCount": 107,
+      "scanPath": ".",
+      "tags": [
+        "pr-sample",
+        "nightly-det-full",
+        "nightly-net-sample"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:09.315Z",
+          "durationMs": 264.166,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.045,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 45,
+            "peakMemoryMb": 54.391,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 2,
+          "startedAt": "2026-03-04T18:08:10.170Z",
+          "durationMs": 231.766,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.043,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 43,
+            "peakMemoryMb": 54.641,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 3,
+          "startedAt": "2026-03-04T18:08:10.809Z",
+          "durationMs": 204.453,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.031,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 31,
+            "peakMemoryMb": 54.891,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 3,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 44.8,
+        "peakMemoryMb": 54.866,
+        "findingsCount": 638,
+        "remoteLinksChecked": 0,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 0,
+        "timeoutRate": 0
+      }
+    }
+  ],
+  "summary": {
+    "repoCount": 1,
+    "runCount": 3,
+    "crashCount": 0,
+    "crashRatePct": 0,
+    "deterministicRepoCount": 1,
+    "determinismRatePct": 100
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-04T18:09:13.629Z",
+  "manifestPath": "bench/corpus.manifest.json",
+  "profile": "network",
+  "tag": "nightly-net-sample",
+  "repeat": 1,
+  "repos": [
+    {
+      "id": "spoon-knife",
+      "url": "https://github.com/octocat/Spoon-Knife.git",
+      "commit": "d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9",
+      "category": "small",
+      "inferredCategory": "small",
+      "markdownCount": 1,
+      "scanPath": ".",
+      "tags": [
+        "nightly-det-full",
+        "nightly-net-sample"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:45.004Z",
+          "durationMs": 1108.97,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "40429207228bdf46b60f83074e86e4365fb5111e3c2a02a68d45cb4da029883a",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 1 file...\n\n  [INFO] Checking .cache/corpus/spoon-knife/README.md...\n    ↳ Checking links...\n  [FAIL] .cache/corpus/spoon-knife/README.md [59/100]\n      [FAIL] error  single-h1:1  Missing H1 heading.\n      [FAIL] error [strict]  line-length:5  Line exceeds 160 characters (338).\n      [FAIL] error [strict]  line-length:9  Line exceeds 160 characters (169).\n      [FAIL] error [strict]  insecure-link:9  Insecure link found: http://guides.github.com/overviews/forking/ — use https:// instead\n      [FAIL] error [strict]  no-trailing-punctuation-heading:1  Heading has trailing punctuation: \"!\".\n      [FAIL] error [strict]  no-space-in-emphasis:5  Spaces inside emphasis markers — may not render correctly.\n\n  [FAIL] 1 failed - 1 files scanned in 0.934s\n  Health score: 59/100\n\n",
+          "summary": {
+            "filesScanned": 1,
+            "filesPassed": 0,
+            "filesFailed": 1,
+            "filesErrored": 0,
+            "totalErrors": 1,
+            "totalWarnings": 5,
+            "status": "FAIL",
+            "elapsed": 0.934,
+            "healthScore": 59,
+            "avgHealthScore": 59
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 934,
+            "peakMemoryMb": 77.578,
+            "remoteLinksChecked": 2,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 2,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 1,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 934,
+        "peakMemoryMb": 77.578,
+        "findingsCount": 6,
+        "remoteLinksChecked": 2,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 2,
+        "timeoutRate": 0
+      }
+    },
+    {
+      "id": "markdownlint",
+      "url": "https://github.com/markdownlint/markdownlint.git",
+      "commit": "94bee4780918f3ca69ff672fb23f9b18a23ef889",
+      "category": "small",
+      "inferredCategory": "small",
+      "markdownCount": 107,
+      "scanPath": ".",
+      "tags": [
+        "pr-sample",
+        "nightly-det-full",
+        "nightly-net-sample"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:47.468Z",
+          "durationMs": 26156.113,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "558386a85a3f37693e402512ba988d24eca4dd19b7f550df1f4a6f834a46869e",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n    ↳ Checking links...\n  [INFO] Checking .cache/corpus/markdownlin",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 102,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 25.973,
+            "healthScore": 70,
+            "avgHealthScore": 70
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 25973,
+            "peakMemoryMb": 93.359,
+            "remoteLinksChecked": 164,
+            "remoteCacheHits": 1,
+            "remoteCacheMisses": 163,
+            "cacheHitRate": 0.6098,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 1,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 25973,
+        "peakMemoryMb": 93.359,
+        "findingsCount": 670,
+        "remoteLinksChecked": 164,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 1,
+        "remoteCacheMisses": 163,
+        "timeoutRate": 0
+      }
+    }
+  ],
+  "summary": {
+    "repoCount": 2,
+    "runCount": 2,
+    "crashCount": 0,
+    "crashRatePct": 0,
+    "deterministicRepoCount": 2,
+    "determinismRatePct": 100
+  }
+}

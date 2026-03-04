@@ -18,7 +18,11 @@
   "scripts": {
     "start": "node ./src/index.mjs",
     "test": "node --test test/guardrail.test.mjs",
-    "demo": "bash ./scripts/demo.sh"
+    "demo": "bash ./scripts/demo.sh",
+    "reliability:pr": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag pr-sample --repeat 2 --out bench/out/pr-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/pr-deterministic.json --baseline bench/baselines/pr-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/pr-deterministic-report.md",
+    "reliability:nightly:det": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag nightly-det-full --repeat 3 --out bench/out/nightly-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/nightly-deterministic.json --baseline bench/baselines/nightly-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/nightly-deterministic-report.md",
+    "reliability:nightly:net": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile network --tag nightly-net-sample --repeat 1 --out bench/out/nightly-network.json && node scripts/compare-baseline.mjs --current bench/out/nightly-network.json --baseline bench/baselines/nightly-network.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/nightly-network-report.md",
+    "reliability:bootstrap": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag pr-sample --repeat 3 --out bench/out/pr-deterministic.json && cp bench/out/pr-deterministic.json bench/baselines/pr-deterministic.json && node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag nightly-det-full --repeat 3 --out bench/out/nightly-deterministic.json && cp bench/out/nightly-deterministic.json bench/baselines/nightly-deterministic.json && node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile network --tag nightly-net-sample --repeat 1 --out bench/out/nightly-network.json && cp bench/out/nightly-network.json bench/baselines/nightly-network.json"
   },
   "engines": {
     "node": ">=20"

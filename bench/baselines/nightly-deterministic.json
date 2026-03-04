@@ -1,0 +1,557 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-04T18:08:43.795Z",
+  "manifestPath": "bench/corpus.manifest.json",
+  "profile": "deterministic",
+  "tag": "nightly-det-full",
+  "repeat": 3,
+  "repos": [
+    {
+      "id": "spoon-knife",
+      "url": "https://github.com/octocat/Spoon-Knife.git",
+      "commit": "d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9",
+      "category": "small",
+      "inferredCategory": "small",
+      "markdownCount": 1,
+      "scanPath": ".",
+      "tags": [
+        "nightly-det-full",
+        "nightly-net-sample"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:12.391Z",
+          "durationMs": 188.605,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "40429207228bdf46b60f83074e86e4365fb5111e3c2a02a68d45cb4da029883a",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 1 file...\n\n  [INFO] Checking .cache/corpus/spoon-knife/README.md...\n  [FAIL] .cache/corpus/spoon-knife/README.md [59/100]\n      [FAIL] error  single-h1:1  Missing H1 heading.\n      [FAIL] error [strict]  line-length:5  Line exceeds 160 characters (338).\n      [FAIL] error [strict]  line-length:9  Line exceeds 160 characters (169).\n      [FAIL] error [strict]  insecure-link:9  Insecure link found: http://guides.github.com/overviews/forking/ — use https:// instead\n      [FAIL] error [strict]  no-trailing-punctuation-heading:1  Heading has trailing punctuation: \"!\".\n      [FAIL] error [strict]  no-space-in-emphasis:5  Spaces inside emphasis markers — may not render correctly.\n\n  [FAIL] 1 failed - 1 files scanned in 0.004s\n  Health score: 59/100\n\n",
+          "summary": {
+            "filesScanned": 1,
+            "filesPassed": 0,
+            "filesFailed": 1,
+            "filesErrored": 0,
+            "totalErrors": 1,
+            "totalWarnings": 5,
+            "status": "FAIL",
+            "elapsed": 0.004,
+            "healthScore": 59,
+            "avgHealthScore": 59
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 4,
+            "peakMemoryMb": 48.297,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 2,
+          "startedAt": "2026-03-04T18:08:13.104Z",
+          "durationMs": 178.437,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "40429207228bdf46b60f83074e86e4365fb5111e3c2a02a68d45cb4da029883a",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 1 file...\n\n  [INFO] Checking .cache/corpus/spoon-knife/README.md...\n  [FAIL] .cache/corpus/spoon-knife/README.md [59/100]\n      [FAIL] error  single-h1:1  Missing H1 heading.\n      [FAIL] error [strict]  line-length:5  Line exceeds 160 characters (338).\n      [FAIL] error [strict]  line-length:9  Line exceeds 160 characters (169).\n      [FAIL] error [strict]  insecure-link:9  Insecure link found: http://guides.github.com/overviews/forking/ — use https:// instead\n      [FAIL] error [strict]  no-trailing-punctuation-heading:1  Heading has trailing punctuation: \"!\".\n      [FAIL] error [strict]  no-space-in-emphasis:5  Spaces inside emphasis markers — may not render correctly.\n\n  [FAIL] 1 failed - 1 files scanned in 0.004s\n  Health score: 59/100\n\n",
+          "summary": {
+            "filesScanned": 1,
+            "filesPassed": 0,
+            "filesFailed": 1,
+            "filesErrored": 0,
+            "totalErrors": 1,
+            "totalWarnings": 5,
+            "status": "FAIL",
+            "elapsed": 0.004,
+            "healthScore": 59,
+            "avgHealthScore": 59
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 4,
+            "peakMemoryMb": 48.5,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 3,
+          "startedAt": "2026-03-04T18:08:13.696Z",
+          "durationMs": 189.191,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "40429207228bdf46b60f83074e86e4365fb5111e3c2a02a68d45cb4da029883a",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 1 file...\n\n  [INFO] Checking .cache/corpus/spoon-knife/README.md...\n  [FAIL] .cache/corpus/spoon-knife/README.md [59/100]\n      [FAIL] error  single-h1:1  Missing H1 heading.\n      [FAIL] error [strict]  line-length:5  Line exceeds 160 characters (338).\n      [FAIL] error [strict]  line-length:9  Line exceeds 160 characters (169).\n      [FAIL] error [strict]  insecure-link:9  Insecure link found: http://guides.github.com/overviews/forking/ — use https:// instead\n      [FAIL] error [strict]  no-trailing-punctuation-heading:1  Heading has trailing punctuation: \"!\".\n      [FAIL] error [strict]  no-space-in-emphasis:5  Spaces inside emphasis markers — may not render correctly.\n\n  [FAIL] 1 failed - 1 files scanned in 0.003s\n  Health score: 59/100\n\n",
+          "summary": {
+            "filesScanned": 1,
+            "filesPassed": 0,
+            "filesFailed": 1,
+            "filesErrored": 0,
+            "totalErrors": 1,
+            "totalWarnings": 5,
+            "status": "FAIL",
+            "elapsed": 0.003,
+            "healthScore": 59,
+            "avgHealthScore": 59
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 3,
+            "peakMemoryMb": 48.297,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 3,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 4,
+        "peakMemoryMb": 48.48,
+        "findingsCount": 6,
+        "remoteLinksChecked": 0,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 0,
+        "timeoutRate": 0
+      }
+    },
+    {
+      "id": "markdownlint",
+      "url": "https://github.com/markdownlint/markdownlint.git",
+      "commit": "94bee4780918f3ca69ff672fb23f9b18a23ef889",
+      "category": "small",
+      "inferredCategory": "small",
+      "markdownCount": 107,
+      "scanPath": ".",
+      "tags": [
+        "pr-sample",
+        "nightly-det-full",
+        "nightly-net-sample"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:15.081Z",
+          "durationMs": 200.891,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.031,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 31,
+            "peakMemoryMb": 54.703,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 2,
+          "startedAt": "2026-03-04T18:08:15.675Z",
+          "durationMs": 228.805,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.038,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 38,
+            "peakMemoryMb": 54.672,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 3,
+          "startedAt": "2026-03-04T18:08:16.315Z",
+          "durationMs": 203.094,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "628e16fa9ce9d839d08c995ddb4681e653e7714e3718a0c3354ac420649575ea",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 107 files...\n\n  [INFO] Checking .cache/corpus/markdownlint/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/markdownlint/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/markdownlint/MAINTAINERS.md...\n  [INFO] Checking .cache/corpus/markdownlint/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/RULES.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/configuration.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_rules.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/creating_styles.md...\n  [INFO] Checking .cache/corpus/markdownlint/docs/rolling_a_release.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/markdown_spec.md...\n  [INFO] Checking .cache/corpus/markdownlint/tools/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/BUG_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/DESIGN_PROPOSAL.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/ENHANCEMENT_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/.github/ISSUE_TEMPLATE/RULE_REQUEST.md...\n  [INFO] Checking .cache/corpus/markdownlint/example/exclude_example/README.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/alternate_top_level_header.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_closed_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/atx_header_spacing.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_blank_lines.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/blockquote_spaces.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulletd_list_sublist.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule_tests/bulleted_list_2_space_indent.md...\n  [INFO] Checking .cache/corpus/markdownlint/test/rule",
+          "summary": {
+            "filesScanned": 107,
+            "filesPassed": 14,
+            "filesFailed": 93,
+            "filesErrored": 0,
+            "totalErrors": 70,
+            "totalWarnings": 568,
+            "status": "FAIL",
+            "elapsed": 0.03,
+            "healthScore": 73,
+            "avgHealthScore": 73
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 30,
+            "peakMemoryMb": 54.625,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 3,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 37.3,
+        "peakMemoryMb": 54.7,
+        "findingsCount": 638,
+        "remoteLinksChecked": 0,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 0,
+        "timeoutRate": 0
+      }
+    },
+    {
+      "id": "nodejs-node",
+      "url": "https://github.com/nodejs/node.git",
+      "commit": "55363254cc8d6fd105f34b30ceae572dfb2e4210",
+      "category": "medium",
+      "inferredCategory": "medium",
+      "markdownCount": 548,
+      "scanPath": ".",
+      "tags": [
+        "nightly-det-full"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:18.822Z",
+          "durationMs": 1832.724,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "f0f16139f996725a04203a88cf686e4ecaa6120ef86224e8c489f57adec27cfb",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 494 files...\n\n  [INFO] Checking .cache/corpus/nodejs-node/BUILDING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CODE_OF_CONDUCT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/GOVERNANCE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/glossary.md...\n  [INFO] Checking .cache/corpus/nodejs-node/onboarding.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/SUPPORT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/benchmark/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/doc/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/src/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/test/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/LIEF/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/ada/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/DEVELOPER-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/INSTALL.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/RELEASE-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/README.md...\n  [INFO]",
+          "summary": {
+            "filesScanned": 494,
+            "filesPassed": 41,
+            "filesFailed": 453,
+            "filesErrored": 0,
+            "totalErrors": 187,
+            "totalWarnings": 159908,
+            "status": "FAIL",
+            "elapsed": 1.183,
+            "healthScore": 45,
+            "avgHealthScore": 45
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 1183,
+            "peakMemoryMb": 207.078,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 2,
+          "startedAt": "2026-03-04T18:08:21.801Z",
+          "durationMs": 1830.689,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "f0f16139f996725a04203a88cf686e4ecaa6120ef86224e8c489f57adec27cfb",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 494 files...\n\n  [INFO] Checking .cache/corpus/nodejs-node/BUILDING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CODE_OF_CONDUCT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/GOVERNANCE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/glossary.md...\n  [INFO] Checking .cache/corpus/nodejs-node/onboarding.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/SUPPORT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/benchmark/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/doc/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/src/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/test/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/LIEF/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/ada/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/DEVELOPER-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/INSTALL.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/RELEASE-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/README.md...\n  [INFO]",
+          "summary": {
+            "filesScanned": 494,
+            "filesPassed": 41,
+            "filesFailed": 453,
+            "filesErrored": 0,
+            "totalErrors": 187,
+            "totalWarnings": 159908,
+            "status": "FAIL",
+            "elapsed": 1.163,
+            "healthScore": 45,
+            "avgHealthScore": 45
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 1163,
+            "peakMemoryMb": 207.688,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 3,
+          "startedAt": "2026-03-04T18:08:24.790Z",
+          "durationMs": 1760.557,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "f0f16139f996725a04203a88cf686e4ecaa6120ef86224e8c489f57adec27cfb",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 494 files...\n\n  [INFO] Checking .cache/corpus/nodejs-node/BUILDING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CODE_OF_CONDUCT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/GOVERNANCE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/glossary.md...\n  [INFO] Checking .cache/corpus/nodejs-node/onboarding.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/.github/SUPPORT.md...\n  [INFO] Checking .cache/corpus/nodejs-node/benchmark/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/doc/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/src/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/test/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/LIEF/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/ada/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/amaro/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/DEVELOPER-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/INSTALL.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/README.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/RELEASE-NOTES.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/cares/SECURITY.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/CHANGELOG.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/LICENSE.md...\n  [INFO] Checking .cache/corpus/nodejs-node/deps/corepack/README.md...\n  [INFO]",
+          "summary": {
+            "filesScanned": 494,
+            "filesPassed": 41,
+            "filesFailed": 453,
+            "filesErrored": 0,
+            "totalErrors": 187,
+            "totalWarnings": 159908,
+            "status": "FAIL",
+            "elapsed": 1.104,
+            "healthScore": 45,
+            "avgHealthScore": 45
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 1104,
+            "peakMemoryMb": 198.094,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 3,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 1181,
+        "peakMemoryMb": 207.627,
+        "findingsCount": 160095,
+        "remoteLinksChecked": 0,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 0,
+        "timeoutRate": 0
+      }
+    },
+    {
+      "id": "kubernetes-website",
+      "url": "https://github.com/kubernetes/website.git",
+      "commit": "e9e2dbdced83180e47917f0d13a50222f75c92ca",
+      "category": "large",
+      "inferredCategory": "large",
+      "markdownCount": 7430,
+      "scanPath": ".",
+      "tags": [
+        "nightly-det-full"
+      ],
+      "runs": [
+        {
+          "run": 1,
+          "startedAt": "2026-03-04T18:08:28.732Z",
+          "durationMs": 4653.464,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "e5e0b0ba7192e54fe7d83778b23000e78ff1a8ecbb2cf11990f91ba2b0fc3bc7",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 7430 files...\n\n  [INFO] Checking .cache/corpus/kubernetes-website/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/SECURITY.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/code-of-conduct.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/blog-post.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/concepts.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/default.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tasks.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tutorials.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/scripts/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/update-imported-docs/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/bug-report.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/feature-request.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/support.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/de/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/en/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/es/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/fr/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/hi/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/it/README.md...\n  [INFO] Chec",
+          "summary": {
+            "filesScanned": 7430,
+            "filesPassed": 2,
+            "filesFailed": 7428,
+            "filesErrored": 0,
+            "totalErrors": 7101,
+            "totalWarnings": 216442,
+            "status": "FAIL",
+            "elapsed": 3.913,
+            "healthScore": 37,
+            "avgHealthScore": 37
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 3913,
+            "peakMemoryMb": 213.984,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 2,
+          "startedAt": "2026-03-04T18:08:34.572Z",
+          "durationMs": 3850.135,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "e5e0b0ba7192e54fe7d83778b23000e78ff1a8ecbb2cf11990f91ba2b0fc3bc7",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 7430 files...\n\n  [INFO] Checking .cache/corpus/kubernetes-website/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/SECURITY.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/code-of-conduct.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/blog-post.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/concepts.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/default.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tasks.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tutorials.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/scripts/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/update-imported-docs/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/bug-report.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/feature-request.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/support.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/de/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/en/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/es/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/fr/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/hi/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/it/README.md...\n  [INFO] Chec",
+          "summary": {
+            "filesScanned": 7430,
+            "filesPassed": 2,
+            "filesFailed": 7428,
+            "filesErrored": 0,
+            "totalErrors": 7101,
+            "totalWarnings": 216442,
+            "status": "FAIL",
+            "elapsed": 3.184,
+            "healthScore": 37,
+            "avgHealthScore": 37
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 3184,
+            "peakMemoryMb": 214.125,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        },
+        {
+          "run": 3,
+          "startedAt": "2026-03-04T18:08:39.493Z",
+          "durationMs": 3824.236,
+          "exitCode": 1,
+          "signal": null,
+          "crashed": false,
+          "qualityFailed": true,
+          "parseError": null,
+          "fingerprint": "e5e0b0ba7192e54fe7d83778b23000e78ff1a8ecbb2cf11990f91ba2b0fc3bc7",
+          "stderr": "\n  Doclify Guardrail v1.6.0\n\n  [INFO] Scanning 7430 files...\n\n  [INFO] Checking .cache/corpus/kubernetes-website/CONTRIBUTING.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/SECURITY.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/code-of-conduct.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/PULL_REQUEST_TEMPLATE.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/blog-post.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/concepts.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/default.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tasks.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/archetypes/tutorials.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/scripts/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/update-imported-docs/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/bug-report.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/feature-request.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/.github/ISSUE_TEMPLATE/support.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/bn/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/de/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/en/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/es/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/fr/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/hi/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/README.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/id/search.md...\n  [INFO] Checking .cache/corpus/kubernetes-website/content/it/README.md...\n  [INFO] Chec",
+          "summary": {
+            "filesScanned": 7430,
+            "filesPassed": 2,
+            "filesFailed": 7428,
+            "filesErrored": 0,
+            "totalErrors": 7101,
+            "totalWarnings": 216442,
+            "status": "FAIL",
+            "elapsed": 3.165,
+            "healthScore": 37,
+            "avgHealthScore": 37
+          },
+          "engine": {
+            "schemaVersion": 1,
+            "scanMs": 3165,
+            "peakMemoryMb": 214.297,
+            "remoteLinksChecked": 0,
+            "remoteCacheHits": 0,
+            "remoteCacheMisses": 0,
+            "cacheHitRate": 0,
+            "remoteTimeouts": 0,
+            "timeoutRate": 0
+          }
+        }
+      ],
+      "aggregate": {
+        "runCount": 3,
+        "crashCount": 0,
+        "crashRatePct": 0,
+        "deterministic": true,
+        "uniqueFingerprintCount": 1,
+        "p95ScanMs": 3840.1,
+        "peakMemoryMb": 214.28,
+        "findingsCount": 223543,
+        "remoteLinksChecked": 0,
+        "remoteTimeouts": 0,
+        "remoteCacheHits": 0,
+        "remoteCacheMisses": 0,
+        "timeoutRate": 0
+      }
+    }
+  ],
+  "summary": {
+    "repoCount": 4,
+    "runCount": 12,
+    "crashCount": 0,
+    "crashRatePct": 0,
+    "deterministicRepoCount": 4,
+    "determinismRatePct": 100
+  }
+}

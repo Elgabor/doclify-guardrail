@@ -11,12 +11,12 @@ Works everywhere Node.js 20+ runs.
 
 | | Doclify | markdownlint |
 |--|---------|-------------|
-| Style rules | 31 built-in | 59 |
+| Style rules | 34 built-in | 59 |
 | Content checks | placeholders, headings, images | No |
 | Dead link checker | Built-in (`--check-links`) | No |
 | Doc freshness | Built-in (`--check-freshness`) | No |
 | Health score | 0-100 per file + average | No |
-| Auto-fix | 13 fixers (style + semantic) | 31 (style only) |
+| Auto-fix | 14 fixers (style + semantic) | 31 (style only) |
 | Git diff mode | Built-in (`--diff`, `--staged`) | No |
 | Watch mode | Built-in (`--watch`) | No |
 | Quality gate | `--min-score` + `--strict` | No |
@@ -113,9 +113,12 @@ If no files are specified, scans the current directory.
 |------|-------------|
 | `--check-links` | Validate HTTP and local links |
 | `--check-freshness` | Warn on stale docs (>180 days) |
+| `--freshness-max-days <n>` | Max age threshold for freshness check (default: 180) |
 | `--check-frontmatter` | Require YAML frontmatter block |
 | `--check-inline-html` | Enable `no-inline-html` rule |
 | `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
+| `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
+| `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
 
 #### Fix
 
@@ -177,17 +180,24 @@ This creates `.doclify-guardrail.json`:
 
 ```json
 {
-  "maxLineLength": 120,
-  "strict": true,
+  "maxLineLength": 160,
+  "strict": false,
   "exclude": ["node_modules/**", "vendor/**"],
   "ignoreRules": [],
+  "checkLinks": false,
+  "checkFreshness": false,
+  "checkFrontmatter": false,
+  "checkInlineHtml": false,
+  "freshnessMaxDays": 180,
+  "linkTimeoutMs": 8000,
+  "linkConcurrency": 5,
   "linkAllowList": []
 }
 ```
 
 CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 
-## Built-in Rules (31)
+## Built-in Rules (34)
 
 ### Content Rules
 
@@ -229,12 +239,15 @@ CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAl
 | `no-duplicate-links` | warning | No |
 | `list-marker-consistency` | warning | No |
 | `link-title-style` | warning | No |
+| `dangling-reference-link` | warning | No |
+| `broken-local-anchor` | warning | No |
+| `duplicate-section-intent` | warning | No |
 
-All rules respect code block exclusion — content inside fenced code blocks and inline code is never flagged.
+All semantic/style rules respect code block exclusion (fenced + inline code). `line-length` intentionally checks raw lines, including code blocks.
 
 ## Auto-fix
 
-`doclify --fix` applies 13 safe auto-fixes in a single pass:
+`doclify --fix` applies 14 safe auto-fixes in a single pass:
 
 | Fix | What it does |
 |-----|-------------|
@@ -528,7 +541,7 @@ doclify docs/ --strict --junit --sarif --badge --report
 ### Run the Test Suite
 
 ```bash
-# Run all 152 tests
+# Run all tests
 node --test test/guardrail.test.mjs
 
 # Run with verbose output
@@ -538,20 +551,41 @@ node --test --test-reporter spec
 ### Verify All Rules Work
 
 ```bash
-# List all 31 built-in rules
+# List all 34 built-in rules
 doclify --list-rules
 
 # Scan with all optional checks enabled
 doclify docs/ --strict --check-links --check-freshness --check-frontmatter --check-inline-html
 ```
 
+### Reliability Gate
+
+```bash
+# PR sample gate (fast)
+npm run reliability:pr
+
+# Nightly deterministic gate (full corpus: small+medium+large)
+npm run reliability:nightly:det
+
+# Nightly network gate (network sample subset)
+npm run reliability:nightly:net
+
+# Rebuild baseline files
+npm run reliability:bootstrap
+```
+
+Detailed setup and policy: `docs/reliability-gate.md`.
+
 ## Project Architecture
 
 ```text
 src/
   index.mjs        CLI orchestrator, arg parsing, main flow
-  checker.mjs      31-rule lint engine + inline suppressions
-  fixer.mjs        13 auto-fix functions (insecure links + formatting)
+  checker.mjs      34-rule lint engine + inline suppressions
+  config-resolver.mjs Hierarchical config chain + CLI precedence
+  scan-context.mjs Immutable per-file scan context
+  fences.mjs       Shared fenced-code parsing helpers (0-3 space indent)
+  fixer.mjs        14 auto-fix functions (insecure links + formatting)
   diff.mjs         Git diff integration (--diff, --staged)
   trend.mjs        Score history tracking + ASCII trend graph
   api.mjs          Programmatic API (lint, fix, score)
@@ -566,6 +600,13 @@ action/
   action.yml       GitHub Action manifest
   entrypoint.mjs   Action runner (Node.js)
   pr-comment.mjs   PR comment builder + poster
+bench/
+  corpus.manifest.json        OSS corpus + profiles + pinned commits
+  reliability-thresholds.json Reliability hard limits
+  waivers.json                Temporary exceptions with expiry
+scripts/
+  run-corpus.mjs       Corpus runner + deterministic fingerprinting
+  compare-baseline.mjs Baseline comparator + report generation
 ```
 
 ## License

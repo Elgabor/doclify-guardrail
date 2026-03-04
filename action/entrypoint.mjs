@@ -1,13 +1,38 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildPrCommentBody, postPrComment } from './pr-comment.mjs';
+import { postPrComment } from './pr-comment.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(__dirname, '..', 'src', 'index.mjs');
+
+function runDoclifyProcess(cliArgs) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, cliArgs, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        exitCode: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
 
 async function run() {
   try {
@@ -37,22 +62,13 @@ async function run() {
     let output = null;
     let exitCode = 0;
 
-    try {
-      const stdout = execFileSync(process.execPath, cliArgs, {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe']
-      });
-      output = JSON.parse(stdout);
-    } catch (err) {
-      exitCode = err.status || 1;
-      // Try to parse JSON from stdout even on non-zero exit
-      if (err.stdout) {
-        try {
-          output = JSON.parse(err.stdout);
-        } catch {
-          // Non-JSON output, likely an error message
-          core.warning(`Doclify output was not valid JSON: ${err.stderr || err.stdout}`);
-        }
+    const proc = await runDoclifyProcess(cliArgs);
+    exitCode = proc.exitCode;
+    if (proc.stdout) {
+      try {
+        output = JSON.parse(proc.stdout);
+      } catch {
+        core.warning(`Doclify output was not valid JSON: ${proc.stderr || proc.stdout}`);
       }
     }
 
