@@ -258,6 +258,7 @@ async function acquireFilesystemLock(lockDir, opts = {}) {
   const staleLockMs = Number.isInteger(opts.staleLockMs) ? opts.staleLockMs : DEFAULT_STALE_LOCK_MS;
   const startedAt = Date.now();
   const ownerToken = crypto.randomUUID();
+  fs.mkdirSync(path.dirname(lockDir), { recursive: true });
 
   while ((Date.now() - startedAt) <= timeoutMs) {
     try {
