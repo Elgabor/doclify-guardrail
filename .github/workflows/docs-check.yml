@@ -30,7 +30,7 @@ jobs:
       - name: Run test suite
         run: npm test
       - name: Docs quality gate
-        run: node ./src/index.mjs docs/ --strict --exclude docs/examples/** --report report.md
+        run: node ./src/index.mjs docs/ --strict --exclude examples --report report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
