@@ -1892,6 +1892,36 @@ test('compare-baseline: valid waiver suppresses blocking failure', () => {
   assert.ok(result.violations.some((v) => v.waived && v.metric === 'p95ScanMs'));
 });
 
+test('compare-baseline: ignores pct-only p95 regressions when baseline is below min threshold', () => {
+  const current = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 75, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const baseline = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 35, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const thresholds = {
+    schemaVersion: 1,
+    deterministic: {
+      requireDeterminism: true,
+      maxCrashRatePct: 0,
+      maxP95RegressionPct: 20,
+      maxP95RegressionMs: 2500,
+      minBaselineP95ForPctMs: 1000,
+      maxPeakMemoryRegressionPct: 25,
+      maxNewFindingsDelta: 0,
+      categoryP95BudgetMs: { small: 10000, medium: 45000, large: 180000 }
+    },
+    network: { maxCrashRatePct: 0, maxTimeoutRatePct: 1.0 }
+  };
+
+  const waivers = buildWaiverIndex({ schemaVersion: 1, waivers: [] }, new Date('2026-03-01T00:00:00Z'));
+  const result = evaluateComparison(current, baseline, thresholds, waivers);
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.effectiveFailures.length, 0);
+});
+
 test('compare-baseline: expired waiver does not suppress failure', () => {
   const current = {
     profile: 'deterministic',

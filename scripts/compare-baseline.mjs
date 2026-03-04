@@ -225,8 +225,12 @@ function evaluateComparison(current, baseline, thresholds, waiverIndex) {
 
     const p95PctLimit = Number(profileThresholds.maxP95RegressionPct);
     const p95MsLimit = Number(profileThresholds.maxP95RegressionMs);
+    const minBaselineP95ForPctMs = Number(profileThresholds.minBaselineP95ForPctMs || 0);
     if (Number.isFinite(p95PctLimit) && Number.isFinite(p95MsLimit)) {
-      if (p95DeltaPct > p95PctLimit || p95DeltaMs > p95MsLimit) {
+      const applyPctLimit = baseP95 >= minBaselineP95ForPctMs;
+      const pctExceeded = applyPctLimit && p95DeltaPct > p95PctLimit;
+      const msExceeded = p95DeltaMs > p95MsLimit;
+      if (pctExceeded || msExceeded) {
         violations.push(metricViolation(
           repo.id,
           'p95ScanMs',
@@ -237,7 +241,9 @@ function evaluateComparison(current, baseline, thresholds, waiverIndex) {
             deltaPct: round(p95DeltaPct, 3),
             deltaMs: round(p95DeltaMs, 3),
             maxPct: p95PctLimit,
-            maxMs: p95MsLimit
+            maxMs: p95MsLimit,
+            minBaselineP95ForPctMs,
+            pctLimitApplied: applyPctLimit
           }
         ));
       }

@@ -5,6 +5,7 @@
     "maxCrashRatePct": 0,
     "maxP95RegressionPct": 20,
     "maxP95RegressionMs": 2500,
+    "minBaselineP95ForPctMs": 1000,
     "maxPeakMemoryRegressionPct": 25,
     "maxNewFindingsDelta": 0,
     "categoryP95BudgetMs": {

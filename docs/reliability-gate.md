@@ -116,6 +116,11 @@ Stati:
 - `PASS`: nessuna violazione bloccante.
 - `FAIL`: almeno una violazione non coperta da waiver attivo.
 
+Nota sulle regressioni tempo:
+
+- Il controllo percentuale `maxP95RegressionPct` si applica solo quando la baseline p95 supera `minBaselineP95ForPctMs`.
+- Il limite assoluto in millisecondi (`maxP95RegressionMs`) resta sempre attivo.
+
 ## Quando e lecito aggiornare baseline
 
 Aggiorna la baseline solo se tutte queste condizioni sono vere:
