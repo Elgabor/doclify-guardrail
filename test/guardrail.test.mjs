@@ -1666,6 +1666,21 @@ test('diff: getChangedMarkdownFiles returns array', () => {
   assert.ok(Array.isArray(files));
 });
 
+test('CLI: --diff rejects --base with shell metacharacters', () => {
+  const tmpDir = makeTempDir();
+  const sentinelPath = path.join(tmpDir, 'cmdinj-sentinel.txt');
+  const payload = `HEAD; echo injected > ${sentinelPath}`;
+
+  const run = spawnSync(process.execPath, [CLI_PATH, '--diff', '--base', payload, '--ascii'], {
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /Invalid --base value: contains forbidden shell metacharacters/);
+  assert.equal(fs.existsSync(sentinelPath), false);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
 // --list-rules shows 34 rules (31 + 3 new semantic rules)
 test('CLI: --list-rules shows all 34 rules', () => {
   const r = spawnSync('node', [CLI_PATH, '--list-rules', '--ascii'], { encoding: 'utf8' });

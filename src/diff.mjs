@@ -1,5 +1,13 @@
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+
+const FORBIDDEN_BASE_CHARS_RX = /[;|&$><`()\n\r]/;
+
+function assertSafeBaseRef(base) {
+  if (typeof base !== 'string' || base.length === 0 || FORBIDDEN_BASE_CHARS_RX.test(base)) {
+    throw new Error('Invalid --base value: contains forbidden shell metacharacters');
+  }
+}
 
 /**
  * Get markdown files changed in git relative to a base ref.
@@ -11,23 +19,30 @@ import path from 'node:path';
 function getChangedMarkdownFiles(opts = {}) {
   const { base = 'HEAD', staged = false } = opts;
 
-  let cmd;
+  let gitArgs;
   if (staged) {
-    cmd = 'git diff --cached --name-only --diff-filter=ACMR';
+    gitArgs = ['diff', '--cached', '--name-only', '--diff-filter=ACMR'];
   } else {
-    cmd = `git diff --name-only --diff-filter=ACMR ${base}`;
+    assertSafeBaseRef(base);
+    gitArgs = ['diff', '--name-only', '--diff-filter=ACMR', base];
   }
 
-  let stdout;
-  try {
-    stdout = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-  } catch (err) {
-    const msg = err.stderr ? err.stderr.trim() : err.message;
+  const result = spawnSync('git', gitArgs, {
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+
+  if (result.error) {
+    throw new Error(`Git diff failed: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    const msg = result.stderr ? result.stderr.trim() : `exit code ${result.status}`;
     throw new Error(`Git diff failed: ${msg}`);
   }
 
   const cwd = process.cwd();
-  return stdout
+  return result.stdout
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0 && /\.md$/i.test(line))
