@@ -112,6 +112,7 @@ If no files are specified, scans the current directory.
 | Flag | Description |
 |------|-------------|
 | `--check-links` | Validate HTTP and local links |
+| `--allow-private-links` | Allow private/loopback/link-local remote link checks (opt-in) |
 | `--check-freshness` | Warn on stale docs (>180 days) |
 | `--freshness-max-days <n>` | Max age threshold for freshness check (default: 180) |
 | `--check-frontmatter` | Require YAML frontmatter block |
@@ -119,6 +120,8 @@ If no files are specified, scans the current directory.
 | `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
 | `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
 | `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
+
+Remote link checks are SSRF-hardened by default: private/loopback/link-local/metadata destinations and redirects to them are blocked. Use `--allow-private-links` only in trusted environments.
 
 #### Fix
 

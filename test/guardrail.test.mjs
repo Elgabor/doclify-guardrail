@@ -776,6 +776,7 @@ test('checkDeadLinksDetailed: tracks timeout on cache miss', async () => {
 
   const result = await checkDeadLinksDetailed(content, {
     sourceFile: source,
+    allowPrivateLinks: true,
     timeoutMs: 50,
     concurrency: 1,
     remoteCache: new Map()
@@ -789,6 +790,102 @@ test('checkDeadLinksDetailed: tracks timeout on cache miss', async () => {
   assert.equal(result.stats.remoteTimeouts, 1);
   assert.equal(result.findings.length, 1);
   assert.equal(result.findings[0].code, 'dead-link');
+});
+
+test('checkDeadLinksDetailed: blocks loopback URLs by default', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[loopback](http://127.0.0.1:8080/private)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.stats.remoteLinksChecked, 0);
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'dead-link');
+  assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
+});
+
+test('checkDeadLinksDetailed: allowPrivateLinks opt-in enables loopback checks', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  let hits = 0;
+  const server = http.createServer((_, res) => {
+    hits += 1;
+    res.statusCode = 200;
+    res.end('ok');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  const { port } = server.address();
+  const content = `# Title\n[loopback](http://127.0.0.1:${port}/ok)\n`;
+  fs.writeFileSync(source, content, 'utf8');
+
+  try {
+    const result = await checkDeadLinksDetailed(content, {
+      sourceFile: source,
+      allowPrivateLinks: true,
+      remoteCache: new Map()
+    });
+
+    assert.equal(result.stats.remoteLinksChecked, 1);
+    assert.equal(result.findings.length, 0);
+    assert.ok(hits >= 1, 'Expected at least one remote request');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[redir](https://public.example.com/start)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response(null, {
+      status: 302,
+      headers: { location: 'http://127.0.0.1/private' }
+    });
+  };
+
+  try {
+    const result = await checkDeadLinksDetailed(content, {
+      sourceFile: source,
+      remoteCache: new Map()
+    });
+
+    assert.equal(result.stats.remoteLinksChecked, 1);
+    assert.equal(result.findings.length, 1);
+    assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
+    assert.equal(calls.length, 1, 'Should not fetch private redirect target');
+    assert.ok(calls[0].includes('https://public.example.com/start'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('checkDeadLinksDetailed: private SSRF block takes precedence over linkAllowList', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[loopback](http://127.0.0.1:8080/private)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    linkAllowList: ['127.0.0.1'],
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.stats.remoteLinksChecked, 0);
+  assert.equal(result.findings.length, 1);
+  assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
 });
 
 test('CLI: --check-links fails on missing local link', () => {
@@ -1160,7 +1257,7 @@ test('extractLinks: handles Wikipedia-style URLs with nested parentheses', () =>
   assert.equal(inlineLinks[0].url, 'https://en.wikipedia.org/wiki/Rust_(programming_language)');
 });
 
-test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', async () => {
+test('CLI: --link-allow-list does not bypass private-link SSRF guard', async () => {
   const server = http.createServer((_, res) => {
     res.statusCode = 500;
     res.end('fail');
@@ -1178,7 +1275,7 @@ test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', a
     const parsedNoAllow = JSON.parse(runNoAllow.stdout);
     assert.ok(parsedNoAllow.files[0].findings.errors.some((e) => e.code === 'dead-link'));
 
-    const runAllow = spawnSync(process.execPath, [
+    const runAllowOnly = spawnSync(process.execPath, [
       CLI_PATH,
       mdPath,
       '--check-links',
@@ -1186,15 +1283,30 @@ test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', a
       '--json'
     ], { encoding: 'utf8' });
 
-    assert.equal(runAllow.status, 0);
-    const parsedAllow = JSON.parse(runAllow.stdout);
-    assert.equal(parsedAllow.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
+    assert.equal(runAllowOnly.status, 1);
+    const parsedAllowOnly = JSON.parse(runAllowOnly.stdout);
+    const deadAllowOnly = parsedAllowOnly.files[0].findings.errors.filter((e) => e.code === 'dead-link');
+    assert.equal(deadAllowOnly.length, 1);
+    assert.ok(deadAllowOnly[0].message.includes('Blocked private host/IP'));
+
+    const runAllowPrivate = spawnSync(process.execPath, [
+      CLI_PATH,
+      mdPath,
+      '--check-links',
+      '--allow-private-links',
+      '--link-allow-list', '127.0.0.1',
+      '--json'
+    ], { encoding: 'utf8' });
+
+    assert.equal(runAllowPrivate.status, 0);
+    const parsedAllowPrivate = JSON.parse(runAllowPrivate.stdout);
+    assert.equal(parsedAllowPrivate.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 });
 
-test('CLI: local config linkAllowList is applied for per-file link checks', async () => {
+test('CLI: local config linkAllowList cannot bypass private-link SSRF guard', async () => {
   const server = http.createServer((_, res) => {
     res.statusCode = 500;
     res.end('fail');
@@ -1214,9 +1326,11 @@ test('CLI: local config linkAllowList is applied for per-file link checks', asyn
 
   try {
     const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', rootCfg, '--json'], { encoding: 'utf8' });
-    assert.equal(run.status, 0);
+    assert.equal(run.status, 1);
     const parsed = JSON.parse(run.stdout);
-    assert.equal(parsed.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
+    const dead = parsed.files[0].findings.errors.filter((e) => e.code === 'dead-link');
+    assert.equal(dead.length, 1);
+    assert.ok(dead[0].message.includes('Blocked private host/IP'));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -1623,6 +1737,11 @@ test('parseArgs: freshness/link tuning flags are parsed', () => {
   assert.equal(args.freshnessMaxDays, 30);
   assert.equal(args.linkTimeoutMs, 2500);
   assert.equal(args.linkConcurrency, 9);
+});
+
+test('parseArgs: --allow-private-links is parsed', () => {
+  const args = parseArgs(['doc.md', '--allow-private-links']);
+  assert.equal(args.allowPrivateLinks, true);
 });
 
 test('parseArgs: --min-score rejects invalid values', () => {

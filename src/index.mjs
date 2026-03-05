@@ -67,6 +67,7 @@ function printHelp() {
 
   ${y('CHECKS')}
     --check-links            Validate HTTP and local links
+    --allow-private-links    Allow private/loopback/link-local remote link checks
     --check-freshness        Warn on stale docs ${d('(>180 days)')}
     --freshness-max-days <n> Max age for freshness check ${d('(default: 180)')}
     --check-frontmatter      Require YAML frontmatter block
@@ -154,6 +155,7 @@ function parseArgs(argv) {
     checkFreshness: false,
     checkFrontmatter: false,
     checkInlineHtml: false,
+    allowPrivateLinks: false,
     linkAllowList: [],
     fix: false,
     dryRun: false,
@@ -235,6 +237,11 @@ function parseArgs(argv) {
     if (a === '--check-links') {
       args.checkLinks = true;
       args.cliFlags.checkLinks = true;
+      continue;
+    }
+
+    if (a === '--allow-private-links') {
+      args.allowPrivateLinks = true;
       continue;
     }
 
@@ -975,6 +982,7 @@ async function runCli(argv = process.argv.slice(2)) {
         const { findings: deadLinks, stats: linkStats } = await checkDeadLinksDetailed(content, {
           sourceFile: filePath,
           linkAllowList: scanContext.options.linkAllowList,
+          allowPrivateLinks: args.allowPrivateLinks,
           timeoutMs: scanContext.options.linkTimeoutMs,
           concurrency: scanContext.options.linkConcurrency,
           remoteCache: remoteLinkCache
