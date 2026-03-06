@@ -27,6 +27,12 @@ jobs:
         with:
           node-version: '20'
       - run: npm install --no-audit --no-fund
+      - name: Install action dependencies
+        working-directory: action
+        run: npm install --no-audit --no-fund
+      - name: Audit action dependency chain
+        working-directory: action
+        run: npm audit --omit=dev
       - name: Run test suite
         run: npm test
       - name: Docs quality gate
