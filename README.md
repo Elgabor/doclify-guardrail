@@ -11,7 +11,7 @@ Works everywhere Node.js 20+ runs.
 
 | | Doclify | markdownlint |
 |--|---------|-------------|
-| Style rules | 34 built-in | 59 |
+| Built-in rules | 35 total | 59 |
 | Content checks | placeholders, headings, images | No |
 | Dead link checker | Built-in (`--check-links`) | No |
 | Doc freshness | Built-in (`--check-freshness`) | No |
@@ -122,7 +122,10 @@ If no files are specified, scans the current directory.
 | `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
 | `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
 
-Remote link checks are SSRF-hardened by default: private/loopback/link-local/metadata destinations and redirects to them are blocked. Use `--allow-private-links` only in trusted environments.
+Remote link checks are SSRF-hardened by default:
+private, loopback, link-local and metadata destinations are blocked,
+including redirects to them.
+Use `--allow-private-links` only in trusted environments.
 
 #### Fix
 
@@ -200,7 +203,11 @@ This creates `.doclify-guardrail.json`:
 }
 ```
 
-CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged. Root-relative local links (`/docs/page.md`) require `siteRoot` to be verified; otherwise Doclify emits `unverifiable-root-relative-link`.
+CLI flags override config file values.
+Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
+Root-relative local links (`/docs/page.md`) require `siteRoot`
+to be verified; otherwise Doclify emits
+`unverifiable-root-relative-link`.
 
 ## Built-in Rules (35)
 
@@ -391,6 +398,11 @@ The action automatically:
 - Generates SARIF for GitHub Code Scanning
 - Sets outputs: `score`, `status`, `errors`, `warnings`
 
+The action contract lives in `action/action.yml`.
+GitHub executes the committed `action/dist/index.mjs`,
+which delegates to the CLI through `action/entrypoint.mjs`
+and can upsert PR comments via `action/pr-comment.mjs`.
+
 ## Programmatic API
 
 Use doclify as a library in your own tools:
@@ -558,7 +570,7 @@ node --test --test-reporter spec
 ### Verify All Rules Work
 
 ```bash
-# List all 34 built-in rules
+# List all 35 built-in rules
 doclify --list-rules
 
 # Scan with all optional checks enabled
@@ -588,7 +600,7 @@ Detailed setup and policy: `docs/reliability-gate.md`.
 ```text
 src/
   index.mjs        CLI orchestrator, arg parsing, main flow
-  checker.mjs      34-rule lint engine + inline suppressions
+  checker.mjs      35-rule lint engine + inline suppressions
   config-resolver.mjs Hierarchical config chain + CLI precedence
   scan-context.mjs Immutable per-file scan context
   fences.mjs       Shared fenced-code parsing helpers (0-3 space indent)
