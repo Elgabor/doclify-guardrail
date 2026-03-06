@@ -6,6 +6,7 @@ on:
       - 'docs/**/*.md'
       - '*.md'
       - 'src/**'
+      - 'scripts/**'
       - 'test/**'
       - 'action/**'
       - 'package.json'
@@ -14,6 +15,7 @@ on:
       - 'docs/**/*.md'
       - '*.md'
       - 'src/**'
+      - 'scripts/**'
       - 'test/**'
       - 'action/**'
       - 'package.json'
@@ -35,8 +37,10 @@ jobs:
         run: npm audit --omit=dev
       - name: Run test suite
         run: npm test
+      - name: Verify docs sync
+        run: npm run docs:sync-check
       - name: Docs quality gate
-        run: node ./src/index.mjs docs/ --strict --exclude examples --report report.md
+        run: node ./src/index.mjs README.md docs/ --strict --exclude examples --report report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

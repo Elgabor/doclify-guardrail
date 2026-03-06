@@ -6,8 +6,3 @@ node_modules/
 doclify-report.md
 bench/out/*
 !bench/out/.gitkeep
-
-# Internal documentation (never commit)
-docs/panoramica.md
-docs/guida-test.md
-docs/documentazione-tecnica.md

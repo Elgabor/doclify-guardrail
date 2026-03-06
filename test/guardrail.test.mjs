@@ -1940,13 +1940,13 @@ test('CLI: --diff rejects --base with shell metacharacters', () => {
   fs.rmSync(tmpDir, { recursive: true });
 });
 
-// --list-rules shows 34 rules (31 + 3 new semantic rules)
-test('CLI: --list-rules shows all 34 rules', () => {
+// --list-rules shows all current built-in rules
+test('CLI: --list-rules shows all 35 rules', () => {
   const r = spawnSync('node', [CLI_PATH, '--list-rules', '--ascii'], { encoding: 'utf8' });
   assert.equal(r.status, 0);
   // Count rule lines (each has an ID padded to 22 chars)
   const ruleLines = r.stdout.split('\n').filter(l => l.includes('warning') || l.includes('error'));
-  assert.ok(ruleLines.length >= 34, `Expected >=34 rules, got ${ruleLines.length}`);
+  assert.ok(ruleLines.length >= 35, `Expected >=35 rules, got ${ruleLines.length}`);
 });
 
 // ===== Reliability Gate scripts =====
