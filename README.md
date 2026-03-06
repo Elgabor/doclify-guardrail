@@ -117,6 +117,7 @@ If no files are specified, scans the current directory.
 | `--freshness-max-days <n>` | Max age threshold for freshness check (default: 180) |
 | `--check-frontmatter` | Require YAML frontmatter block |
 | `--check-inline-html` | Enable `no-inline-html` rule |
+| `--site-root <path>` | Resolve `/root-relative` local links from this filesystem root |
 | `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
 | `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
 | `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
@@ -194,13 +195,14 @@ This creates `.doclify-guardrail.json`:
   "freshnessMaxDays": 180,
   "linkTimeoutMs": 8000,
   "linkConcurrency": 5,
+  "siteRoot": null,
   "linkAllowList": []
 }
 ```
 
-CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
+CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged. Root-relative local links (`/docs/page.md`) require `siteRoot` to be verified; otherwise Doclify emits `unverifiable-root-relative-link`.
 
-## Built-in Rules (34)
+## Built-in Rules (35)
 
 ### Content Rules
 
@@ -216,6 +218,7 @@ CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAl
 | `empty-link` | warning | No empty link text or URL |
 | `img-alt` | warning | Images must have alt text |
 | `dead-link` | error | No broken links (requires `--check-links`) |
+| `unverifiable-root-relative-link` | warning | Root-relative local links need `siteRoot` to be verified |
 | `stale-doc` | warning | Warn on stale docs (requires `--check-freshness`) |
 
 ### Style Rules (new in v1.4)
