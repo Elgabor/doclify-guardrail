@@ -14,6 +14,7 @@ import { findParentConfigs, resolveOptions, resolveFileOptions } from './config-
 import { getChangedMarkdownFiles } from './diff.mjs';
 import { loadHistory, appendHistory, getCurrentCommit, checkRegression, renderTrend } from './trend.mjs';
 import { createFileScanContext } from './scan-context.mjs';
+import { isMarkdownPath } from './markdown-files.mjs';
 import {
   generateJUnitReport,
   generateSarifReport,
@@ -53,10 +54,10 @@ function printHelp() {
     If no files are specified, scans the current directory.
 
   ${y('SCAN')}
-    --dir <path>             Scan .md files recursively in directory
-    --diff                   Only scan git-changed .md files ${d('(vs HEAD)')}
+    --dir <path>             Scan .md/.mdx files recursively in directory
+    --diff                   Only scan git-changed .md/.mdx files ${d('(vs HEAD)')}
     --base <ref>             Base git ref for --diff ${d('(default: HEAD)')}
-    --staged                 Only scan git-staged .md files
+    --staged                 Only scan git-staged .md/.mdx files
     --strict                 Treat warnings as errors
     --min-score <n>          Fail if health score < n ${d('(0-100)')}
     --max-line-length <n>    Max line length ${d('(default: 160)')}
@@ -757,13 +758,13 @@ async function runCli(argv = process.argv.slice(2)) {
   // In diff/staged mode, zero changed files is a valid success (not an error)
   if ((args.diff || args.staged) && filePaths.length === 0) {
     printBanner(0, VERSION);
-    log(c.dim(icons.info), 'No changed markdown files found.');
+    log(c.dim(icons.info), 'No changed Markdown/MDX files found.');
     console.error('');
     return 0;
   }
 
   if (filePaths.length === 0) {
-    console.error('Error: no markdown files found.');
+    console.error('Error: no Markdown/MDX files found.');
     return 2;
   }
 
@@ -853,7 +854,7 @@ async function runCli(argv = process.argv.slice(2)) {
     const { watch } = await import('node:fs');
     try {
       watch(watchPath, { recursive: true }, (eventType, filename) => {
-        if (!filename || !filename.endsWith('.md')) return;
+        if (!filename || !isMarkdownPath(filename)) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           const fullPath = path.resolve(watchPath, filename);

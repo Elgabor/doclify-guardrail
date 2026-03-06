@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isMarkdownPath } from './markdown-files.mjs';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -27,13 +28,13 @@ function isIgnoredPath(filePath) {
 }
 
 /**
- * Find all .md files recursively in a directory.
+ * Find all Markdown (.md/.mdx) files recursively in a directory.
  */
 function findMarkdownFiles(dirPath) {
   const resolved = path.resolve(dirPath);
   const entries = fs.readdirSync(resolved, { recursive: true, withFileTypes: true });
   return entries
-    .filter(e => e.isFile() && e.name.endsWith('.md'))
+    .filter(e => e.isFile() && isMarkdownPath(e.name))
     .map(e => path.join(e.parentPath || e.path, e.name))
     .filter(f => !isIgnoredPath(path.relative(resolved, f)));
 }
@@ -41,8 +42,9 @@ function findMarkdownFiles(dirPath) {
 /**
  * Minimal glob expander. Supports patterns like:
  *   "docs/*.md"       — .md files in docs/
+ *   "docs/*.mdx"      — .mdx files in docs/
  *   "docs/**\/*.md"   — .md files recursively under docs/
- *   "**\/*.md"        — .md files recursively from cwd
+ *   "**\/*"           — all Markdown files recursively from cwd
  */
 function miniGlob(pattern, basePath) {
   const resolved = path.resolve(basePath || '.');
@@ -68,7 +70,8 @@ function miniGlob(pattern, basePath) {
     }
   }
 
-  if (!filePattern) filePattern = '*.md';
+  const matchAnyMarkdownFile = !filePattern;
+  if (!filePattern) filePattern = '*';
 
   const searchDir = prefixParts.length > 0
     ? path.resolve(resolved, prefixParts.join('/'))
@@ -88,14 +91,14 @@ function miniGlob(pattern, basePath) {
   const fileRx = new RegExp(regexStr);
 
   return entries
-    .filter(e => e.isFile() && fileRx.test(e.name))
+    .filter(e => e.isFile() && (matchAnyMarkdownFile ? isMarkdownPath(e.name) : fileRx.test(e.name)))
     .map(e => path.join(e.parentPath || e.path, e.name))
     .filter(f => !isIgnoredPath(path.relative(searchDir, f)));
 }
 
 /**
  * Resolve a list of file paths from CLI arguments.
- * Handles: explicit files, directories (recursive .md scan), glob patterns, --dir flag.
+ * Handles: explicit files, directories (recursive Markdown scan), glob patterns, --dir flag.
  */
 function resolveFileList(args) {
   const targets = [...(args.files || [])];
@@ -123,7 +126,7 @@ function resolveFileList(args) {
         if (stat.isDirectory()) {
           const mdFiles = findMarkdownFiles(resolved);
           if (mdFiles.length === 0) {
-            errors.push(`No .md files found in directory: ${target}`);
+            errors.push(`No Markdown files found in directory: ${target}`);
           }
           result.push(...mdFiles);
         } else if (stat.isFile()) {
