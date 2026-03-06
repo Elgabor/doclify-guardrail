@@ -45,7 +45,8 @@ action/dist/index.mjs     bundle ncc eseguito da GitHub Actions
 `duplicate-section-intent`.
 
 `unverifiable-root-relative-link` e il warning che protegge i link locali
-root-relative quando `siteRoot` non e disponibile.
+root-relative quando `siteRoot` non e disponibile o quando una route
+root-relative non mappa in modo affidabile a un file sorgente.
 
 ## Flusso CLI
 
@@ -113,7 +114,7 @@ e i file chiave della GitHub Action.
 
 1. test suite
 2. docs sync guardrail
-3. lint strict su `README.md` e `docs/`
+3. lint strict su `README.md` e `docs/` con discovery di file `.md` e `.mdx`
 
 ## Riferimenti
 

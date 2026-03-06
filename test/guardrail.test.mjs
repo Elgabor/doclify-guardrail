@@ -348,37 +348,57 @@ test('parseArgs: accepts --no-color flag', () => {
   assert.equal(args.noColor, true);
 });
 
-test('findMarkdownFiles: expands directory to .md files', () => {
+test('findMarkdownFiles: expands directory to .md/.mdx files', () => {
   const tmp = makeTempDir();
   fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
   fs.writeFileSync(path.join(tmp, 'b.md'), '# B', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'c.mdx'), '# C', 'utf8');
   fs.writeFileSync(path.join(tmp, 'c.txt'), 'not markdown', 'utf8');
   fs.mkdirSync(path.join(tmp, 'sub'));
   fs.writeFileSync(path.join(tmp, 'sub', 'd.md'), '# D', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'sub', 'e.mdx'), '# E', 'utf8');
 
   const files = findMarkdownFiles(tmp);
-  assert.equal(files.length, 3, 'Should find 3 .md files');
-  assert.ok(files.every(f => f.endsWith('.md')), 'All files should be .md');
+  assert.equal(files.length, 5, 'Should find 5 Markdown files');
+  assert.ok(files.some(f => f.endsWith('c.mdx')), 'Should include top-level .mdx files');
+  assert.ok(files.some(f => f.endsWith(path.join('sub', 'e.mdx'))), 'Should include nested .mdx files');
 });
 
 test('resolveFileList: handles directory target', () => {
   const tmp = makeTempDir();
   fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
   fs.writeFileSync(path.join(tmp, 'b.md'), '# B', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'c.mdx'), '# C', 'utf8');
 
   const files = resolveFileList({ files: [tmp], dir: null });
-  assert.equal(files.length, 2);
+  assert.equal(files.length, 3);
 });
 
-test('resolveFileList: ignores non-.md files in directory', () => {
+test('resolveFileList: ignores non-Markdown files in directory', () => {
   const tmp = makeTempDir();
   fs.writeFileSync(path.join(tmp, 'a.md'), '# A', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.mdx'), '# B', 'utf8');
   fs.writeFileSync(path.join(tmp, 'b.txt'), 'text', 'utf8');
   fs.writeFileSync(path.join(tmp, 'c.json'), '{}', 'utf8');
 
   const files = resolveFileList({ files: [tmp], dir: null });
-  assert.equal(files.length, 1);
-  assert.ok(files[0].endsWith('a.md'));
+  assert.equal(files.length, 2);
+  assert.ok(files.some(file => file.endsWith('a.md')));
+  assert.ok(files.some(file => file.endsWith('b.mdx')));
+});
+
+test('CLI: directory scan succeeds when directory only contains .mdx files', () => {
+  const tmp = makeTempDir();
+  const docsDir = path.join(tmp, 'docs');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(docsDir, 'guide.mdx'), '# Guide\n\nClean docs.\n', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, docsDir, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.files.length, 1);
+  assert.equal(parsed.files[0].file.endsWith('guide.mdx'), true);
+  assert.equal(parsed.summary.filesPassed, 1);
 });
 
 test('CLI: single file output has files[] array with 1 element', () => {
@@ -962,6 +982,45 @@ test('checkDeadLinksDetailed: reports missing root-relative target when siteRoot
   assert.equal(result.findings[0].severity, 'error');
 });
 
+test('checkDeadLinksDetailed: resolves route-like root-relative links to index.mdx candidates', async () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const source = path.join(tmp, 'docs', 'doc.md');
+  const content = '# Title\n[root](/guides/getting-started)\n';
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.mkdirSync(path.join(siteRoot, 'guides', 'getting-started'), { recursive: true });
+  fs.writeFileSync(source, content, 'utf8');
+  fs.writeFileSync(path.join(siteRoot, 'guides', 'getting-started', 'index.mdx'), '# Getting Started\n', 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    siteRoot,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.findings.length, 0);
+});
+
+test('checkDeadLinksDetailed: warns for route-like root-relative links that do not map to source files', async () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const source = path.join(tmp, 'docs', 'doc.md');
+  const content = '# Title\n[root](/guides/missing-route)\n';
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.mkdirSync(siteRoot, { recursive: true });
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    siteRoot,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'unverifiable-root-relative-link');
+  assert.equal(result.findings[0].severity, 'warning');
+});
+
 test('CLI: --check-links fails on missing local link', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -1000,6 +1059,22 @@ test('CLI: --site-root enables root-relative local link validation', () => {
   const parsed = JSON.parse(run.stdout);
   const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
   assert.ok(dead);
+});
+
+test('CLI: --site-root downgrades unresolved route-like root-relative links to warnings', () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const mdPath = path.join(tmp, 'docs', 'doc.md');
+  fs.mkdirSync(path.dirname(mdPath), { recursive: true });
+  fs.mkdirSync(siteRoot, { recursive: true });
+  fs.writeFileSync(mdPath, '# Title\n\n[root](/guides/getting-started)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--site-root', siteRoot, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  const warning = parsed.files[0].findings.warnings.find((w) => w.code === 'unverifiable-root-relative-link');
+  assert.ok(warning);
+  assert.equal(parsed.files[0].findings.errors.length, 0);
 });
 
 test('CLI: checkLinks from config enables dead-link checks without CLI flag', () => {
@@ -1390,6 +1465,20 @@ test('extractLinks: handles Wikipedia-style URLs with nested parentheses', () =>
   const inlineLinks = links.filter(l => l.kind === 'inline');
   assert.equal(inlineLinks.length, 1);
   assert.equal(inlineLinks[0].url, 'https://en.wikipedia.org/wiki/Rust_(programming_language)');
+});
+
+test('extractLinks: trims trailing markdown emphasis around inline links', () => {
+  const md = 'Refer to **[Crowdin documentation](https://support.crowdin.com/)** for help.';
+  const links = extractLinks(md);
+  const inlineLinks = links.filter(l => l.kind === 'inline');
+  assert.equal(inlineLinks.length, 1);
+  assert.equal(inlineLinks[0].url, 'https://support.crowdin.com/');
+});
+
+test('empty-link: ignores inline-code link text', () => {
+  const md = '# Title\n\n[`http://localhost:3000/fr/`](http://localhost:3000/fr/)\n';
+  const result = checkMarkdown(md);
+  assert.equal(result.warnings.some((w) => w.code === 'empty-link'), false);
 });
 
 test('CLI: --link-allow-list does not bypass private-link SSRF guard', async () => {
@@ -1854,7 +1943,7 @@ test('CLI: --diff flag is accepted without error', () => {
 
 test('CLI: --staged flag is accepted without error', () => {
   const r = spawnSync('node', [CLI_PATH, '--staged', '--ascii'], { encoding: 'utf8' });
-  // Exit 2 is OK if "no markdown files found" (no staged .md files), but not if it's an unknown option error
+  // Exit 2 is OK if no changed Markdown/MDX files are found, but not if it's an unknown option error.
   assert.ok(!r.stderr.includes('Unknown option'), '--staged should be recognized');
 });
 
@@ -1923,6 +2012,31 @@ test('diff: getChangedMarkdownFiles returns array', () => {
   // This test runs in a git repo, so it should work
   const files = getChangedMarkdownFiles({ base: 'HEAD' });
   assert.ok(Array.isArray(files));
+});
+
+test('diff: getChangedMarkdownFiles includes .mdx files', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(path.join(tmp, 'guide.mdx'), '# Guide\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', 'guide.mdx'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(path.join(tmp, 'guide.mdx'), '# Guide\n\nUpdated.\n', 'utf8');
+
+    const files = getChangedMarkdownFiles({ base: 'HEAD' });
+    assert.equal(files.length, 1);
+    assert.ok(files[0].endsWith('guide.mdx'));
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('CLI: --diff rejects --base with shell metacharacters', () => {

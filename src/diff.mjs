@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { isMarkdownPath } from './markdown-files.mjs';
 
 const FORBIDDEN_BASE_CHARS_RX = /[;|&$><`()\n\r]/;
 
@@ -10,7 +11,7 @@ function assertSafeBaseRef(base) {
 }
 
 /**
- * Get markdown files changed in git relative to a base ref.
+ * Get Markdown/MDX files changed in git relative to a base ref.
  * @param {object} opts
  * @param {string} [opts.base] - Base git ref (default: HEAD)
  * @param {boolean} [opts.staged] - Only staged files
@@ -45,7 +46,7 @@ function getChangedMarkdownFiles(opts = {}) {
   return result.stdout
     .split('\n')
     .map(line => line.trim())
-    .filter(line => line.length > 0 && /\.md$/i.test(line))
+    .filter(line => line.length > 0 && isMarkdownPath(line))
     .map(rel => path.resolve(cwd, rel));
 }
 

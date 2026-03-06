@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
       - '*.md'
+      - '*.mdx'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -13,7 +15,9 @@ on:
   pull_request:
     paths:
       - 'docs/**/*.md'
+      - 'docs/**/*.mdx'
       - '*.md'
+      - '*.mdx'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'

@@ -515,7 +515,7 @@ function checkMarkdown(rawContent, opts = {}) {
 
   // Rule: empty-link (uses stripped content, excludes images)
   lines.forEach((line, idx) => {
-    const cleanLine = stripInlineCode(line);
+    const cleanLine = line.replace(/`[^`]+`/g, 'CODE');
     // [](url) — empty link text (but not ![](url) which is img-alt)
     if (/(?<!!)\[\]\([^)]+\)/.test(cleanLine)) {
       warnings.push(normalizeFinding('empty-link', 'Link has empty text: [](url).', idx + 1, filePath));

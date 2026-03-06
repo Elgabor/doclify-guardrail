@@ -3,6 +3,7 @@ import path from 'node:path';
 import { lookup } from 'node:dns/promises';
 import net from 'node:net';
 import { stripCodeBlocks, stripInlineCode } from './checker.mjs';
+import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
 
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
@@ -10,6 +11,25 @@ const MAX_REDIRECTS = 5;
 const METADATA_HOSTNAMES = new Set([
   'metadata.google.internal'
 ]);
+
+function sanitizeCapturedUrl(url, kind) {
+  let normalized = url.trim().replace(/[>*_`]+$/g, '');
+
+  let openParens = (normalized.match(/\(/g) || []).length;
+  let closeParens = (normalized.match(/\)/g) || []).length;
+  while (closeParens > openParens && normalized.endsWith(')')) {
+    normalized = normalized.slice(0, -1);
+    closeParens -= 1;
+  }
+
+  if (kind !== 'inline') {
+    normalized = normalized.replace(/[),.;!?]+$/g, '');
+  } else {
+    normalized = normalized.replace(/[.;!?]+$/g, '');
+  }
+
+  return normalized;
+}
 
 function extractLinks(content) {
   const stripped = stripCodeBlocks(content);
@@ -42,7 +62,7 @@ function extractLinks(content) {
   // Remove trailing punctuation from bare/reference URL captures (not inline — already delimited by markdown syntax)
   return links.map((l) => ({
     ...l,
-    url: l.kind === 'inline' ? l.url : l.url.replace(/[),.;!?]+$/g, '')
+    url: sanitizeCapturedUrl(l.url, l.kind)
   }));
 }
 
@@ -276,6 +296,18 @@ async function checkRemoteUrl(url, opts = {}) {
   }
 }
 
+function buildRootRelativeCandidates(targetPath) {
+  const candidates = [targetPath];
+  if (path.extname(targetPath)) return candidates;
+
+  for (const extension of MARKDOWN_EXTENSIONS) {
+    candidates.push(targetPath + extension);
+    candidates.push(path.join(targetPath, 'index' + extension));
+  }
+
+  return [...new Set(candidates)];
+}
+
 function resolveLocalUrl(url, { sourceFile, siteRoot } = {}) {
   const withoutAnchor = url.split('#')[0];
   if (!withoutAnchor) return null;
@@ -289,7 +321,12 @@ function resolveLocalUrl(url, { sourceFile, siteRoot } = {}) {
       };
     }
     const siteRelativeTarget = withoutAnchor.replace(/^\/+/, '');
-    return { targetPath: path.resolve(siteRoot, siteRelativeTarget) };
+    const targetPath = path.resolve(siteRoot, siteRelativeTarget);
+    return {
+      targetPath,
+      candidatePaths: buildRootRelativeCandidates(targetPath),
+      unverifiableIfMissing: path.extname(siteRelativeTarget).length === 0
+    };
   }
 
   return { targetPath: path.resolve(path.dirname(sourceFile), withoutAnchor) };
@@ -300,13 +337,24 @@ function checkLocalUrl(url, opts = {}) {
   if (!resolved) return null;
   if (resolved.message) return resolved;
 
-  return fs.existsSync(resolved.targetPath)
-    ? null
-    : {
-        code: 'dead-link',
-        severity: 'error',
-        message: `Dead link: ${url} (Target not found)`
-      };
+  const candidatePaths = resolved.candidatePaths || [resolved.targetPath];
+  if (candidatePaths.some(candidate => fs.existsSync(candidate))) {
+    return null;
+  }
+
+  if (resolved.unverifiableIfMissing) {
+    return {
+      code: 'unverifiable-root-relative-link',
+      severity: 'warning',
+      message: `Root-relative link not verified against source files: ${url} (no matching file under siteRoot)`
+    };
+  }
+
+  return {
+    code: 'dead-link',
+    severity: 'error',
+    message: `Dead link: ${url} (Target not found)`
+  };
 }
 
 async function runWithConcurrency(tasks, limit) {

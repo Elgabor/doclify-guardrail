@@ -1,7 +1,7 @@
 # Doclify Guardrail — Panoramica
 
 Doclify Guardrail e un quality gate per documentazione Markdown.
-Il core CLI analizza file `.md` con **35 regole built-in**,
+Il core CLI analizza file `.md` e `.mdx` con **35 regole built-in**,
 produce finding error e warning, calcola un health score 0-100
 e restituisce PASS o FAIL.
 
@@ -39,6 +39,8 @@ Esempi: `blanks-around-headings`, `no-bare-urls`, `link-title-style`.
 I link come `/docs/page.md` vengono verificati solo se `siteRoot` e configurata.
 Senza `siteRoot`, Doclify emette il warning
 `unverifiable-root-relative-link`.
+Lo stesso warning resta anche per route root-relative che non mappano
+in modo diretto a un file sorgente sotto `siteRoot`.
 
 ## GitHub Action
 

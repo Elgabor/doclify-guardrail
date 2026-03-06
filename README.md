@@ -83,7 +83,7 @@ doclify docs/ --json 2>/dev/null | jq '.summary'
 ## Usage
 
 ```bash
-doclify <file.md ...> [options]
+doclify <file.md|file.mdx ...> [options]
 doclify --dir <path> [options]
 ```
 
@@ -95,10 +95,10 @@ If no files are specified, scans the current directory.
 
 | Flag | Description |
 |------|-------------|
-| `--dir <path>` | Scan `.md` files recursively in directory |
-| `--diff` | Only scan git-changed `.md` files (vs HEAD) |
+| `--dir <path>` | Scan `.md` and `.mdx` files recursively in directory |
+| `--diff` | Only scan git-changed `.md` and `.mdx` files (vs HEAD) |
 | `--base <ref>` | Base git ref for `--diff` (default: HEAD) |
-| `--staged` | Only scan git-staged `.md` files |
+| `--staged` | Only scan git-staged `.md` and `.mdx` files |
 | `--strict` | Treat warnings as errors |
 | `--min-score <n>` | Fail if health score is below n (0-100) |
 | `--max-line-length <n>` | Max line length (default: 160) |
@@ -208,6 +208,9 @@ Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 Root-relative local links (`/docs/page.md`) require `siteRoot`
 to be verified; otherwise Doclify emits
 `unverifiable-root-relative-link`.
+If a root-relative route does not map cleanly to a source file under
+`siteRoot`, Doclify also keeps it as `unverifiable-root-relative-link`
+instead of reporting a false `dead-link`.
 
 ## Built-in Rules (35)
 
@@ -515,12 +518,12 @@ docs-check:
 
 ```bash
 # .husky/pre-commit or .git/hooks/pre-commit
-npx doclify-guardrail $(git diff --cached --name-only --diff-filter=AM -- '*.md') --strict --ascii
+npx doclify-guardrail $(git diff --cached --name-only --diff-filter=AM -- '*.md' '*.mdx') --strict --ascii
 ```
 
 ## Testing on Another Repository
 
-You can test doclify-guardrail against any project with Markdown files:
+You can test doclify-guardrail against any project with Markdown or MDX files:
 
 ### Quick Test (npx)
 
