@@ -11,7 +11,8 @@ function createFileScanContext({ absolutePath, relativePath, fileOptions, custom
     freshnessMaxDays: fileOptions.freshnessMaxDays,
     linkAllowList: [...fileOptions.linkAllowList],
     linkTimeoutMs: fileOptions.linkTimeoutMs,
-    linkConcurrency: fileOptions.linkConcurrency
+    linkConcurrency: fileOptions.linkConcurrency,
+    siteRoot: fileOptions.siteRoot
   });
 
   return Object.freeze({

@@ -118,6 +118,25 @@ test('resolveFileOptions: merges hierarchical configs parent -> child', () => {
   assert.equal(resolved.ignoreRules.has('img-alt'), true);
 });
 
+test('resolveFileOptions: resolves siteRoot relative to the config that declares it', () => {
+  const tmp = makeTempDir();
+  const rootCfg = path.join(tmp, '.doclify-guardrail.json');
+  const docsDir = path.join(tmp, 'docs');
+  const docsCfg = path.join(docsDir, '.doclify-guardrail.json');
+  const file = path.join(docsDir, 'guide', 'ref.md');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.mkdirSync(path.join(docsDir, 'public'), { recursive: true });
+  fs.writeFileSync(rootCfg, '{}\n', 'utf8');
+  fs.writeFileSync(docsCfg, JSON.stringify({ siteRoot: './public' }) + '\n', 'utf8');
+  fs.writeFileSync(file, '# Title\n', 'utf8');
+
+  const args = parseArgs(['--config', rootCfg, file]);
+  const base = resolveOptions(args);
+  const resolved = resolveFileOptions(file, base, args);
+
+  assert.equal(resolved.siteRoot, path.join(docsDir, 'public'));
+});
+
 test('CLI: strict mode trasforma warning in fail (exit 1)', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -888,6 +907,61 @@ test('checkDeadLinksDetailed: private SSRF block takes precedence over linkAllow
   assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
 });
 
+test('checkDeadLinksDetailed: warns on root-relative links without siteRoot', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[root](/missing.md)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'unverifiable-root-relative-link');
+  assert.equal(result.findings[0].severity, 'warning');
+});
+
+test('checkDeadLinksDetailed: resolves root-relative links against siteRoot', async () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const source = path.join(tmp, 'docs', 'doc.md');
+  const content = '# Title\n[root](/existing.md)\n';
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.mkdirSync(siteRoot, { recursive: true });
+  fs.writeFileSync(source, content, 'utf8');
+  fs.writeFileSync(path.join(siteRoot, 'existing.md'), '# Existing\n', 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    siteRoot,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.findings.length, 0);
+});
+
+test('checkDeadLinksDetailed: reports missing root-relative target when siteRoot is configured', async () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const source = path.join(tmp, 'docs', 'doc.md');
+  const content = '# Title\n[root](/missing.md)\n';
+  fs.mkdirSync(path.dirname(source), { recursive: true });
+  fs.mkdirSync(siteRoot, { recursive: true });
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    siteRoot,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'dead-link');
+  assert.equal(result.findings[0].severity, 'error');
+});
+
 test('CLI: --check-links fails on missing local link', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -900,12 +974,58 @@ test('CLI: --check-links fails on missing local link', () => {
   assert.ok(dead);
 });
 
+test('CLI: --check-links warns on root-relative local link without siteRoot', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n\n[root](/not-found.md)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  const warning = parsed.files[0].findings.warnings.find((w) => w.code === 'unverifiable-root-relative-link');
+  assert.ok(warning);
+  assert.equal(parsed.files[0].findings.errors.length, 0);
+});
+
+test('CLI: --site-root enables root-relative local link validation', () => {
+  const tmp = makeTempDir();
+  const siteRoot = path.join(tmp, 'public');
+  const mdPath = path.join(tmp, 'docs', 'doc.md');
+  fs.mkdirSync(path.dirname(mdPath), { recursive: true });
+  fs.mkdirSync(siteRoot, { recursive: true });
+  fs.writeFileSync(mdPath, '# Title\n\n[root](/not-found.md)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--site-root', siteRoot, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
+  assert.ok(dead);
+});
+
 test('CLI: checkLinks from config enables dead-link checks without CLI flag', () => {
   const tmp = makeTempDir();
   const cfgPath = path.join(tmp, '.doclify-guardrail.json');
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(cfgPath, JSON.stringify({ checkLinks: true }) + '\n', 'utf8');
   fs.writeFileSync(mdPath, '# Title\n[missing](./not-found.md)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
+  assert.ok(dead);
+});
+
+test('CLI: siteRoot from config resolves relative to config directory', () => {
+  const tmp = makeTempDir();
+  const configDir = path.join(tmp, 'config');
+  const siteRootDir = path.join(configDir, 'public');
+  const cfgPath = path.join(configDir, '.doclify-guardrail.json');
+  const mdPath = path.join(configDir, 'docs', 'doc.md');
+  fs.mkdirSync(path.dirname(mdPath), { recursive: true });
+  fs.mkdirSync(siteRootDir, { recursive: true });
+  fs.writeFileSync(cfgPath, JSON.stringify({ checkLinks: true, siteRoot: './public' }) + '\n', 'utf8');
+  fs.writeFileSync(mdPath, '# Title\n\n[root](/missing.md)', 'utf8');
 
   const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 1);
@@ -1737,6 +1857,11 @@ test('parseArgs: freshness/link tuning flags are parsed', () => {
   assert.equal(args.freshnessMaxDays, 30);
   assert.equal(args.linkTimeoutMs, 2500);
   assert.equal(args.linkConcurrency, 9);
+});
+
+test('parseArgs: --site-root is parsed as an absolute path', () => {
+  const args = parseArgs(['doc.md', '--site-root', 'public']);
+  assert.equal(args.siteRoot, path.resolve('public'));
 });
 
 test('parseArgs: --allow-private-links is parsed', () => {

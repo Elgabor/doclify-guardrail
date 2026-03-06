@@ -276,12 +276,37 @@ async function checkRemoteUrl(url, opts = {}) {
   }
 }
 
-function checkLocalUrl(url, sourceFile) {
+function resolveLocalUrl(url, { sourceFile, siteRoot } = {}) {
   const withoutAnchor = url.split('#')[0];
   if (!withoutAnchor) return null;
 
-  const targetPath = path.resolve(path.dirname(sourceFile), withoutAnchor);
-  return fs.existsSync(targetPath) ? null : 'Target not found';
+  if (withoutAnchor.startsWith('/')) {
+    if (!siteRoot) {
+      return {
+        code: 'unverifiable-root-relative-link',
+        severity: 'warning',
+        message: `Root-relative link not verified: ${url} (siteRoot not configured)`
+      };
+    }
+    const siteRelativeTarget = withoutAnchor.replace(/^\/+/, '');
+    return { targetPath: path.resolve(siteRoot, siteRelativeTarget) };
+  }
+
+  return { targetPath: path.resolve(path.dirname(sourceFile), withoutAnchor) };
+}
+
+function checkLocalUrl(url, opts = {}) {
+  const resolved = resolveLocalUrl(url, opts);
+  if (!resolved) return null;
+  if (resolved.message) return resolved;
+
+  return fs.existsSync(resolved.targetPath)
+    ? null
+    : {
+        code: 'dead-link',
+        severity: 'error',
+        message: `Dead link: ${url} (Target not found)`
+      };
 }
 
 async function runWithConcurrency(tasks, limit) {
@@ -309,7 +334,7 @@ function buildEmptyStats() {
   };
 }
 
-async function checkDeadLinksDetailed(content, { sourceFile, linkAllowList, timeoutMs, concurrency, remoteCache, allowPrivateLinks } = {}) {
+async function checkDeadLinksDetailed(content, { sourceFile, siteRoot, linkAllowList, timeoutMs, concurrency, remoteCache, allowPrivateLinks } = {}) {
   const links = extractLinks(content);
   const findings = [];
   const seen = new Set();
@@ -352,17 +377,13 @@ async function checkDeadLinksDetailed(content, { sourceFile, linkAllowList, time
       continue;
     }
 
-    if (url.startsWith('/')) {
-      continue;
-    }
-
-    const localError = checkLocalUrl(url, sourceFile);
-    if (localError) {
+    const localFinding = checkLocalUrl(url, { sourceFile, siteRoot });
+    if (localFinding) {
       findings.push({
-        code: 'dead-link',
-        severity: 'error',
+        code: localFinding.code,
+        severity: localFinding.severity,
         line: link.line,
-        message: `Dead link: ${url} (${localError})`,
+        message: localFinding.message,
         source: sourceFile
       });
     }
@@ -407,7 +428,7 @@ async function checkDeadLinksDetailed(content, { sourceFile, linkAllowList, time
 
 async function checkDeadLinks(content, opts = {}) {
   const { findings } = await checkDeadLinksDetailed(content, opts);
-  return findings;
+  return findings.filter((finding) => finding.severity === 'error');
 }
 
 export { extractLinks, checkDeadLinks };

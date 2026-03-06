@@ -15,10 +15,19 @@ const DEFAULT_OPTIONS = {
   freshnessMaxDays: DEFAULT_FRESHNESS_DAYS,
   linkTimeoutMs: DEFAULT_LINK_TIMEOUT_MS,
   linkConcurrency: DEFAULT_LINK_CONCURRENCY,
+  siteRoot: null,
   ignoreRules: [],
   exclude: [],
   linkAllowList: []
 };
+
+function resolveConfiguredPath(value, configPath) {
+  if (value == null) return null;
+  if (typeof value !== 'string' || value.trim() === '') return value;
+  if (path.isAbsolute(value)) return value;
+  const baseDir = configPath ? path.dirname(configPath) : process.cwd();
+  return path.resolve(baseDir, value);
+}
 
 function isDescendantOrSame(candidatePath, basePath) {
   const rel = path.relative(basePath, candidatePath);
@@ -40,7 +49,7 @@ function parseConfigFile(configPath) {
   }
 }
 
-function mergeConfigLayer(current, layer) {
+function mergeConfigLayer(current, layer, configPath = null) {
   return {
     ...current,
     maxLineLength: layer.maxLineLength ?? current.maxLineLength,
@@ -52,6 +61,7 @@ function mergeConfigLayer(current, layer) {
     freshnessMaxDays: layer.freshnessMaxDays ?? current.freshnessMaxDays,
     linkTimeoutMs: layer.linkTimeoutMs ?? current.linkTimeoutMs,
     linkConcurrency: layer.linkConcurrency ?? current.linkConcurrency,
+    siteRoot: layer.siteRoot != null ? resolveConfiguredPath(layer.siteRoot, configPath) : current.siteRoot,
     ignoreRules: [
       ...(Array.isArray(current.ignoreRules) ? current.ignoreRules : []),
       ...(Array.isArray(layer.ignoreRules) ? layer.ignoreRules : [])
@@ -84,6 +94,7 @@ function applyCliOverrides(current, args = {}) {
   if (args.freshnessMaxDays != null) merged.freshnessMaxDays = args.freshnessMaxDays;
   if (args.linkTimeoutMs != null) merged.linkTimeoutMs = args.linkTimeoutMs;
   if (args.linkConcurrency != null) merged.linkConcurrency = args.linkConcurrency;
+  if (args.siteRoot != null) merged.siteRoot = args.siteRoot;
   return merged;
 }
 
@@ -108,6 +119,10 @@ function validateResolvedOptions(resolved, contextPath) {
     throw new Error(`Invalid linkConcurrency in config: ${resolved.linkConcurrency}`);
   }
 
+  if (resolved.siteRoot != null && (typeof resolved.siteRoot !== 'string' || resolved.siteRoot.trim() === '')) {
+    throw new Error(`Invalid siteRoot in config: ${resolved.siteRoot}`);
+  }
+
   const dedupe = (arr) => [...new Set(arr.filter(Boolean))];
 
   return {
@@ -120,6 +135,7 @@ function validateResolvedOptions(resolved, contextPath) {
     freshnessMaxDays,
     linkTimeoutMs,
     linkConcurrency,
+    siteRoot: resolved.siteRoot || null,
     ignoreRules: new Set(dedupe(resolved.ignoreRules || [])),
     exclude: dedupe(resolved.exclude || []),
     linkAllowList: dedupe(resolved.linkAllowList || []),
@@ -179,7 +195,7 @@ function getConfigChainForFile(filePath, args = {}) {
 function resolveOptions(args) {
   const rootConfigPath = path.resolve(args.configPath);
   const rootCfg = parseConfigFile(rootConfigPath);
-  const merged = applyCliOverrides(mergeConfigLayer(DEFAULT_OPTIONS, rootCfg), args);
+  const merged = applyCliOverrides(mergeConfigLayer(DEFAULT_OPTIONS, rootCfg, rootConfigPath), args);
   return validateResolvedOptions(merged, rootConfigPath);
 }
 
@@ -187,7 +203,7 @@ function resolveFileOptions(filePath, _baseResolved, args) {
   const chain = getConfigChainForFile(filePath, args);
   let merged = { ...DEFAULT_OPTIONS };
   for (const configPath of chain) {
-    merged = mergeConfigLayer(merged, parseConfigFile(configPath));
+    merged = mergeConfigLayer(merged, parseConfigFile(configPath), configPath);
   }
   merged = applyCliOverrides(merged, args);
 

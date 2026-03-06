@@ -18,6 +18,7 @@ const RULE_CATALOG = [
   { id: 'empty-link',         severity: 'warning', description: 'No empty link text or URL' },
   { id: 'img-alt',            severity: 'warning', description: 'Images must have alt text' },
   { id: 'dead-link',          severity: 'error',   description: 'No broken links (requires --check-links)' },
+  { id: 'unverifiable-root-relative-link', severity: 'warning', description: 'Root-relative local links require siteRoot to be verified' },
   { id: 'stale-doc',          severity: 'warning', description: 'Warn on stale docs (requires --check-freshness)' },
   { id: 'no-trailing-spaces',          severity: 'warning', description: 'No trailing whitespace' },
   { id: 'no-multiple-blanks',          severity: 'warning', description: 'No multiple consecutive blank lines' },

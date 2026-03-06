@@ -72,6 +72,7 @@ function printHelp() {
     --freshness-max-days <n> Max age for freshness check ${d('(default: 180)')}
     --check-frontmatter      Require YAML frontmatter block
     --check-inline-html      Warn on inline HTML tags
+    --site-root <path>       Filesystem root used to resolve /root-relative local links
     --link-allow-list <list> Skip URLs/domains for link checks ${d('(comma-separated)')}
     --link-timeout-ms <n>    Timeout per remote link check ${d('(default: 8000)')}
     --link-concurrency <n>   Remote link checks in parallel ${d('(default: 5)')}
@@ -136,6 +137,7 @@ function parseArgs(argv) {
     freshnessMaxDays: null,
     linkTimeoutMs: null,
     linkConcurrency: null,
+    siteRoot: null,
     configPath: path.resolve('.doclify-guardrail.json'),
     help: false,
     version: false,
@@ -260,6 +262,16 @@ function parseArgs(argv) {
     if (a === '--check-inline-html') {
       args.checkInlineHtml = true;
       args.cliFlags.checkInlineHtml = true;
+      continue;
+    }
+
+    if (a === '--site-root') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --site-root');
+      }
+      args.siteRoot = path.resolve(value);
+      i += 1;
       continue;
     }
 
@@ -683,6 +695,7 @@ async function runCli(argv = process.argv.slice(2)) {
       freshnessMaxDays: 180,
       linkTimeoutMs: 8000,
       linkConcurrency: 5,
+      siteRoot: null,
       linkAllowList: []
     };
 
@@ -981,6 +994,7 @@ async function runCli(argv = process.argv.slice(2)) {
         log(c.dim('  ↳'), c.dim(`Checking links...`));
         const { findings: deadLinks, stats: linkStats } = await checkDeadLinksDetailed(content, {
           sourceFile: filePath,
+          siteRoot: scanContext.options.siteRoot,
           linkAllowList: scanContext.options.linkAllowList,
           allowPrivateLinks: args.allowPrivateLinks,
           timeoutMs: scanContext.options.linkTimeoutMs,
@@ -991,9 +1005,20 @@ async function runCli(argv = process.argv.slice(2)) {
         linkEngineStats.remoteCacheHits += Number(linkStats.remoteCacheHits || 0);
         linkEngineStats.remoteCacheMisses += Number(linkStats.remoteCacheMisses || 0);
         linkEngineStats.remoteTimeouts += Number(linkStats.remoteTimeouts || 0);
-        for (const dl of deadLinks) { dl.source = scanContext.relativePath; }
-        analysis.errors.push(...deadLinks);
+        const deadLinkErrors = [];
+        const deadLinkWarnings = [];
+        for (const finding of deadLinks) {
+          finding.source = scanContext.relativePath;
+          if (finding.severity === 'warning') {
+            deadLinkWarnings.push(finding);
+          } else {
+            deadLinkErrors.push(finding);
+          }
+        }
+        analysis.errors.push(...deadLinkErrors);
+        analysis.warnings.push(...deadLinkWarnings);
         analysis.summary.errors = analysis.errors.length;
+        analysis.summary.warnings = analysis.warnings.length;
         updatePeakRss();
       }
 
