@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import http from 'node:http';
-import { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions } from '../src/index.mjs';
+import { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions, findParentConfigs } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
 import { generateReport } from '../src/report.mjs';
@@ -13,8 +13,23 @@ import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
 import { lint, fix, score } from '../src/api.mjs';
 import { getChangedMarkdownFiles } from '../src/diff.mjs';
-import { checkDeadLinks, extractLinks } from '../src/links.mjs';
+import { loadHistory, appendHistory, checkRegression, renderTrend } from '../src/trend.mjs';
+import { buildPrCommentBody } from '../action/pr-comment.mjs';
+import { checkDeadLinks, checkDeadLinksDetailed, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
+import {
+  parseArgs as parseCorpusArgs,
+  assertManifest as assertCorpusManifest,
+  selectRepos as selectCorpusRepos,
+  normalizeOutputForHash,
+  fingerprintOutput,
+  withFilesystemLock,
+  runCorpus
+} from '../scripts/run-corpus.mjs';
+import {
+  buildWaiverIndex,
+  evaluateComparison
+} from '../scripts/compare-baseline.mjs';
 import {
   computeHealthScore,
   generateJUnitXml,
@@ -68,6 +83,41 @@ test('resolveOptions: legge .doclify-guardrail.json', () => {
   assert.equal(resolved.strict, true);
 });
 
+test('findParentConfigs: returns root-to-child config chain', () => {
+  const tmp = makeTempDir();
+  const root = path.join(tmp, '.doclify-guardrail.json');
+  const docsCfg = path.join(tmp, 'docs', '.doclify-guardrail.json');
+  const apiDir = path.join(tmp, 'docs', 'api');
+  fs.mkdirSync(apiDir, { recursive: true });
+  fs.writeFileSync(root, '{}\n', 'utf8');
+  fs.writeFileSync(docsCfg, '{}\n', 'utf8');
+
+  const chain = findParentConfigs(apiDir, { baseDir: tmp });
+  assert.deepEqual(chain, [root, docsCfg]);
+});
+
+test('resolveFileOptions: merges hierarchical configs parent -> child', () => {
+  const tmp = makeTempDir();
+  const rootCfg = path.join(tmp, '.doclify-guardrail.json');
+  const docsCfg = path.join(tmp, 'docs', '.doclify-guardrail.json');
+  const apiCfg = path.join(tmp, 'docs', 'api', '.doclify-guardrail.json');
+  const file = path.join(tmp, 'docs', 'api', 'ref.md');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '# Title\n', 'utf8');
+  fs.writeFileSync(rootCfg, JSON.stringify({ maxLineLength: 150, ignoreRules: ['line-length'] }) + '\n', 'utf8');
+  fs.writeFileSync(docsCfg, JSON.stringify({ maxLineLength: 120, ignoreRules: ['placeholder'] }) + '\n', 'utf8');
+  fs.writeFileSync(apiCfg, JSON.stringify({ maxLineLength: 100, ignoreRules: ['img-alt'] }) + '\n', 'utf8');
+
+  const args = parseArgs(['--config', rootCfg, file]);
+  const base = resolveOptions(args);
+  const resolved = resolveFileOptions(file, base, args);
+
+  assert.equal(resolved.maxLineLength, 100);
+  assert.equal(resolved.ignoreRules.has('line-length'), true);
+  assert.equal(resolved.ignoreRules.has('placeholder'), true);
+  assert.equal(resolved.ignoreRules.has('img-alt'), true);
+});
+
 test('CLI: strict mode trasforma warning in fail (exit 1)', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -117,6 +167,27 @@ test('CLI: config strict=true applicata anche senza flag', () => {
   fs.writeFileSync(cfgPath, JSON.stringify({ strict: true }), 'utf8');
 
   const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], {
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.strict, true);
+});
+
+test('CLI: --strict overrides local config strict=false', () => {
+  const tmp = makeTempDir();
+  const rootCfg = path.join(tmp, '.doclify-guardrail.json');
+  const localDir = path.join(tmp, 'docs', 'api');
+  const localCfg = path.join(localDir, '.doclify-guardrail.json');
+  const mdPath = path.join(localDir, 'doc.md');
+  fs.mkdirSync(localDir, { recursive: true });
+
+  fs.writeFileSync(rootCfg, JSON.stringify({ strict: false }) + '\n', 'utf8');
+  fs.writeFileSync(localCfg, JSON.stringify({ strict: false }) + '\n', 'utf8');
+  fs.writeFileSync(mdPath, '# Titolo\nTODO da completare\n', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', rootCfg, '--strict', '--json'], {
     encoding: 'utf8'
   });
 
@@ -229,6 +300,13 @@ test('tilde fenced code block is handled', () => {
 
 test('inline code TODO is ignored', () => {
   const md = `---\ntitle: Test\n---\n# Titolo\nUse \`TODO\` as marker`;
+  const res = checkMarkdown(md);
+  const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholders.length, 0);
+});
+
+test('indented fenced code block (<=3 spaces) is treated as code', () => {
+  const md = `# Titolo\n\n  \`\`\`\nTODO hidden in code\n  \`\`\`\n`;
   const res = checkMarkdown(md);
   const placeholders = res.warnings.filter((w) => w.code === 'placeholder');
   assert.equal(placeholders.length, 0);
@@ -661,12 +739,175 @@ test('checkDeadLinks: reports missing local file links', async () => {
   assert.equal(findings[0].code, 'dead-link');
 });
 
+test('checkDeadLinksDetailed: reports cache hit statistics', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\nSee [cached](https://example.com/path)\nSee [cached-2](https://example.com/path)\n';
+  fs.writeFileSync(source, content, 'utf8');
+  const cache = new Map([['https://example.com/path', null]]);
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    remoteCache: cache
+  });
+
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.stats.remoteLinksChecked, 1);
+  assert.equal(result.stats.remoteCacheHits, 1);
+  assert.equal(result.stats.remoteCacheMisses, 0);
+  assert.equal(result.stats.remoteTimeouts, 0);
+});
+
+test('checkDeadLinksDetailed: tracks timeout on cache miss', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const server = http.createServer((req, res) => {
+    setTimeout(() => {
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    }, 250);
+  });
+
+  await new Promise((resolve) => server.listen(0, resolve));
+  const port = server.address().port;
+  const url = `http://127.0.0.1:${port}/slow`;
+  const content = `# Title\n\n[slow](${url})\n`;
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    allowPrivateLinks: true,
+    timeoutMs: 50,
+    concurrency: 1,
+    remoteCache: new Map()
+  });
+
+  await new Promise((resolve) => server.close(resolve));
+
+  assert.equal(result.stats.remoteLinksChecked, 1);
+  assert.equal(result.stats.remoteCacheHits, 0);
+  assert.equal(result.stats.remoteCacheMisses, 1);
+  assert.equal(result.stats.remoteTimeouts, 1);
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'dead-link');
+});
+
+test('checkDeadLinksDetailed: blocks loopback URLs by default', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[loopback](http://127.0.0.1:8080/private)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.stats.remoteLinksChecked, 0);
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].code, 'dead-link');
+  assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
+});
+
+test('checkDeadLinksDetailed: allowPrivateLinks opt-in enables loopback checks', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  let hits = 0;
+  const server = http.createServer((_, res) => {
+    hits += 1;
+    res.statusCode = 200;
+    res.end('ok');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  const { port } = server.address();
+  const content = `# Title\n[loopback](http://127.0.0.1:${port}/ok)\n`;
+  fs.writeFileSync(source, content, 'utf8');
+
+  try {
+    const result = await checkDeadLinksDetailed(content, {
+      sourceFile: source,
+      allowPrivateLinks: true,
+      remoteCache: new Map()
+    });
+
+    assert.equal(result.stats.remoteLinksChecked, 1);
+    assert.equal(result.findings.length, 0);
+    assert.ok(hits >= 1, 'Expected at least one remote request');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[redir](https://public.example.com/start)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return new Response(null, {
+      status: 302,
+      headers: { location: 'http://127.0.0.1/private' }
+    });
+  };
+
+  try {
+    const result = await checkDeadLinksDetailed(content, {
+      sourceFile: source,
+      remoteCache: new Map()
+    });
+
+    assert.equal(result.stats.remoteLinksChecked, 1);
+    assert.equal(result.findings.length, 1);
+    assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
+    assert.equal(calls.length, 1, 'Should not fetch private redirect target');
+    assert.ok(calls[0].includes('https://public.example.com/start'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('checkDeadLinksDetailed: private SSRF block takes precedence over linkAllowList', async () => {
+  const tmp = makeTempDir();
+  const source = path.join(tmp, 'doc.md');
+  const content = '# Title\n[loopback](http://127.0.0.1:8080/private)\n';
+  fs.writeFileSync(source, content, 'utf8');
+
+  const result = await checkDeadLinksDetailed(content, {
+    sourceFile: source,
+    linkAllowList: ['127.0.0.1'],
+    remoteCache: new Map()
+  });
+
+  assert.equal(result.stats.remoteLinksChecked, 0);
+  assert.equal(result.findings.length, 1);
+  assert.ok(result.findings[0].message.includes('Blocked private host/IP'));
+});
+
 test('CLI: --check-links fails on missing local link', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
   fs.writeFileSync(mdPath, '# Title\n[missing](./not-found.md)', 'utf8');
 
   const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--check-links', '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 1);
+  const parsed = JSON.parse(run.stdout);
+  const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
+  assert.ok(dead);
+});
+
+test('CLI: checkLinks from config enables dead-link checks without CLI flag', () => {
+  const tmp = makeTempDir();
+  const cfgPath = path.join(tmp, '.doclify-guardrail.json');
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(cfgPath, JSON.stringify({ checkLinks: true }) + '\n', 'utf8');
+  fs.writeFileSync(mdPath, '# Title\n[missing](./not-found.md)', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], { encoding: 'utf8' });
   assert.equal(run.status, 1);
   const parsed = JSON.parse(run.stdout);
   const dead = parsed.files[0].findings.errors.find((e) => e.code === 'dead-link');
@@ -705,6 +946,20 @@ test('checkDocFreshness: passes when recent updated date exists', () => {
   assert.equal(findings.length, 0);
 });
 
+test('CLI: checkFreshness from config enables stale-doc checks without CLI flag', () => {
+  const tmp = makeTempDir();
+  const cfgPath = path.join(tmp, '.doclify-guardrail.json');
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(cfgPath, JSON.stringify({ checkFreshness: true, freshnessMaxDays: 10 }) + '\n', 'utf8');
+  fs.writeFileSync(mdPath, '# Title\n\nlast updated: 2020-01-01\n', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', cfgPath, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  const stale = parsed.files[0].findings.warnings.find((w) => w.code === 'stale-doc');
+  assert.ok(stale);
+});
+
 test('CLI: output includes health score fields', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -715,6 +970,12 @@ test('CLI: output includes health score fields', () => {
   const parsed = JSON.parse(run.stdout);
   assert.equal(typeof parsed.files[0].summary.healthScore, 'number');
   assert.equal(typeof parsed.summary.avgHealthScore, 'number');
+  assert.equal(typeof parsed.engine, 'object');
+  assert.equal(typeof parsed.engine.scanMs, 'number');
+  assert.equal(typeof parsed.engine.peakMemoryMb, 'number');
+  assert.equal(typeof parsed.engine.remoteLinksChecked, 'number');
+  assert.equal(typeof parsed.engine.cacheHitRate, 'number');
+  assert.equal(typeof parsed.engine.timeoutRate, 'number');
 });
 
 test('CLI: --check-freshness adds stale-doc warning for old docs', () => {
@@ -900,6 +1161,31 @@ test('inline suppression: doclify-disable / doclify-enable works for TODO block 
   assert.equal(todoWarnings[0].line, 6);
 });
 
+test('inline suppression: comma-separated rule ids are supported', () => {
+  const md = `# Title\n<!-- doclify-disable placeholder,line-length -->\nTODO hidden\n${'x'.repeat(220)}\n<!-- doclify-enable placeholder,line-length -->\nTODO visible`;
+  const res = checkMarkdown(md, { maxLineLength: 120 });
+  const placeholder = res.warnings.filter((w) => w.code === 'placeholder');
+  const lineLength = res.warnings.filter((w) => w.code === 'line-length');
+  assert.equal(placeholder.length, 1);
+  assert.equal(placeholder[0].line, 6);
+  assert.equal(lineLength.length, 0);
+});
+
+test('inline suppression: doclify-enable without rules re-enables all', () => {
+  const md = `# Title\n<!-- doclify-disable placeholder -->\nTODO hidden\n<!-- doclify-enable -->\nTODO visible`;
+  const res = checkMarkdown(md);
+  const todoWarnings = res.warnings.filter((w) => w.code === 'placeholder' && w.message.includes('TODO marker'));
+  assert.equal(todoWarnings.length, 1);
+  assert.equal(todoWarnings[0].line, 5);
+});
+
+test('inline suppression directives do not trigger placeholder warnings', () => {
+  const md = `# Title\n<!-- doclify-disable placeholder -->\nBody\n`;
+  const res = checkMarkdown(md);
+  const placeholder = res.warnings.filter((w) => w.code === 'placeholder');
+  assert.equal(placeholder.length, 0);
+});
+
 // === autoFixInsecureLinks code block awareness ===
 
 test('autoFixInsecureLinks: does not modify http:// inside fenced code block', () => {
@@ -922,6 +1208,13 @@ test('autoFixInsecureLinks: does not modify http:// inside tilde fenced block', 
   const fixed = autoFixInsecureLinks(md);
   assert.ok(fixed.content.includes('http://example-internal.com'), 'URL inside tilde block must remain unchanged');
   assert.ok(fixed.content.includes('https://example.com'), 'URL outside block must be upgraded');
+});
+
+test('autoFixInsecureLinks: respects indented fenced blocks', () => {
+  const md = '# Title\n  ```\nhttp://internal.example\n  ```\nhttp://example.com';
+  const fixed = autoFixInsecureLinks(md);
+  assert.ok(fixed.content.includes('http://internal.example'));
+  assert.ok(fixed.content.includes('https://example.com'));
 });
 
 test('CLI: --json output is valid JSON even for many files', () => {
@@ -964,7 +1257,7 @@ test('extractLinks: handles Wikipedia-style URLs with nested parentheses', () =>
   assert.equal(inlineLinks[0].url, 'https://en.wikipedia.org/wiki/Rust_(programming_language)');
 });
 
-test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', async () => {
+test('CLI: --link-allow-list does not bypass private-link SSRF guard', async () => {
   const server = http.createServer((_, res) => {
     res.statusCode = 500;
     res.end('fail');
@@ -982,7 +1275,7 @@ test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', a
     const parsedNoAllow = JSON.parse(runNoAllow.stdout);
     assert.ok(parsedNoAllow.files[0].findings.errors.some((e) => e.code === 'dead-link'));
 
-    const runAllow = spawnSync(process.execPath, [
+    const runAllowOnly = spawnSync(process.execPath, [
       CLI_PATH,
       mdPath,
       '--check-links',
@@ -990,9 +1283,54 @@ test('CLI: --link-allow-list skips dead-link errors for allow-listed domains', a
       '--json'
     ], { encoding: 'utf8' });
 
-    assert.equal(runAllow.status, 0);
-    const parsedAllow = JSON.parse(runAllow.stdout);
-    assert.equal(parsedAllow.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
+    assert.equal(runAllowOnly.status, 1);
+    const parsedAllowOnly = JSON.parse(runAllowOnly.stdout);
+    const deadAllowOnly = parsedAllowOnly.files[0].findings.errors.filter((e) => e.code === 'dead-link');
+    assert.equal(deadAllowOnly.length, 1);
+    assert.ok(deadAllowOnly[0].message.includes('Blocked private host/IP'));
+
+    const runAllowPrivate = spawnSync(process.execPath, [
+      CLI_PATH,
+      mdPath,
+      '--check-links',
+      '--allow-private-links',
+      '--link-allow-list', '127.0.0.1',
+      '--json'
+    ], { encoding: 'utf8' });
+
+    assert.equal(runAllowPrivate.status, 0);
+    const parsedAllowPrivate = JSON.parse(runAllowPrivate.stdout);
+    assert.equal(parsedAllowPrivate.files[0].findings.errors.filter((e) => e.code === 'dead-link').length, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('CLI: local config linkAllowList cannot bypass private-link SSRF guard', async () => {
+  const server = http.createServer((_, res) => {
+    res.statusCode = 500;
+    res.end('fail');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  const { port } = server.address();
+  const tmp = makeTempDir();
+  const rootCfg = path.join(tmp, '.doclify-guardrail.json');
+  const localDir = path.join(tmp, 'docs');
+  const localCfg = path.join(localDir, '.doclify-guardrail.json');
+  const mdPath = path.join(localDir, 'doc.md');
+  fs.mkdirSync(localDir, { recursive: true });
+  fs.writeFileSync(rootCfg, JSON.stringify({ checkLinks: true }) + '\n', 'utf8');
+  fs.writeFileSync(localCfg, JSON.stringify({ linkAllowList: ['127.0.0.1'] }) + '\n', 'utf8');
+  fs.writeFileSync(mdPath, `# T\n[bad](http://127.0.0.1:${port}/broken)`, 'utf8');
+
+  try {
+    const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--config', rootCfg, '--json'], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    const parsed = JSON.parse(run.stdout);
+    const dead = parsed.files[0].findings.errors.filter((e) => e.code === 'dead-link');
+    assert.equal(dead.length, 1);
+    assert.ok(dead[0].message.includes('Blocked private host/IP'));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -1031,7 +1369,7 @@ test('resolveOptions merges exclude from config and CLI', () => {
   args.configPath = configPath;
   const resolved = resolveOptions(args);
 
-  assert.deepStrictEqual(resolved.exclude, ['vendor', 'spec', 'worklog']);
+  assert.deepStrictEqual([...resolved.exclude].sort(), ['spec', 'vendor', 'worklog']);
   fs.rmSync(tmpDir, { recursive: true });
 });
 
@@ -1224,6 +1562,13 @@ test('autoFixFormatting: wraps bare URLs in <>', () => {
   assert.ok(result.content.includes('<https://example.com>'));
 });
 
+test('autoFixFormatting: inserts blank line after closing code fence', () => {
+  const md = '# Title\n\n```js\ncode\n```\nAfter\n';
+  const result = autoFixFormatting(md);
+  assert.ok(result.modified);
+  assert.ok(result.content.includes('```\n\nAfter\n'));
+});
+
 // ─── v1.5 Tests ───────────────────────────────────────────────────────────────
 
 // New rules
@@ -1242,12 +1587,20 @@ test('no-empty-sections: no warning when all sections have content', () => {
   assert.equal(w.length, 0);
 });
 
-test('heading-increment: warns on heading level skip', () => {
+test('no-empty-sections: warns when last heading is empty at EOF', () => {
+  const md = '# Title\n\n## Empty Last\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'no-empty-sections');
+  assert.equal(w.length, 1);
+});
+
+test('heading-increment: avoids duplicate warning when heading-hierarchy already reports jump', () => {
   const md = '# Title\n\n### Skipped H2\n\nContent.\n';
   const result = checkMarkdown(md, { filePath: 'test.md' });
   const w = result.warnings.filter(f => f.code === 'heading-increment');
-  assert.equal(w.length, 1);
-  assert.ok(w[0].message.includes('H1 to H3'));
+  const hierarchy = result.warnings.filter(f => f.code === 'heading-hierarchy');
+  assert.equal(w.length, 0);
+  assert.equal(hierarchy.length, 1);
 });
 
 test('heading-increment: no warning for sequential headings', () => {
@@ -1255,6 +1608,54 @@ test('heading-increment: no warning for sequential headings', () => {
   const result = checkMarkdown(md, { filePath: 'test.md' });
   const w = result.warnings.filter(f => f.code === 'heading-increment');
   assert.equal(w.length, 0);
+});
+
+test('dangling-reference-link: warns when a reference link has no definition', () => {
+  const md = '# Title\n\nSee [API guide][api-guide].\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'dangling-reference-link');
+  assert.equal(w.length, 1);
+  assert.ok(w[0].message.includes('no matching definition'));
+});
+
+test('dangling-reference-link: no warning when reference definition exists', () => {
+  const md = '# Title\n\nSee [API guide][api-guide].\n\n[api-guide]: ./api.md\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'dangling-reference-link');
+  assert.equal(w.length, 0);
+});
+
+test('broken-local-anchor: warns on missing same-file heading anchor', () => {
+  const md = '# Title\n\n## Existing Section\n\nJump to [missing](#missing-section).\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'broken-local-anchor');
+  assert.equal(w.length, 1);
+  assert.ok(w[0].message.includes('#missing-section'));
+});
+
+test('broken-local-anchor: resolves anchors in referenced local markdown file', () => {
+  const tmp = makeTempDir();
+  const sourcePath = path.join(tmp, 'docs', 'index.md');
+  const targetPath = path.join(tmp, 'docs', 'guide.md');
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+  fs.writeFileSync(targetPath, '# Guide\n\n## Install Steps\n\nDone.\n', 'utf8');
+  fs.writeFileSync(sourcePath, '# Home\n\nSee [install](./guide.md#install-steps).\n', 'utf8');
+
+  const content = fs.readFileSync(sourcePath, 'utf8');
+  const result = checkMarkdown(content, {
+    filePath: 'docs/index.md',
+    absoluteFilePath: sourcePath
+  });
+  const w = result.warnings.filter(f => f.code === 'broken-local-anchor');
+  assert.equal(w.length, 0);
+  fs.rmSync(tmp, { recursive: true });
+});
+
+test('duplicate-section-intent: warns on near-duplicate heading intent', () => {
+  const md = '# Title\n\n## API Overview\n\nText.\n\n## Overview of APIs\n\nMore text.\n';
+  const result = checkMarkdown(md, { filePath: 'test.md' });
+  const w = result.warnings.filter(f => f.code === 'duplicate-section-intent');
+  assert.equal(w.length, 1);
 });
 
 test('no-duplicate-links: warns on same URL appearing twice', () => {
@@ -1331,6 +1732,18 @@ test('parseArgs: --diff, --base, --staged, --min-score, --format, --watch', () =
   assert.equal(args.format, 'compact');
 });
 
+test('parseArgs: freshness/link tuning flags are parsed', () => {
+  const args = parseArgs(['doc.md', '--freshness-max-days', '30', '--link-timeout-ms', '2500', '--link-concurrency', '9']);
+  assert.equal(args.freshnessMaxDays, 30);
+  assert.equal(args.linkTimeoutMs, 2500);
+  assert.equal(args.linkConcurrency, 9);
+});
+
+test('parseArgs: --allow-private-links is parsed', () => {
+  const args = parseArgs(['doc.md', '--allow-private-links']);
+  assert.equal(args.allowPrivateLinks, true);
+});
+
 test('parseArgs: --min-score rejects invalid values', () => {
   assert.throws(() => parseArgs(['--min-score', '150']), /must be 0-100/);
   assert.throws(() => parseArgs(['--min-score', 'abc']), /Invalid --min-score/);
@@ -1372,11 +1785,479 @@ test('diff: getChangedMarkdownFiles returns array', () => {
   assert.ok(Array.isArray(files));
 });
 
-// --list-rules shows 31 rules (26 + 5 new)
-test('CLI: --list-rules shows all 31 rules', () => {
+test('CLI: --diff rejects --base with shell metacharacters', () => {
+  const tmpDir = makeTempDir();
+  const sentinelPath = path.join(tmpDir, 'cmdinj-sentinel.txt');
+  const payload = `HEAD; echo injected > ${sentinelPath}`;
+
+  const run = spawnSync(process.execPath, [CLI_PATH, '--diff', '--base', payload, '--ascii'], {
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /Invalid --base value: contains forbidden shell metacharacters/);
+  assert.equal(fs.existsSync(sentinelPath), false);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// --list-rules shows 34 rules (31 + 3 new semantic rules)
+test('CLI: --list-rules shows all 34 rules', () => {
   const r = spawnSync('node', [CLI_PATH, '--list-rules', '--ascii'], { encoding: 'utf8' });
   assert.equal(r.status, 0);
   // Count rule lines (each has an ID padded to 22 chars)
   const ruleLines = r.stdout.split('\n').filter(l => l.includes('warning') || l.includes('error'));
-  assert.ok(ruleLines.length >= 31, `Expected >=31 rules, got ${ruleLines.length}`);
+  assert.ok(ruleLines.length >= 34, `Expected >=34 rules, got ${ruleLines.length}`);
+});
+
+// ===== Reliability Gate scripts =====
+
+test('run-corpus: parseArgs supports cache and lock options', () => {
+  const args = parseCorpusArgs([
+    '--profile', 'deterministic',
+    '--out', 'bench/out/test.json',
+    '--cache-root', '.cache/custom-corpus',
+    '--lock-timeout-ms', '12345',
+    '--stale-lock-ms', '67890'
+  ]);
+
+  assert.equal(args.cacheRoot, '.cache/custom-corpus');
+  assert.equal(args.lockTimeoutMs, 12345);
+  assert.equal(args.staleLockMs, 67890);
+});
+
+test('run-corpus: filesystem lock serializes concurrent access', async () => {
+  const tmp = makeTempDir();
+  const lockDir = path.join(tmp, 'repo.lock');
+  const events = [];
+
+  const first = withFilesystemLock(lockDir, { timeoutMs: 2000, staleLockMs: 2000 }, async () => {
+    events.push('first:start');
+    await new Promise((resolve) => setTimeout(resolve, 140));
+    events.push('first:end');
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const waitStartedAt = Date.now();
+
+  const second = withFilesystemLock(lockDir, { timeoutMs: 2000, staleLockMs: 2000 }, async () => {
+    events.push('second:start');
+    events.push(`second:waited:${Date.now() - waitStartedAt}`);
+  });
+
+  await Promise.all([first, second]);
+
+  const firstEndIndex = events.indexOf('first:end');
+  const secondStartIndex = events.indexOf('second:start');
+  assert.ok(firstEndIndex >= 0);
+  assert.ok(secondStartIndex > firstEndIndex, 'second lock holder should start only after first releases');
+
+  const waitedEntry = events.find((entry) => entry.startsWith('second:waited:'));
+  assert.ok(waitedEntry, 'expected waited timing entry');
+  const waitedMs = Number(waitedEntry.split(':')[2]);
+  assert.ok(waitedMs >= 80, `second holder should wait, got ${waitedMs}ms`);
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('run-corpus: manifest validation and tag selection', () => {
+  const manifest = {
+    schemaVersion: 1,
+    profiles: {
+      deterministic: { args: ['--json'], checkLinks: false }
+    },
+    repos: [
+      { id: 'a', url: 'https://example.com/a.git', commit: 'abc', category: 'small', scanPath: '.', tags: ['pr-sample'], extraArgs: [] },
+      { id: 'b', url: 'https://example.com/b.git', commit: 'def', category: 'small', scanPath: '.', tags: ['nightly-full'], extraArgs: [] }
+    ]
+  };
+  assert.doesNotThrow(() => assertCorpusManifest(manifest));
+  assert.throws(
+    () => assertCorpusManifest({ schemaVersion: 1, profiles: {}, repos: [{ id: 'broken' }] }),
+    /missing required fields/i
+  );
+  const selected = selectCorpusRepos(manifest, 'pr-sample');
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].id, 'a');
+});
+
+test('run-corpus: fingerprint ignores runtime engine/elapsed fields', () => {
+  const base = {
+    version: '1.6.0',
+    strict: true,
+    files: [
+      { file: 'README.md', pass: true, findings: { errors: [], warnings: [] }, summary: { errors: 0, warnings: 0, healthScore: 100, status: 'PASS' } }
+    ],
+    summary: { filesScanned: 1, filesPassed: 1, filesFailed: 0, totalErrors: 0, totalWarnings: 0, status: 'PASS', elapsed: 0.11, avgHealthScore: 100 },
+    engine: { schemaVersion: 1, scanMs: 100, peakMemoryMb: 20.1, remoteLinksChecked: 0, remoteCacheHits: 0, remoteCacheMisses: 0, cacheHitRate: 0, remoteTimeouts: 0, timeoutRate: 0 }
+  };
+  const variant = JSON.parse(JSON.stringify(base));
+  variant.summary.elapsed = 42.42;
+  variant.engine.scanMs = 9876;
+  variant.engine.peakMemoryMb = 777;
+
+  const normA = normalizeOutputForHash(base);
+  const normB = normalizeOutputForHash(variant);
+  assert.deepEqual(normA, normB);
+  assert.equal(fingerprintOutput(base), fingerprintOutput(variant));
+});
+
+test('run-corpus: executes deterministic repeated runs on local git fixture', async () => {
+  const tmp = makeTempDir();
+  const seedRepo = path.join(tmp, 'seed-repo');
+  const manifestPath = path.join(tmp, 'manifest.json');
+  const outPath = path.join(tmp, 'out.json');
+
+  fs.mkdirSync(seedRepo, { recursive: true });
+  fs.writeFileSync(path.join(seedRepo, 'README.md'), '# Fixture\n\nDeterministic content.\n', 'utf8');
+  spawnSync('git', ['init', '-b', 'main', seedRepo], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'config', 'user.email', 'ci@example.com'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'config', 'user.name', 'CI Bot'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'add', '.'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'commit', '-m', 'fixture'], { encoding: 'utf8' });
+  const rev = spawnSync('git', ['-C', seedRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+  const commit = rev.stdout.trim();
+  assert.ok(commit.length > 10);
+
+  const manifest = {
+    schemaVersion: 1,
+    profiles: {
+      deterministic: {
+        args: ['--strict', '--json', '--ascii', '--no-color'],
+        checkLinks: false
+      }
+    },
+    repos: [
+      {
+        id: 'local-fixture',
+        url: seedRepo,
+        commit,
+        category: 'small',
+        scanPath: '.',
+        tags: ['local'],
+        extraArgs: []
+      }
+    ]
+  };
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+
+  const code = await runCorpus([
+    '--manifest', manifestPath,
+    '--profile', 'deterministic',
+    '--tag', 'local',
+    '--repeat', '2',
+    '--out', outPath
+  ]);
+  assert.equal(code, 0);
+  const parsed = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+  assert.equal(parsed.repos.length, 1);
+  assert.equal(parsed.repos[0].runs.length, 2);
+  assert.equal(parsed.repos[0].aggregate.deterministic, true);
+  assert.equal(parsed.repos[0].aggregate.uniqueFingerprintCount, 1);
+  fs.rmSync(tmp, { recursive: true });
+});
+
+test('compare-baseline: fails when p95 regression exceeds thresholds', () => {
+  const current = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 5000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const baseline = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 1000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const thresholds = {
+    schemaVersion: 1,
+    deterministic: {
+      requireDeterminism: true,
+      maxCrashRatePct: 0,
+      maxP95RegressionPct: 20,
+      maxP95RegressionMs: 2500,
+      maxPeakMemoryRegressionPct: 25,
+      maxNewFindingsDelta: 0,
+      categoryP95BudgetMs: { small: 10000, medium: 45000, large: 180000 }
+    },
+    network: { maxCrashRatePct: 0, maxTimeoutRatePct: 1.0 }
+  };
+  const waivers = buildWaiverIndex({ schemaVersion: 1, waivers: [] }, new Date('2026-03-01T00:00:00Z'));
+  const result = evaluateComparison(current, baseline, thresholds, waivers);
+  assert.equal(result.status, 'FAIL');
+  assert.ok(result.effectiveFailures.some((v) => v.metric === 'p95ScanMs'));
+});
+
+test('compare-baseline: valid waiver suppresses blocking failure', () => {
+  const current = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 5000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const baseline = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 1000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const thresholds = {
+    schemaVersion: 1,
+    deterministic: {
+      requireDeterminism: true,
+      maxCrashRatePct: 0,
+      maxP95RegressionPct: 20,
+      maxP95RegressionMs: 2500,
+      maxPeakMemoryRegressionPct: 25,
+      maxNewFindingsDelta: 0,
+      categoryP95BudgetMs: { small: 10000, medium: 45000, large: 180000 }
+    },
+    network: { maxCrashRatePct: 0, maxTimeoutRatePct: 1.0 }
+  };
+  const waivers = buildWaiverIndex({
+    schemaVersion: 1,
+    waivers: [
+      {
+        id: 'WAIVER-001',
+        repoId: 'repo-a',
+        metric: 'p95ScanMs',
+        expiresOn: '2026-12-31',
+        reason: 'temporary perf drift under investigation',
+        owner: 'team-doclify'
+      }
+    ]
+  }, new Date('2026-03-01T00:00:00Z'));
+
+  const result = evaluateComparison(current, baseline, thresholds, waivers);
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.effectiveFailures.length, 0);
+  assert.ok(result.violations.some((v) => v.waived && v.metric === 'p95ScanMs'));
+});
+
+test('compare-baseline: ignores pct-only p95 regressions when baseline is below min threshold', () => {
+  const current = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 75, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const baseline = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 35, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const thresholds = {
+    schemaVersion: 1,
+    deterministic: {
+      requireDeterminism: true,
+      maxCrashRatePct: 0,
+      maxP95RegressionPct: 20,
+      maxP95RegressionMs: 2500,
+      minBaselineP95ForPctMs: 1000,
+      maxPeakMemoryRegressionPct: 25,
+      maxNewFindingsDelta: 0,
+      categoryP95BudgetMs: { small: 10000, medium: 45000, large: 180000 }
+    },
+    network: { maxCrashRatePct: 0, maxTimeoutRatePct: 1.0 }
+  };
+
+  const waivers = buildWaiverIndex({ schemaVersion: 1, waivers: [] }, new Date('2026-03-01T00:00:00Z'));
+  const result = evaluateComparison(current, baseline, thresholds, waivers);
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.effectiveFailures.length, 0);
+});
+
+test('compare-baseline: expired waiver does not suppress failure', () => {
+  const current = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 5000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const baseline = {
+    profile: 'deterministic',
+    repos: [{ id: 'repo-a', category: 'small', aggregate: { crashRatePct: 0, deterministic: true, p95ScanMs: 1000, peakMemoryMb: 100, findingsCount: 10 } }]
+  };
+  const thresholds = {
+    schemaVersion: 1,
+    deterministic: {
+      requireDeterminism: true,
+      maxCrashRatePct: 0,
+      maxP95RegressionPct: 20,
+      maxP95RegressionMs: 2500,
+      maxPeakMemoryRegressionPct: 25,
+      maxNewFindingsDelta: 0,
+      categoryP95BudgetMs: { small: 10000, medium: 45000, large: 180000 }
+    },
+    network: { maxCrashRatePct: 0, maxTimeoutRatePct: 1.0 }
+  };
+  const waivers = buildWaiverIndex({
+    schemaVersion: 1,
+    waivers: [
+      {
+        id: 'WAIVER-001',
+        repoId: 'repo-a',
+        metric: 'p95ScanMs',
+        expiresOn: '2026-01-01',
+        reason: 'expired exception',
+        owner: 'team-doclify'
+      }
+    ]
+  }, new Date('2026-03-01T00:00:00Z'));
+
+  const result = evaluateComparison(current, baseline, thresholds, waivers);
+  assert.equal(result.status, 'FAIL');
+  assert.ok(result.effectiveFailures.some((v) => v.metric === 'p95ScanMs'));
+});
+
+// ===== v1.6 — Trend & Score Tracking =====
+
+// trend.mjs unit tests
+test('trend: loadHistory returns [] if file does not exist', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  const result = loadHistory(historyPath);
+  assert.deepEqual(result, []);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: appendHistory creates file and adds entry', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  const entry = { date: '2026-02-28T10:00:00Z', commit: 'abc1234', avgScore: 85, errors: 1, warnings: 3, filesScanned: 5 };
+  appendHistory(entry, historyPath);
+  const history = loadHistory(historyPath);
+  assert.equal(history.length, 1);
+  assert.equal(history[0].avgScore, 85);
+  assert.equal(history[0].commit, 'abc1234');
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: appendHistory appends to existing history', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  appendHistory({ date: '2026-01-01T00:00:00Z', commit: 'aaa', avgScore: 80, errors: 0, warnings: 0, filesScanned: 1 }, historyPath);
+  appendHistory({ date: '2026-02-01T00:00:00Z', commit: 'bbb', avgScore: 90, errors: 0, warnings: 0, filesScanned: 1 }, historyPath);
+  const history = loadHistory(historyPath);
+  assert.equal(history.length, 2);
+  assert.equal(history[0].avgScore, 80);
+  assert.equal(history[1].avgScore, 90);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('trend: checkRegression detects score drop', () => {
+  const history = [
+    { avgScore: 90 },
+    { avgScore: 85 }
+  ];
+  const result = checkRegression(history, 80);
+  assert.equal(result.regression, true);
+  assert.equal(result.delta, -5);
+  assert.equal(result.prev, 85);
+  assert.equal(result.current, 80);
+});
+
+test('trend: checkRegression passes when score improves', () => {
+  const history = [{ avgScore: 80 }];
+  const result = checkRegression(history, 90);
+  assert.equal(result.regression, false);
+  assert.equal(result.delta, 10);
+});
+
+test('trend: checkRegression passes with empty history', () => {
+  const result = checkRegression([], 85);
+  assert.equal(result.regression, false);
+});
+
+test('trend: renderTrend produces output with entries', () => {
+  const history = [
+    { date: '2026-01-01T00:00:00Z', avgScore: 70 },
+    { date: '2026-01-15T00:00:00Z', avgScore: 80 },
+    { date: '2026-02-01T00:00:00Z', avgScore: 90 }
+  ];
+  const output = renderTrend(history);
+  assert.ok(output.includes('Score Trend'));
+  assert.ok(output.includes('Latest:'));
+  assert.ok(output.includes('90/100'));
+});
+
+test('trend: renderTrend handles single entry', () => {
+  const output = renderTrend([{ date: '2026-01-01T00:00:00Z', avgScore: 85 }]);
+  assert.ok(output.includes('85/100'));
+});
+
+test('trend: renderTrend handles empty history', () => {
+  const output = renderTrend([]);
+  assert.ok(output.includes('No data'));
+});
+
+// CLI: --track flag
+test('CLI: --track creates .doclify-history.json', () => {
+  const tmpDir = makeTempDir();
+  const mdFile = path.join(tmpDir, 'test.md');
+  fs.writeFileSync(mdFile, '# Title\n\nContent here.\n');
+  const r = spawnSync('node', [CLI_PATH, mdFile, '--track', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 0, `Expected exit 0, got ${r.status}. stderr: ${r.stderr}`);
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  assert.ok(fs.existsSync(historyPath), 'History file should be created');
+  const history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
+  assert.equal(history.length, 1);
+  assert.ok(history[0].avgScore >= 0);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// CLI: --trend with no history
+test('CLI: --trend exits 1 when no history exists', () => {
+  const tmpDir = makeTempDir();
+  const r = spawnSync('node', [CLI_PATH, '--trend', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 1);
+  assert.ok(r.stderr.includes('No history'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// CLI: --trend with history
+test('CLI: --trend shows graph when history exists', () => {
+  const tmpDir = makeTempDir();
+  const historyPath = path.join(tmpDir, '.doclify-history.json');
+  fs.writeFileSync(historyPath, JSON.stringify([
+    { date: '2026-01-01T00:00:00Z', avgScore: 80 },
+    { date: '2026-02-01T00:00:00Z', avgScore: 90 }
+  ]));
+  const r = spawnSync('node', [CLI_PATH, '--trend', '--ascii'], {
+    encoding: 'utf8',
+    cwd: tmpDir
+  });
+  assert.equal(r.status, 0);
+  assert.ok(r.stderr.includes('Score Trend'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+// parseArgs: new trend flags
+test('parseArgs: --track, --trend, --fail-on-regression flags', () => {
+  const args = parseArgs(['--track', '--fail-on-regression']);
+  assert.equal(args.track, true);
+  assert.equal(args.failOnRegression, true);
+  const args2 = parseArgs(['--trend']);
+  assert.equal(args2.trend, true);
+});
+
+// PR comment body
+test('PR comment: buildPrCommentBody generates markdown table', () => {
+  const output = {
+    version: '1.6.0',
+    files: [
+      { file: 'README.md', pass: true, findings: { errors: [], warnings: [] }, summary: { errors: 0, warnings: 1, healthScore: 95, status: 'PASS' } },
+      { file: 'docs/api.md', pass: false, findings: { errors: [{}], warnings: [] }, summary: { errors: 1, warnings: 0, healthScore: 80, status: 'FAIL' } }
+    ],
+    summary: { filesScanned: 2, filesPassed: 1, filesFailed: 1, totalErrors: 1, totalWarnings: 1, status: 'FAIL', elapsed: '0.12', avgHealthScore: 87 }
+  };
+  const body = buildPrCommentBody(output);
+  assert.ok(body.includes('Doclify Quality Report'));
+  assert.ok(body.includes('README.md'));
+  assert.ok(body.includes('docs/api.md'));
+  assert.ok(body.includes('87/100'));
+  assert.ok(body.includes('FAIL'));
+});
+
+test('PR comment: buildPrCommentBody includes delta when baseScore provided', () => {
+  const output = {
+    version: '1.6.0',
+    files: [],
+    summary: { filesScanned: 0, filesPassed: 0, filesFailed: 0, totalErrors: 0, totalWarnings: 0, status: 'PASS', elapsed: '0.01', avgHealthScore: 90 }
+  };
+  const body = buildPrCommentBody(output, { baseScore: 80 });
+  assert.ok(body.includes('+10 vs base'));
 });

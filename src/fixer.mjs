@@ -1,3 +1,5 @@
+import { analyzeFences, getFenceOpen, isFenceClose } from './fences.mjs';
+
 function isAmbiguousHttpUrl(url) {
   try {
     const parsed = new URL(url);
@@ -15,26 +17,19 @@ function autoFixInsecureLinks(content) {
   const ambiguous = [];
 
   const lines = content.split('\n');
-  let inCodeBlock = false;
-  let fenceChar = null;
-  let fenceLen = 0;
+  let activeFence = null;
 
   const processedLines = lines.map((line) => {
     // Track fenced code blocks (same logic as stripCodeBlocks in checker.mjs)
-    if (!inCodeBlock) {
-      const fenceMatch = line.match(/^(`{3,}|~{3,})/);
-      if (fenceMatch) {
-        inCodeBlock = true;
-        fenceChar = fenceMatch[1][0];
-        fenceLen = fenceMatch[1].length;
+    if (!activeFence) {
+      const open = getFenceOpen(line);
+      if (open) {
+        activeFence = { char: open.char, length: open.length };
         return line;
       }
     } else {
-      const closeMatch = line.match(/^(`{3,}|~{3,})\s*$/);
-      if (closeMatch && closeMatch[1][0] === fenceChar && closeMatch[1].length >= fenceLen) {
-        inCodeBlock = false;
-        fenceChar = null;
-        fenceLen = 0;
+      if (isFenceClose(line, activeFence)) {
+        activeFence = null;
       }
       return line;
     }
@@ -72,22 +67,8 @@ function autoFixFormatting(content) {
   const changes = [];
   let lines = content.split('\n');
 
-  // Track code blocks to skip them
-  let inCodeBlock = false;
-  let fenceChar = null;
-  let fenceLen = 0;
-  const inCode = lines.map((line) => {
-    if (!inCodeBlock) {
-      const fm = line.match(/^(`{3,}|~{3,})/);
-      if (fm) { inCodeBlock = true; fenceChar = fm[1][0]; fenceLen = fm[1].length; return true; }
-      return false;
-    }
-    const cm = line.match(/^(`{3,}|~{3,})\s*$/);
-    if (cm && cm[1][0] === fenceChar && cm[1].length >= fenceLen) {
-      inCodeBlock = false; fenceChar = null; fenceLen = 0;
-    }
-    return true;
-  });
+  const firstFenceAnalysis = analyzeFences(lines);
+  const inCode = firstFenceAnalysis.inFence;
 
   // Pass 1: line-level fixes
   lines = lines.map((line, i) => {
@@ -151,49 +132,37 @@ function autoFixFormatting(content) {
   const result = [];
   const isListItem = (l) => /^\s*[-*+]\s|^\s*\d+[.)]\s/.test(l);
   const isHeading = (l) => /^#{1,6}\s/.test(l);
-  const isFenceOpen = (l) => /^(`{3,}|~{3,})/.test(l);
-
-  // Rebuild inCode flags after line-level fixes
-  inCodeBlock = false;
-  fenceChar = null;
-  fenceLen = 0;
-  const inCode2 = lines.map((line) => {
-    if (!inCodeBlock) {
-      const fm = line.match(/^(`{3,}|~{3,})/);
-      if (fm) { inCodeBlock = true; fenceChar = fm[1][0]; fenceLen = fm[1].length; return true; }
-      return false;
-    }
-    const cm = line.match(/^(`{3,}|~{3,})\s*$/);
-    if (cm && cm[1][0] === fenceChar && cm[1].length >= fenceLen) {
-      inCodeBlock = false; fenceChar = null; fenceLen = 0;
-    }
-    return true;
-  });
-
-  let prevBlank = true; // treat start of file as blank
-  let consecutiveBlanks = 0;
+  const secondFenceAnalysis = analyzeFences(lines);
+  const inCode2 = secondFenceAnalysis.inFence;
+  const openingFences = secondFenceAnalysis.opening;
+  const closingFences = secondFenceAnalysis.closing;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     const isBlank = line.trim() === '';
     const codeFlag = inCode2[i];
+    const lastOutput = result[result.length - 1];
+    const prevBlank = lastOutput === undefined || lastOutput.trim() === '';
 
     // Fix: multiple consecutive blanks (outside code blocks)
-    if (isBlank && !codeFlag) {
-      consecutiveBlanks += 1;
-      if (consecutiveBlanks >= 2) {
-        changes.push({ rule: 'no-multiple-blanks', line: i + 1 });
-        continue; // skip extra blank
-      }
-    } else {
-      consecutiveBlanks = 0;
+    if (isBlank && !codeFlag && prevBlank) {
+      changes.push({ rule: 'no-multiple-blanks', line: i + 1 });
+      continue; // skip extra blank
     }
 
     // Fix: blank before heading/list/fence (only if not already preceded by blank)
-    if (!codeFlag && !prevBlank && !isBlank) {
-      const needsBlankBefore = isHeading(line) || (isListItem(line) && i > 0 && !isListItem(lines[i - 1])) || isFenceOpen(line);
+    if (!prevBlank && !isBlank) {
+      const needsBlankBefore =
+        (!codeFlag && isHeading(line)) ||
+        (!codeFlag && isListItem(line) && i > 0 && !isListItem(lines[i - 1])) ||
+        openingFences.has(i);
       if (needsBlankBefore) {
-        const ruleId = isHeading(line) ? 'blanks-around-headings' : isListItem(line) ? 'blanks-around-lists' : 'blanks-around-fences';
+        const ruleId =
+          openingFences.has(i)
+            ? 'blanks-around-fences'
+            : isHeading(line)
+              ? 'blanks-around-headings'
+              : 'blanks-around-lists';
         changes.push({ rule: ruleId, line: i + 1 });
         result.push('');
       }
@@ -202,25 +171,28 @@ function autoFixFormatting(content) {
     result.push(line);
 
     // Fix: blank after heading/fence-close/last-list-item
-    if (!codeFlag && !isBlank) {
+    if (!isBlank) {
       const nextLine = lines[i + 1];
       const nextIsBlank = nextLine === undefined || nextLine.trim() === '';
       if (!nextIsBlank && nextLine !== undefined) {
         const nextCode = inCode2[i + 1];
-        if (!nextCode) {
-          const needsBlankAfter = isHeading(line) ||
-            (isListItem(line) && !isListItem(nextLine)) ||
-            (isFenceOpen(line) === false && i > 0 && /^(`{3,}|~{3,})\s*$/.test(line));
-          if (needsBlankAfter) {
-            const ruleId = isHeading(line) ? 'blanks-around-headings' : isListItem(line) ? 'blanks-around-lists' : 'blanks-around-fences';
-            changes.push({ rule: ruleId, line: i + 1 });
-            result.push('');
-          }
+        const needsBlankAfter =
+          (!codeFlag && !nextCode && isHeading(line)) ||
+          (!codeFlag && !nextCode && isListItem(line) && !isListItem(nextLine)) ||
+          closingFences.has(i);
+
+        if (needsBlankAfter) {
+          const ruleId =
+            closingFences.has(i)
+              ? 'blanks-around-fences'
+              : isHeading(line)
+                ? 'blanks-around-headings'
+                : 'blanks-around-lists';
+          changes.push({ rule: ruleId, line: i + 1 });
+          result.push('');
         }
       }
     }
-
-    prevBlank = isBlank;
   }
 
   // Fix: single trailing newline

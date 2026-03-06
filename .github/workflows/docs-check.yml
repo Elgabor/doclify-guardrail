@@ -2,9 +2,21 @@ name: Docs Check
 
 on:
   push:
-    paths: ['docs/**/*.md', '*.md']
+    paths:
+      - 'docs/**/*.md'
+      - '*.md'
+      - 'src/**'
+      - 'test/**'
+      - 'action/**'
+      - 'package.json'
   pull_request:
-    paths: ['docs/**/*.md', '*.md']
+    paths:
+      - 'docs/**/*.md'
+      - '*.md'
+      - 'src/**'
+      - 'test/**'
+      - 'action/**'
+      - 'package.json'
 
 jobs:
   guardrail:
@@ -14,9 +26,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install
+      - run: npm install --no-audit --no-fund
+      - name: Run test suite
+        run: npm test
       - name: Docs quality gate
-        run: npx doclify-guardrail docs/ --strict --report report.md
+        run: node ./src/index.mjs docs/ --strict --exclude examples --report report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

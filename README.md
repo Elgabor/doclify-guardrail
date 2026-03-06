@@ -11,16 +11,19 @@ Works everywhere Node.js 20+ runs.
 
 | | Doclify | markdownlint |
 |--|---------|-------------|
-| Style rules | 31 built-in | 59 |
+| Style rules | 34 built-in | 59 |
 | Content checks | placeholders, headings, images | No |
 | Dead link checker | Built-in (`--check-links`) | No |
 | Doc freshness | Built-in (`--check-freshness`) | No |
 | Health score | 0-100 per file + average | No |
-| Auto-fix | 13 fixers (style + semantic) | 31 (style only) |
+| Auto-fix | 14 fixers (style + semantic) | 31 (style only) |
 | Git diff mode | Built-in (`--diff`, `--staged`) | No |
 | Watch mode | Built-in (`--watch`) | No |
 | Quality gate | `--min-score` + `--strict` | No |
 | Programmatic API | `import { lint, fix, score }` | No |
+| Score trending | Built-in (`--track`, `--trend`) | No |
+| Regression gate | Built-in (`--fail-on-regression`) | No |
+| GitHub Action | Built-in (`action/`) | Plugin |
 | SARIF / JUnit / Badge | Built-in | Plugins |
 | Dependencies | **Zero** | 50+ |
 | Inline suppressions | `disable-next-line`, `disable/enable`, `disable-file` | `disable/enable` |
@@ -64,6 +67,15 @@ doclify docs/ --watch
 # Compact output (one line per finding)
 doclify docs/ --format compact
 
+# Track score history
+doclify docs/ --track
+
+# Show score trend graph
+doclify --trend
+
+# Fail if score dropped
+doclify docs/ --fail-on-regression
+
 # JSON output for tooling
 doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
@@ -100,10 +112,16 @@ If no files are specified, scans the current directory.
 | Flag | Description |
 |------|-------------|
 | `--check-links` | Validate HTTP and local links |
+| `--allow-private-links` | Allow private/loopback/link-local remote link checks (opt-in) |
 | `--check-freshness` | Warn on stale docs (>180 days) |
+| `--freshness-max-days <n>` | Max age threshold for freshness check (default: 180) |
 | `--check-frontmatter` | Require YAML frontmatter block |
 | `--check-inline-html` | Enable `no-inline-html` rule |
 | `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
+| `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
+| `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
+
+Remote link checks are SSRF-hardened by default: private/loopback/link-local/metadata destinations and redirects to them are blocked. Use `--allow-private-links` only in trusted environments.
 
 #### Fix
 
@@ -136,6 +154,9 @@ If no files are specified, scans the current directory.
 | Flag | Description |
 |------|-------------|
 | `--watch` | Watch for file changes and re-scan |
+| `--track` | Save score to `.doclify-history.json` |
+| `--trend` | Show ASCII score trend graph |
+| `--fail-on-regression` | Fail if score dropped vs last tracked run |
 | `--list-rules` | List all built-in rules |
 | `--no-color` | Disable colored output |
 | `--ascii` | Use ASCII icons for CI without UTF-8 |
@@ -162,17 +183,24 @@ This creates `.doclify-guardrail.json`:
 
 ```json
 {
-  "maxLineLength": 120,
-  "strict": true,
+  "maxLineLength": 160,
+  "strict": false,
   "exclude": ["node_modules/**", "vendor/**"],
   "ignoreRules": [],
+  "checkLinks": false,
+  "checkFreshness": false,
+  "checkFrontmatter": false,
+  "checkInlineHtml": false,
+  "freshnessMaxDays": 180,
+  "linkTimeoutMs": 8000,
+  "linkConcurrency": 5,
   "linkAllowList": []
 }
 ```
 
 CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 
-## Built-in Rules (31)
+## Built-in Rules (34)
 
 ### Content Rules
 
@@ -214,12 +242,15 @@ CLI flags override config file values. Arrays (`exclude`, `ignoreRules`, `linkAl
 | `no-duplicate-links` | warning | No |
 | `list-marker-consistency` | warning | No |
 | `link-title-style` | warning | No |
+| `dangling-reference-link` | warning | No |
+| `broken-local-anchor` | warning | No |
+| `duplicate-section-intent` | warning | No |
 
-All rules respect code block exclusion — content inside fenced code blocks and inline code is never flagged.
+All semantic/style rules respect code block exclusion (fenced + inline code). `line-length` intentionally checks raw lines, including code blocks.
 
 ## Auto-fix
 
-`doclify --fix` applies 13 safe auto-fixes in a single pass:
+`doclify --fix` applies 14 safe auto-fixes in a single pass:
 
 | Fix | What it does |
 |-----|-------------|
@@ -297,6 +328,66 @@ doclify docs/ --min-score 80 --strict
 
 Exit code 1 if the average health score is below 80.
 
+## Score Trending
+
+Track your documentation quality over time:
+
+```bash
+# Save score after each run
+doclify docs/ --track
+
+# View ASCII trend graph
+doclify --trend
+
+# Fail CI if score dropped vs last tracked run
+doclify docs/ --fail-on-regression
+```
+
+Score history is saved to `.doclify-history.json` in the current directory.
+Each entry records date, commit hash, average score, errors, warnings,
+and files scanned.
+
+## GitHub Action
+
+Use the built-in GitHub Action for automated quality gates on pull requests:
+
+```yaml
+name: Docs Quality Gate
+on: [pull_request]
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Doclify
+        uses: Elgabor/doclify-guardrail@v1.6
+        with:
+          path: 'docs/'
+          strict: 'false'
+          min-score: '70'
+          sarif: 'true'
+          pr-comment: 'true'
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: doclify.sarif
+```
+
+The action automatically:
+
+- Posts a quality report comment on the PR with file scores
+- Generates SARIF for GitHub Code Scanning
+- Sets outputs: `score`, `status`, `errors`, `warnings`
+
 ## Programmatic API
 
 Use doclify as a library in your own tools:
@@ -368,7 +459,11 @@ Custom rules are applied after built-in rules and respect code block exclusion.
 
 ## CI Integration
 
-### GitHub Actions
+### GitHub Actions (recommended: use the built-in action)
+
+See the [GitHub Action](#github-action) section above for the recommended approach with PR comments and SARIF upload.
+
+For manual setup with `npx`:
 
 ```yaml
 name: Docs Quality Gate
@@ -449,8 +544,8 @@ doclify docs/ --strict --junit --sarif --badge --report
 ### Run the Test Suite
 
 ```bash
-# Run all 137 tests
-node --test
+# Run all tests
+node --test test/guardrail.test.mjs
 
 # Run with verbose output
 node --test --test-reporter spec
@@ -459,21 +554,43 @@ node --test --test-reporter spec
 ### Verify All Rules Work
 
 ```bash
-# List all 31 built-in rules
+# List all 34 built-in rules
 doclify --list-rules
 
 # Scan with all optional checks enabled
 doclify docs/ --strict --check-links --check-freshness --check-frontmatter --check-inline-html
 ```
 
+### Reliability Gate
+
+```bash
+# PR sample gate (fast)
+npm run reliability:pr
+
+# Nightly deterministic gate (full corpus: small+medium+large)
+npm run reliability:nightly:det
+
+# Nightly network gate (network sample subset)
+npm run reliability:nightly:net
+
+# Rebuild baseline files
+npm run reliability:bootstrap
+```
+
+Detailed setup and policy: `docs/reliability-gate.md`.
+
 ## Project Architecture
 
 ```text
 src/
   index.mjs        CLI orchestrator, arg parsing, main flow
-  checker.mjs      31-rule lint engine + inline suppressions
-  fixer.mjs        13 auto-fix functions (insecure links + formatting)
+  checker.mjs      34-rule lint engine + inline suppressions
+  config-resolver.mjs Hierarchical config chain + CLI precedence
+  scan-context.mjs Immutable per-file scan context
+  fences.mjs       Shared fenced-code parsing helpers (0-3 space indent)
+  fixer.mjs        14 auto-fix functions (insecure links + formatting)
   diff.mjs         Git diff integration (--diff, --staged)
+  trend.mjs        Score history tracking + ASCII trend graph
   api.mjs          Programmatic API (lint, fix, score)
   links.mjs        Dead link checker (HTTP + local file paths)
   quality.mjs      Health score + freshness checker
@@ -482,6 +599,17 @@ src/
   report.mjs       Markdown report generator
   glob.mjs         File discovery with glob patterns
   rules-loader.mjs Custom rules JSON loader
+action/
+  action.yml       GitHub Action manifest
+  entrypoint.mjs   Action runner (Node.js)
+  pr-comment.mjs   PR comment builder + poster
+bench/
+  corpus.manifest.json        OSS corpus + profiles + pinned commits
+  reliability-thresholds.json Reliability hard limits
+  waivers.json                Temporary exceptions with expiry
+scripts/
+  run-corpus.mjs       Corpus runner + deterministic fingerprinting
+  compare-baseline.mjs Baseline comparator + report generation
 ```
 
 ## License

@@ -1,16 +1,13 @@
 node_modules/
+.cache/
 *.log
 .DS_Store
 .claude/
 doclify-report.md
+bench/out/*
+!bench/out/.gitkeep
 
-# Business documents (should be in doclify-business repo)
-docs/ICP.md
-docs/PROPOSTA_VALORE.md
-docs/PIANO_*.md
-docs/STRUTTURA_*.md
-docs/*REPORT*.md
-landingpage/
-CODEBASE_REPORT.md
-*.report.md
-!docs/examples/
+# Internal documentation (never commit)
+docs/panoramica.md
+docs/guida-test.md
+docs/documentazione-tecnica.md

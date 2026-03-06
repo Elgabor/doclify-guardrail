@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "deterministic": {
+      "args": ["--strict", "--json", "--ascii", "--no-color"],
+      "checkLinks": false
+    },
+    "network": {
+      "args": ["--strict", "--json", "--ascii", "--no-color", "--check-links", "--link-timeout-ms", "3000", "--link-concurrency", "4"],
+      "checkLinks": true
+    }
+  },
+  "repos": [
+    {
+      "id": "spoon-knife",
+      "url": "https://github.com/octocat/Spoon-Knife.git",
+      "commit": "d0dd1f61b33d64e29d8bc1372a94ef6a2fee76a9",
+      "category": "small",
+      "scanPath": ".",
+      "tags": ["nightly-det-full", "nightly-net-sample"],
+      "extraArgs": []
+    },
+    {
+      "id": "markdownlint",
+      "url": "https://github.com/markdownlint/markdownlint.git",
+      "commit": "94bee4780918f3ca69ff672fb23f9b18a23ef889",
+      "category": "small",
+      "scanPath": ".",
+      "tags": ["pr-sample", "nightly-det-full", "nightly-net-sample"],
+      "extraArgs": []
+    },
+    {
+      "id": "nodejs-node",
+      "url": "https://github.com/nodejs/node.git",
+      "commit": "55363254cc8d6fd105f34b30ceae572dfb2e4210",
+      "category": "medium",
+      "scanPath": ".",
+      "tags": ["nightly-det-full"],
+      "extraArgs": []
+    },
+    {
+      "id": "kubernetes-website",
+      "url": "https://github.com/kubernetes/website.git",
+      "commit": "e9e2dbdced83180e47917f0d13a50222f75c92ca",
+      "category": "large",
+      "scanPath": ".",
+      "tags": ["nightly-det-full"],
+      "extraArgs": []
+    }
+  ]
+}
