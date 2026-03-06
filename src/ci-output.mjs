@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { RULE_CATALOG } from './checker.mjs';
+import { computeDocHealthScore } from './quality.mjs';
 
 const RULE_DESCRIPTIONS = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.description]));
 
@@ -8,13 +9,33 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function computeHealthScore(summary = {}) {
-  const files = Math.max(Number(summary.filesScanned || 0), 1);
-  const errors = Number(summary.totalErrors || 0);
-  const warnings = Number(summary.totalWarnings || 0);
+function computeHealthScore(input = {}) {
+  if (typeof input.healthScore === 'number') {
+    return clamp(Math.round(input.healthScore), 0, 100);
+  }
 
-  const weightedPenalty = ((errors * 22) + (warnings * 6)) / files;
-  return clamp(Math.round(100 - weightedPenalty), 0, 100);
+  if (typeof input.avgHealthScore === 'number') {
+    return clamp(Math.round(input.avgHealthScore), 0, 100);
+  }
+
+  if (Array.isArray(input.files) && input.files.length > 0) {
+    const total = input.files.reduce((sum, fileResult) => sum + Number(fileResult?.summary?.healthScore || 0), 0);
+    return clamp(Math.round(total / input.files.length), 0, 100);
+  }
+
+  if (input && typeof input.summary === 'object') {
+    return computeHealthScore(input.summary);
+  }
+
+  const files = Number(input.filesScanned || 0);
+  if (files <= 1) {
+    return computeDocHealthScore({
+      errors: Number(input.totalErrors || 0),
+      warnings: Number(input.totalWarnings || 0)
+    });
+  }
+
+  return 0;
 }
 
 function escapeXml(text = '') {

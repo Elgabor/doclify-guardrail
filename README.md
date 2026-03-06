@@ -436,6 +436,7 @@ score = max(0, 100 - errorPenalty - warningPenalty)
 Example: 0 errors + 13 warnings = 54/100.
 
 Access via JSON output: `summary.healthScore` per file, `summary.avgHealthScore` overall.
+CI-facing outputs (badge/report/action summary) reuse these canonical score fields instead of recomputing from aggregate totals.
 
 ## Custom Rules
 

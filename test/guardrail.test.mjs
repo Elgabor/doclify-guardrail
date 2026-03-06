@@ -1122,10 +1122,22 @@ test('parseArgs: --badge-label requires value', () => {
   assert.throws(() => parseArgs(['doc.md', '--badge-label']), /Missing value for --badge-label/);
 });
 
-test('computeHealthScore: stays in range 0..100', () => {
-  assert.equal(computeHealthScore({ filesScanned: 1, totalErrors: 0, totalWarnings: 0 }), 100);
-  const low = computeHealthScore({ filesScanned: 1, totalErrors: 10, totalWarnings: 30 });
-  assert.ok(low >= 0 && low <= 100);
+test('computeHealthScore: reuses canonical project score semantics', () => {
+  assert.equal(computeHealthScore({ healthScore: 91 }), 91);
+  assert.equal(computeHealthScore({ avgHealthScore: 87 }), 87);
+  assert.equal(
+    computeHealthScore({
+      files: [
+        { summary: { healthScore: 100 } },
+        { summary: { healthScore: 80 } }
+      ]
+    }),
+    90
+  );
+  assert.equal(
+    computeHealthScore({ filesScanned: 1, totalErrors: 1, totalWarnings: 2 }),
+    computeDocHealthScore({ errors: 1, warnings: 2 })
+  );
 });
 
 test('generateJUnitXml: emits testsuite and testcase', () => {
@@ -1219,16 +1231,19 @@ test('generateBadge: writes SVG with custom label', () => {
   const badgePath = path.join(tmp, 'health.svg');
   const output = {
     summary: {
+      healthScore: 90,
       filesScanned: 2,
-      totalErrors: 0,
-      totalWarnings: 1
+      totalErrors: 10,
+      totalWarnings: 30
     }
   };
 
   const badge = generateBadge(output, { badgePath, label: 'quality' });
   assert.ok(fs.existsSync(badge.badgePath));
+  assert.equal(badge.score, 90);
   const svg = fs.readFileSync(badge.badgePath, 'utf8');
   assert.ok(svg.includes('quality'));
+  assert.ok(svg.includes('90/100'));
 });
 
 // === Regression tests for v1.2 behavior ===
