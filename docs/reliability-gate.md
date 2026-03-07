@@ -136,3 +136,7 @@ Aggiorna la baseline solo se tutte queste condizioni sono vere:
 4. il team concorda il reset del riferimento.
 
 Se manca una di queste condizioni, non aggiornare la baseline: usa un waiver a scadenza breve e apri remediation task.
+
+Nota per `v1.7.0`:
+
+- il reset di `bench/baselines/nightly-deterministic.json` e ammesso perche `run-corpus` ora esegue il CLI dal checkout del repo target; questo cambia in modo intenzionale finding, path e tempi rispetto alla baseline 1.6, ma rende il benchmark finalmente coerente con l'uso reale.

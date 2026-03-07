@@ -22,4 +22,5 @@ L'obiettivo non e aggiungere superficie: e rendere affidabili i verdetti su tutt
 
 - JUnit deriva le failure dal pass/fail canonico per file, quindi strict mode non diverge piu dal verdetto reale.
 - PR comment bot usa paginazione completa prima di decidere create/update.
+- Baseline `nightly-deterministic` riallineata alla semantica reale di `run-corpus`, che dalla 1.7 misura il prodotto dal `cwd` del repo target invece che dal repo Doclify.
 - README, docs tecnici e reliability guide aggiornati ai comportamenti reali della 1.7.
