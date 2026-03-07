@@ -44,7 +44,7 @@
 - [x] GitHub Action e PR comment bot
 - [x] Reliability gate locale con corpus, baseline e waiver
 - [x] Docs sync guardrail
-- [x] 203 test locali verdi sul ramo attuale
+- [x] 216 test locali verdi sul ramo attuale
 
 ### Stato di prodotto
 
@@ -187,6 +187,12 @@ Una release `v1.7` deve permetterti di dire, senza riserve:
 - smoke suite per `action/dist`
 - regression tests per tutti i bug P0/P1
 - baseline reliability rigenerate solo se necessario e con motivazione
+
+### Follow-up post release `v1.7.0`
+
+- [x] Risolto failure della GitHub CI (`Docs Check`) causato da un test flakey su `--watch --fix`
+- [x] Watch mode riallineato anche nella fase di bootstrap: la subscription parte prima dell'initial scan, quindi i cambi immediati non vengono persi
+- [x] Roadmap, suite locale e release tracking aggiornati dopo il fix post-release
 
 ---
 

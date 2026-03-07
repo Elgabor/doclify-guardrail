@@ -1028,11 +1028,10 @@ async function runCli(argv = process.argv.slice(2)) {
     console.error('');
     console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim(`v${VERSION}`)}`);
     console.error('');
-    log(c.cyan(icons.info), `Watching ${c.bold(watchPath)} for changes... ${c.dim('(Ctrl+C to stop)')}`);
-    console.error('');
 
     let debounceTimer = null;
     const watchState = { selfWrites: new Map() };
+    let stopWatching = null;
 
     const runWatchScan = async () => {
       let currentResolved;
@@ -1065,12 +1064,9 @@ async function runCli(argv = process.argv.slice(2)) {
       }
     };
 
-    // Initial scan
-    await runWatchScan();
-
     const { watch } = await import('node:fs');
     try {
-      watch(watchPath, { recursive: true }, (eventType, filename) => {
+      const watcher = watch(watchPath, { recursive: true }, (eventType, filename) => {
         if (!filename) return;
         const fullPath = path.resolve(watchPath, filename);
         const isConfigChange = path.basename(filename) === CONFIG_NAME;
@@ -1083,13 +1079,25 @@ async function runCli(argv = process.argv.slice(2)) {
           runWatchScan();
         }, 300);
       });
+      stopWatching = () => watcher.close();
     } catch (err) {
       console.error(`Watch error: ${err.message}`);
       return 2;
     }
 
+    log(c.cyan(icons.info), `Watching ${c.bold(watchPath)} for changes... ${c.dim('(Ctrl+C to stop)')}`);
+    console.error('');
+
+    // Initial scan after the watcher is subscribed, so immediate edits are not lost.
+    await runWatchScan();
+
     // Keep process alive
-    await new Promise(() => {});
+    await new Promise((resolve) => {
+      process.once('SIGINT', resolve);
+      process.once('SIGTERM', resolve);
+    });
+    if (stopWatching) stopWatching();
+    return 0;
   }
 
   printBanner(filePaths.length, VERSION);
