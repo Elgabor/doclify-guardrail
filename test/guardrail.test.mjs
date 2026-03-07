@@ -2844,6 +2844,6 @@ test('CLI: --watch --fix applies canonical scan without self-loop storm', async 
   }
 
   const changedEvents = (stderr.match(/Changed:/g) || []).length;
-  assert.ok(changedEvents >= 1, stderr);
+  assert.match(fs.readFileSync(mdPath, 'utf8'), /https:\/\/example\.com/);
   assert.ok(changedEvents <= 3, stderr);
 });
