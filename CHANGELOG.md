@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.1
+
+Patch release per chiudere le regressioni emerse subito dopo `v1.7.0`.
+
+- fix del bootstrap `--watch` per non perdere cambi immediati durante la fase iniziale di watch;
+- stabilizzazione del test `--watch --fix` su Linux CI;
+- correzione del quality gate documentale su README e reliability docs.
+
 ## v1.7.0
 
 Doclify 1.7.0 e la release di stabilizzazione del core.
