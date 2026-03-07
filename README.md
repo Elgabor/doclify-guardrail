@@ -223,7 +223,7 @@ instead of reporting a false `dead-link`.
 | `heading-hierarchy` | warning | No skipped heading levels (H2 then H4) |
 | `duplicate-heading` | warning | No duplicate headings at same level |
 | `line-length` | warning | Max line length (default: 160 chars) |
-| `placeholder` | warning | No TODO/FIXME/WIP/TBD/HACK/CHANGEME markers |
+| `placeholder` | warning | No unfinished-work placeholders left in published docs |
 | `insecure-link` | warning | No `http://` links (use `https://`) |
 | `empty-link` | warning | No empty link text or URL |
 | `img-alt` | warning | Images must have alt text |

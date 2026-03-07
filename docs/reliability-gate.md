@@ -88,8 +88,9 @@ Regole:
 - ogni waiver deve avere `owner`, `reason`, `expiresOn`;
 - i waiver scaduti vengono ignorati automaticamente;
 - niente waiver senza data di scadenza.
-- per la stable candidate `v1.7.0`, PR e nightly devono restare verdi
-  senza introdurre waiver nuovi.
+
+Per la stable candidate `v1.7.0`, PR e nightly devono restare verdi
+senza introdurre waiver nuovi.
 
 Esempio:
 
@@ -139,4 +140,7 @@ Se manca una di queste condizioni, non aggiornare la baseline: usa un waiver a s
 
 Nota per `v1.7.0`:
 
-- il reset di `bench/baselines/nightly-deterministic.json` e ammesso perche `run-corpus` ora esegue il CLI dal checkout del repo target; questo cambia in modo intenzionale finding, path e tempi rispetto alla baseline 1.6, ma rende il benchmark finalmente coerente con l'uso reale.
+Il reset di `bench/baselines/nightly-deterministic.json` e ammesso
+perche `run-corpus` ora esegue il CLI dal checkout del repo target.
+Questo cambia in modo intenzionale finding, path e tempi rispetto
+alla baseline 1.6, ma rende il benchmark coerente con l'uso reale.
