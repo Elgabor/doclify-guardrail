@@ -8,6 +8,7 @@ import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
 const MAX_REDIRECTS = 5;
+const HEAD_FALLBACK_STATUSES = new Set([403, 404, 405, 501]);
 const METADATA_HOSTNAMES = new Set([
   'metadata.google.internal'
 ]);
@@ -273,7 +274,7 @@ async function checkRemoteUrl(url, opts = {}) {
       return null;
     }
 
-    if (headRes.status === 405 || headRes.status === 501) {
+    if (HEAD_FALLBACK_STATUSES.has(headRes.status)) {
       const getResult = await fetchFollowingRedirects(url, {
         method: 'GET',
         timeoutMs,

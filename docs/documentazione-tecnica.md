@@ -86,10 +86,14 @@ Il summary JSON espone:
 `files[].summary.healthScore`: score del singolo file.
 
 `src/ci-output.mjs` deve riusare questi campi prima di qualsiasi fallback.
+In particolare JUnit deve derivare le failure dal pass/fail canonico per file,
+non solo dal conteggio errori.
 
 ## GitHub Action
 
 `action/action.yml` dichiara input, output e runtime `node20`.
+L'input `path` e stabilizzato come singolo target
+(file, directory o glob), non come lista multilinea.
 
 `action/entrypoint.mjs` risolve il percorso del CLI
 sia da sorgente sia dal bundle,
@@ -97,7 +101,8 @@ esegue il CLI con `--json`,
 interpreta stdout e setta gli output della action.
 
 `action/pr-comment.mjs` aggiorna o crea un commento PR
-marcato con `<!-- doclify-guardrail-comment -->`.
+marcato con `<!-- doclify-guardrail-comment -->`
+usando paginazione completa dei commenti PR.
 
 `action/dist/index.mjs` e il bundle ncc committato
 che GitHub esegue realmente nel workflow.
@@ -115,6 +120,10 @@ e i file chiave della GitHub Action.
 1. test suite
 2. docs sync guardrail
 3. lint strict su `README.md` e `docs/` con discovery di file `.md` e `.mdx`
+
+Patch policy v1.7:
+ogni bug cross-surface richiede almeno un regression test;
+ogni rottura su un public path richiede anche uno smoke test sull'entrypoint reale.
 
 ## Riferimenti
 

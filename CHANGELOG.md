@@ -1,0 +1,25 @@
+# Changelog
+
+## v1.7.0
+
+Doclify 1.7.0 e la release di stabilizzazione del core.
+L'obiettivo non e aggiungere superficie: e rendere affidabili i verdetti su tutte le entrypoint pubbliche.
+
+### Stabilita e parity
+
+- Watch mode riallineato alla pipeline canonica del CLI, inclusi `--fix`, `--check-links` e `--check-freshness`.
+- GitHub Action bundle allineato al layout reale del repository e coperto da smoke test su `action/dist/index.mjs`.
+- `run-corpus` esegue ora gli scan dal checkout del repository target, cosi config discovery e output riflettono l'uso reale.
+
+### Correttezza del dominio
+
+- `doclify-disable-file` ignorato dentro fenced code blocks.
+- Parsing frontmatter/freshness normalizzato su LF e CRLF.
+- `stale-doc` segnala in modo esplicito date mancanti, invalide e future senza introdurre nuove regole pubbliche.
+- Fallback HEAD -> GET esteso ai casi method-limited coperti in 1.7 (`403`, `404`, `405`, `501`).
+
+### CI e reporting
+
+- JUnit deriva le failure dal pass/fail canonico per file, quindi strict mode non diverge piu dal verdetto reale.
+- PR comment bot usa paginazione completa prima di decidere create/update.
+- README, docs tecnici e reliability guide aggiornati ai comportamenti reali della 1.7.

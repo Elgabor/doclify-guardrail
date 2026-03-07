@@ -10,7 +10,7 @@ import { initColors, setAsciiMode, icons, c, log, printBanner, printResults, pri
 import { checkDeadLinksDetailed } from './links.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
-import { findParentConfigs, resolveOptions, resolveFileOptions } from './config-resolver.mjs';
+import { CONFIG_NAME, findParentConfigs, resolveOptions, resolveFileOptions } from './config-resolver.mjs';
 import { getChangedMarkdownFiles } from './diff.mjs';
 import { loadHistory, appendHistory, getCurrentCommit, checkRegression, renderTrend } from './trend.mjs';
 import { createFileScanContext } from './scan-context.mjs';
@@ -140,6 +140,7 @@ function parseArgs(argv) {
     linkConcurrency: null,
     siteRoot: null,
     configPath: path.resolve('.doclify-guardrail.json'),
+    configExplicit: false,
     help: false,
     version: false,
     listRules: false,
@@ -426,6 +427,7 @@ function parseArgs(argv) {
         throw new Error('Missing value for --config');
       }
       args.configPath = path.resolve(value);
+      args.configExplicit = true;
       i += 1;
       continue;
     }
@@ -542,6 +544,11 @@ function toRelativePath(filePath) {
   return rel.startsWith('..') ? filePath : rel || filePath;
 }
 
+function isDescendantOrSamePath(candidatePath, basePath) {
+  const rel = path.relative(basePath, candidatePath);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 function isExcludedFile(filePath, patterns = []) {
   if (!patterns || patterns.length === 0) return false;
   const rel = path.relative(process.cwd(), filePath);
@@ -638,6 +645,257 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary, engineS
   };
 }
 
+function createFixSummary(args) {
+  return {
+    enabled: args.fix,
+    dryRun: args.dryRun,
+    filesChanged: 0,
+    linkReplacements: 0,
+    formatFixes: 0,
+    ambiguousSkipped: []
+  };
+}
+
+function createLinkEngineStats() {
+  return {
+    remoteLinksChecked: 0,
+    remoteCacheHits: 0,
+    remoteCacheMisses: 0,
+    remoteTimeouts: 0
+  };
+}
+
+function resolveScanFilePaths(args, resolved) {
+  let filePaths;
+  if (args.diff || args.staged) {
+    filePaths = getChangedMarkdownFiles({ base: args.base, staged: args.staged });
+  } else {
+    filePaths = resolveFileList(args);
+  }
+
+  if (resolved.exclude.length > 0) {
+    filePaths = filePaths.filter(fp => !isExcludedFile(fp, resolved.exclude));
+  }
+
+  return filePaths;
+}
+
+function recordSelfWrite(watchState, filePath) {
+  if (!watchState) return;
+  watchState.selfWrites.set(path.resolve(filePath), Date.now() + 1500);
+}
+
+function shouldIgnoreWatchPath(watchState, filePath) {
+  if (!watchState) return false;
+  const now = Date.now();
+  for (const [candidate, expiresAt] of watchState.selfWrites.entries()) {
+    if (expiresAt <= now) {
+      watchState.selfWrites.delete(candidate);
+    }
+  }
+  const resolved = path.resolve(filePath);
+  const expiresAt = watchState.selfWrites.get(resolved);
+  if (!expiresAt) return false;
+  if (expiresAt <= now) {
+    watchState.selfWrites.delete(resolved);
+    return false;
+  }
+  return true;
+}
+
+function getWatchPath(args) {
+  const watchTargets = [];
+  if (args.dir) {
+    watchTargets.push(path.resolve(args.dir));
+  } else if (args.files.length > 0) {
+    for (const target of args.files) {
+      if (target.includes('*')) {
+        return process.cwd();
+      }
+      watchTargets.push(path.resolve(target));
+    }
+  } else {
+    watchTargets.push(process.cwd());
+  }
+
+  let current = watchTargets[0] || process.cwd();
+  for (const candidate of watchTargets.slice(1)) {
+    while (!isDescendantOrSamePath(candidate, current) && current !== path.dirname(current)) {
+      current = path.dirname(current);
+    }
+  }
+  return current;
+}
+
+async function runCanonicalScan(args, resolved, filePaths, customRules, opts = {}) {
+  const logger = opts.logger || log;
+  const shouldLog = opts.logProgress !== false;
+  const fixSummary = createFixSummary(args);
+  const fileResults = [];
+  const fileErrors = [];
+  const remoteLinkCache = new Map();
+  const linkEngineStats = createLinkEngineStats();
+  let peakRssBytes = process.memoryUsage().rss;
+  const updatePeakRss = () => {
+    const rss = process.memoryUsage().rss;
+    if (rss > peakRssBytes) peakRssBytes = rss;
+  };
+
+  const startTime = process.hrtime.bigint();
+  for (const filePath of filePaths) {
+    const rel = path.relative(process.cwd(), filePath);
+    const shortPath = rel.startsWith('..') ? filePath : rel || filePath;
+    if (shouldLog) {
+      logger(c.cyan(icons.info), `Checking ${c.bold(shortPath)}...`);
+    }
+
+    try {
+      const fileOpts = resolveFileOptions(filePath, resolved, args);
+      if (isExcludedFile(filePath, fileOpts.exclude)) {
+        if (shouldLog) {
+          logger(c.dim(icons.info), c.dim('Skipped by exclude rules'));
+        }
+        continue;
+      }
+
+      const relPath = toRelativePath(filePath);
+      const scanContext = createFileScanContext({
+        absolutePath: filePath,
+        relativePath: relPath,
+        fileOptions: fileOpts,
+        customRules
+      });
+      let content = fs.readFileSync(filePath, 'utf8');
+      updatePeakRss();
+
+      if (args.fix) {
+        if (shouldLog) {
+          logger(c.dim('  ↳'), c.dim('Auto-fixing insecure links...'));
+        }
+        const fixed = autoFixInsecureLinks(content);
+        if (fixed.modified) {
+          fixSummary.filesChanged += 1;
+          fixSummary.linkReplacements += fixed.changes.length;
+          for (const change of fixed.changes) {
+            if (args.dryRun && shouldLog) {
+              logger(c.dim('    '), c.yellow('~') + ` ${c.dim(change.from)} ${c.dim('→')} ${c.green(change.to)}`);
+            }
+          }
+          if (!args.dryRun) {
+            content = fixed.content;
+          }
+        }
+        if (fixed.ambiguous.length > 0) {
+          fixSummary.ambiguousSkipped.push({
+            file: filePath,
+            urls: [...new Set(fixed.ambiguous)]
+          });
+          if (shouldLog) {
+            for (const url of [...new Set(fixed.ambiguous)]) {
+              logger(c.dim('    '), c.dim(`⊘ skipped ${url} (localhost/custom port)`));
+            }
+          }
+        }
+
+        const formatted = autoFixFormatting(content);
+        if (formatted.modified) {
+          fixSummary.formatFixes += formatted.changes.length;
+          if (!args.dryRun) {
+            content = formatted.content;
+          }
+          if (shouldLog) {
+            const ruleSet = new Set(formatted.changes.map(ch => ch.rule));
+            logger(c.dim('  ↳'), c.dim(`Formatting: ${formatted.changes.length} fix${formatted.changes.length === 1 ? '' : 'es'} (${[...ruleSet].join(', ')})${args.dryRun ? ' [dry-run]' : ''}`));
+          }
+        }
+
+        if (!args.dryRun && (fixed.modified || formatted.modified)) {
+          fs.writeFileSync(filePath, content, 'utf8');
+          recordSelfWrite(opts.watchState, filePath);
+        }
+      }
+
+      const analysis = checkMarkdown(content, {
+        maxLineLength: scanContext.options.maxLineLength,
+        filePath: scanContext.relativePath,
+        absoluteFilePath: scanContext.absolutePath,
+        customRules: scanContext.customRules,
+        checkFrontmatter: scanContext.options.checkFrontmatter,
+        checkInlineHtml: scanContext.options.checkInlineHtml
+      });
+
+      if (scanContext.options.checkLinks) {
+        if (shouldLog) {
+          logger(c.dim('  ↳'), c.dim('Checking links...'));
+        }
+        const { findings: deadLinks, stats: linkStats } = await checkDeadLinksDetailed(content, {
+          sourceFile: filePath,
+          siteRoot: scanContext.options.siteRoot,
+          linkAllowList: scanContext.options.linkAllowList,
+          allowPrivateLinks: args.allowPrivateLinks,
+          timeoutMs: scanContext.options.linkTimeoutMs,
+          concurrency: scanContext.options.linkConcurrency,
+          remoteCache: remoteLinkCache
+        });
+        linkEngineStats.remoteLinksChecked += Number(linkStats.remoteLinksChecked || 0);
+        linkEngineStats.remoteCacheHits += Number(linkStats.remoteCacheHits || 0);
+        linkEngineStats.remoteCacheMisses += Number(linkStats.remoteCacheMisses || 0);
+        linkEngineStats.remoteTimeouts += Number(linkStats.remoteTimeouts || 0);
+        const deadLinkErrors = [];
+        const deadLinkWarnings = [];
+        for (const finding of deadLinks) {
+          finding.source = scanContext.relativePath;
+          if (finding.severity === 'warning') {
+            deadLinkWarnings.push(finding);
+          } else {
+            deadLinkErrors.push(finding);
+          }
+        }
+        analysis.errors.push(...deadLinkErrors);
+        analysis.warnings.push(...deadLinkWarnings);
+        analysis.summary.errors = analysis.errors.length;
+        analysis.summary.warnings = analysis.warnings.length;
+        updatePeakRss();
+      }
+
+      if (scanContext.options.checkFreshness) {
+        if (shouldLog) {
+          logger(c.dim('  ↳'), c.dim('Checking freshness...'));
+        }
+        const freshnessWarnings = checkDocFreshness(content, {
+          sourceFile: scanContext.relativePath,
+          maxAgeDays: scanContext.options.freshnessMaxDays
+        });
+        analysis.warnings.push(...freshnessWarnings);
+        analysis.summary.warnings = analysis.warnings.length;
+      }
+
+      fileResults.push(buildFileResult(filePath, analysis, {
+        strict: scanContext.options.strict,
+        ignoreRules: scanContext.options.ignoreRules
+      }));
+      updatePeakRss();
+    } catch (err) {
+      fileErrors.push({ file: toRelativePath(filePath), error: err.message });
+    }
+  }
+
+  const elapsed = Number(process.hrtime.bigint() - startTime) / 1e9;
+  const engineSummary = {
+    scanMs: Math.round(elapsed * 1000),
+    peakMemoryMb: Number((peakRssBytes / (1024 * 1024)).toFixed(3)),
+    remoteLinksChecked: linkEngineStats.remoteLinksChecked,
+    remoteCacheHits: linkEngineStats.remoteCacheHits,
+    remoteCacheMisses: linkEngineStats.remoteCacheMisses,
+    remoteTimeouts: linkEngineStats.remoteTimeouts
+  };
+
+  return {
+    output: buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed, fixSummary, engineSummary),
+    fixSummary
+  };
+}
+
 async function runCli(argv = process.argv.slice(2)) {
   let args;
   try {
@@ -675,7 +933,7 @@ async function runCli(argv = process.argv.slice(2)) {
   if (args.init) {
     initColors(args.noColor);
     setAsciiMode(args.ascii);
-    const configFile = '.doclify-guardrail.json';
+    const configFile = CONFIG_NAME;
     const configPath = path.resolve(configFile);
 
     const configExists = fs.existsSync(configPath);
@@ -726,23 +984,6 @@ async function runCli(argv = process.argv.slice(2)) {
 
   let filePaths;
 
-  // Diff/staged mode: only scan git-changed files
-  if (args.diff || args.staged) {
-    try {
-      filePaths = getChangedMarkdownFiles({ base: args.base, staged: args.staged });
-    } catch (err) {
-      console.error(`Error: ${err.message}`);
-      return 2;
-    }
-  } else {
-    try {
-      filePaths = resolveFileList(args);
-    } catch (err) {
-      console.error(`Error: ${err.message}`);
-      return 2;
-    }
-  }
-
   let resolved;
   try {
     resolved = resolveOptions(args);
@@ -751,8 +992,11 @@ async function runCli(argv = process.argv.slice(2)) {
     return 2;
   }
 
-  if (resolved.exclude.length > 0) {
-    filePaths = filePaths.filter(fp => !isExcludedFile(fp, resolved.exclude));
+  try {
+    filePaths = resolveScanFilePaths(args, resolved);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    return 2;
   }
 
   // In diff/staged mode, zero changed files is a valid success (not an error)
@@ -780,8 +1024,7 @@ async function runCli(argv = process.argv.slice(2)) {
 
   // Watch mode: monitor files and re-scan on change
   if (args.watch) {
-    const watchDir = args.dir || args.files[0] || '.';
-    const watchPath = path.resolve(watchDir);
+    const watchPath = getWatchPath(args);
     console.error('');
     console.error(`  ${c.bold('Doclify Guardrail')} ${c.dim(`v${VERSION}`)}`);
     console.error('');
@@ -789,77 +1032,55 @@ async function runCli(argv = process.argv.slice(2)) {
     console.error('');
 
     let debounceTimer = null;
+    const watchState = { selfWrites: new Map() };
 
-    const runScan = async (changedFile) => {
-      const scanPaths = changedFile ? [changedFile] : filePaths;
-      const validPaths = scanPaths.filter(fp => fs.existsSync(fp));
-      if (validPaths.length === 0) return;
-
-      const start = process.hrtime.bigint();
-      const results = [];
-      const errors = [];
-
-      for (const fp of validPaths) {
-        try {
-          const fileOpts = resolveFileOptions(fp, resolved, args);
-          if (isExcludedFile(fp, fileOpts.exclude)) {
-            continue;
-          }
-          const relPath = toRelativePath(fp);
-          const scanContext = createFileScanContext({
-            absolutePath: fp,
-            relativePath: relPath,
-            fileOptions: fileOpts,
-            customRules
-          });
-
-          const content = fs.readFileSync(fp, 'utf8');
-          const analysis = checkMarkdown(content, {
-            maxLineLength: scanContext.options.maxLineLength,
-            filePath: scanContext.relativePath,
-            absoluteFilePath: scanContext.absolutePath,
-            customRules: scanContext.customRules,
-            checkFrontmatter: scanContext.options.checkFrontmatter,
-            checkInlineHtml: scanContext.options.checkInlineHtml
-          });
-          results.push(buildFileResult(fp, analysis, {
-            strict: scanContext.options.strict,
-            ignoreRules: scanContext.options.ignoreRules
-          }));
-        } catch (err) {
-          errors.push({ file: toRelativePath(fp), error: err.message });
-        }
+    const runWatchScan = async () => {
+      let currentResolved;
+      try {
+        currentResolved = resolveOptions(args);
+        filePaths = resolveScanFilePaths(args, currentResolved);
+      } catch (err) {
+        console.error(`Watch error: ${err.message}`);
+        return;
       }
 
-      const el = Number(process.hrtime.bigint() - start) / 1e9;
-      const out = buildOutput(results, errors, { strict: resolved.strict }, el, {
-        enabled: false,
-        dryRun: false,
-        filesChanged: 0,
-        linkReplacements: 0,
-        formatFixes: 0,
-        ambiguousSkipped: []
-      });
+      if ((args.diff || args.staged) && filePaths.length === 0) {
+        log(c.dim(icons.info), 'No changed Markdown/MDX files found.');
+        return;
+      }
 
+      const existingPaths = filePaths.filter((candidate) => fs.existsSync(candidate));
+      if (existingPaths.length === 0) {
+        log(c.dim(icons.info), 'No Markdown/MDX files found.');
+        return;
+      }
+
+      const { output } = await runCanonicalScan(args, currentResolved, existingPaths, customRules, {
+        watchState
+      });
       if (args.format === 'compact') {
-        printCompactResults(out);
+        printCompactResults(output);
       } else {
-        printResults(out);
+        printResults(output);
       }
     };
 
     // Initial scan
-    await runScan();
+    await runWatchScan();
 
     const { watch } = await import('node:fs');
     try {
       watch(watchPath, { recursive: true }, (eventType, filename) => {
-        if (!filename || !isMarkdownPath(filename)) return;
+        if (!filename) return;
+        const fullPath = path.resolve(watchPath, filename);
+        const isConfigChange = path.basename(filename) === CONFIG_NAME;
+        const isMarkdownChange = isMarkdownPath(filename);
+        if (!isConfigChange && !isMarkdownChange) return;
+        if (isMarkdownChange && shouldIgnoreWatchPath(watchState, fullPath)) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          const fullPath = path.resolve(watchPath, filename);
           log(c.dim(icons.info), c.dim(`Changed: ${filename}`));
-          runScan(fullPath);
+          runWatchScan();
         }, 300);
       });
     } catch (err) {
@@ -877,30 +1098,6 @@ async function runCli(argv = process.argv.slice(2)) {
     log(c.cyan(icons.info), `Loaded config from ${c.dim(resolved.configPath)}`);
   }
 
-  const startTime = process.hrtime.bigint();
-  const fileResults = [];
-  const fileErrors = [];
-  let peakRssBytes = process.memoryUsage().rss;
-  const updatePeakRss = () => {
-    const rss = process.memoryUsage().rss;
-    if (rss > peakRssBytes) peakRssBytes = rss;
-  };
-  const fixSummary = {
-    enabled: args.fix,
-    dryRun: args.dryRun,
-    filesChanged: 0,
-    linkReplacements: 0,
-    formatFixes: 0,
-    ambiguousSkipped: []
-  };
-  const remoteLinkCache = new Map();
-  const linkEngineStats = {
-    remoteLinksChecked: 0,
-    remoteCacheHits: 0,
-    remoteCacheMisses: 0,
-    remoteTimeouts: 0
-  };
-
   let customRulesCount = customRules.length;
   if (customRulesCount > 0) {
     log(c.cyan(icons.info), `Loaded ${c.bold(String(customRulesCount))} custom rules from ${c.dim(args.rules)}`);
@@ -917,142 +1114,7 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   console.error('');
-
-  for (const filePath of filePaths) {
-    const rel = path.relative(process.cwd(), filePath);
-    const shortPath = rel.startsWith('..') ? filePath : rel || filePath;
-    log(c.cyan(icons.info), `Checking ${c.bold(shortPath)}...`);
-
-    try {
-      const fileOpts = resolveFileOptions(filePath, resolved, args);
-      if (isExcludedFile(filePath, fileOpts.exclude)) {
-        log(c.dim(icons.info), c.dim(`Skipped by exclude rules`));
-        continue;
-      }
-      const relPath = toRelativePath(filePath);
-      const scanContext = createFileScanContext({
-        absolutePath: filePath,
-        relativePath: relPath,
-        fileOptions: fileOpts,
-        customRules
-      });
-      let content = fs.readFileSync(filePath, 'utf8');
-      updatePeakRss();
-
-      if (args.fix) {
-        // 1. Insecure links fix (http:// → https://)
-        log(c.dim('  ↳'), c.dim(`Auto-fixing insecure links...`));
-        const fixed = autoFixInsecureLinks(content);
-        if (fixed.modified) {
-          fixSummary.filesChanged += 1;
-          fixSummary.linkReplacements += fixed.changes.length;
-          for (const change of fixed.changes) {
-            if (args.dryRun) {
-              log(c.dim('    '), c.yellow('~') + ` ${c.dim(change.from)} ${c.dim('→')} ${c.green(change.to)}`);
-            }
-          }
-          if (!args.dryRun) {
-            content = fixed.content;
-          }
-        }
-        if (fixed.ambiguous.length > 0) {
-          fixSummary.ambiguousSkipped.push({
-            file: filePath,
-            urls: [...new Set(fixed.ambiguous)]
-          });
-          for (const url of [...new Set(fixed.ambiguous)]) {
-            log(c.dim('    '), c.dim(`⊘ skipped ${url} (localhost/custom port)`));
-          }
-        }
-
-        // 2. Formatting fixes (trailing spaces, blanks, headings, bare URLs, etc.)
-        const formatted = autoFixFormatting(content);
-        if (formatted.modified) {
-          fixSummary.formatFixes += formatted.changes.length;
-          if (!args.dryRun) {
-            content = formatted.content;
-          }
-          const ruleSet = new Set(formatted.changes.map(ch => ch.rule));
-          log(c.dim('  ↳'), c.dim(`Formatting: ${formatted.changes.length} fix${formatted.changes.length === 1 ? '' : 'es'} (${[...ruleSet].join(', ')})${args.dryRun ? ' [dry-run]' : ''}`));
-        }
-
-        // Write all changes to disk
-        if (!args.dryRun && (fixed.modified || formatted.modified)) {
-          fs.writeFileSync(filePath, content, 'utf8');
-        }
-      }
-
-      const analysis = checkMarkdown(content, {
-        maxLineLength: scanContext.options.maxLineLength,
-        filePath: scanContext.relativePath,
-        absoluteFilePath: scanContext.absolutePath,
-        customRules: scanContext.customRules,
-        checkFrontmatter: scanContext.options.checkFrontmatter,
-        checkInlineHtml: scanContext.options.checkInlineHtml
-      });
-
-      if (scanContext.options.checkLinks) {
-        log(c.dim('  ↳'), c.dim(`Checking links...`));
-        const { findings: deadLinks, stats: linkStats } = await checkDeadLinksDetailed(content, {
-          sourceFile: filePath,
-          siteRoot: scanContext.options.siteRoot,
-          linkAllowList: scanContext.options.linkAllowList,
-          allowPrivateLinks: args.allowPrivateLinks,
-          timeoutMs: scanContext.options.linkTimeoutMs,
-          concurrency: scanContext.options.linkConcurrency,
-          remoteCache: remoteLinkCache
-        });
-        linkEngineStats.remoteLinksChecked += Number(linkStats.remoteLinksChecked || 0);
-        linkEngineStats.remoteCacheHits += Number(linkStats.remoteCacheHits || 0);
-        linkEngineStats.remoteCacheMisses += Number(linkStats.remoteCacheMisses || 0);
-        linkEngineStats.remoteTimeouts += Number(linkStats.remoteTimeouts || 0);
-        const deadLinkErrors = [];
-        const deadLinkWarnings = [];
-        for (const finding of deadLinks) {
-          finding.source = scanContext.relativePath;
-          if (finding.severity === 'warning') {
-            deadLinkWarnings.push(finding);
-          } else {
-            deadLinkErrors.push(finding);
-          }
-        }
-        analysis.errors.push(...deadLinkErrors);
-        analysis.warnings.push(...deadLinkWarnings);
-        analysis.summary.errors = analysis.errors.length;
-        analysis.summary.warnings = analysis.warnings.length;
-        updatePeakRss();
-      }
-
-      if (scanContext.options.checkFreshness) {
-        log(c.dim('  ↳'), c.dim(`Checking freshness...`));
-        const freshnessWarnings = checkDocFreshness(content, {
-          sourceFile: scanContext.relativePath,
-          maxAgeDays: scanContext.options.freshnessMaxDays
-        });
-        analysis.warnings.push(...freshnessWarnings);
-        analysis.summary.warnings = analysis.warnings.length;
-      }
-
-      fileResults.push(buildFileResult(filePath, analysis, {
-        strict: scanContext.options.strict,
-        ignoreRules: scanContext.options.ignoreRules
-      }));
-      updatePeakRss();
-    } catch (err) {
-      fileErrors.push({ file: toRelativePath(filePath), error: err.message });
-    }
-  }
-
-  const elapsed = Number(process.hrtime.bigint() - startTime) / 1e9;
-  const engineSummary = {
-    scanMs: Math.round(elapsed * 1000),
-    peakMemoryMb: Number((peakRssBytes / (1024 * 1024)).toFixed(3)),
-    remoteLinksChecked: linkEngineStats.remoteLinksChecked,
-    remoteCacheHits: linkEngineStats.remoteCacheHits,
-    remoteCacheMisses: linkEngineStats.remoteCacheMisses,
-    remoteTimeouts: linkEngineStats.remoteTimeouts
-  };
-  const output = buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed, fixSummary, engineSummary);
+  const { output, fixSummary } = await runCanonicalScan(args, resolved, filePaths, customRules);
 
   if (args.debug) {
     console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));

@@ -364,10 +364,12 @@ function buildAggregate(runs) {
   };
 }
 
-function runDoclify(cliPath, targetPath, cliArgs) {
+function runDoclify(cliPath, targetPath, cliArgs, options = {}) {
   const startedAt = new Date().toISOString();
   const t0 = process.hrtime.bigint();
-  const proc = runCommand(process.execPath, [cliPath, targetPath, ...cliArgs], { cwd: process.cwd() });
+  const proc = runCommand(process.execPath, [cliPath, targetPath, ...cliArgs], {
+    cwd: options.cwd || process.cwd()
+  });
   const durationMs = Number(process.hrtime.bigint() - t0) / 1e6;
 
   let output = null;
@@ -454,9 +456,10 @@ async function runCorpus(argv = process.argv.slice(2)) {
       for (let n = 1; n <= args.repeat; n += 1) {
         checkoutPinnedCommit(repo, checkoutDir);
         const mergedArgs = [...profile.args, ...repo.extraArgs];
+        const scanTarget = path.relative(checkoutDir, scanRoot) || '.';
         runs.push({
           run: n,
-          ...runDoclify(cliPath, scanRoot, mergedArgs)
+          ...runDoclify(cliPath, scanTarget, mergedArgs, { cwd: checkoutDir })
         });
       }
 

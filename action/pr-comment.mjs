@@ -58,10 +58,11 @@ async function postPrComment(octokit, ctx, output, opts = {}) {
   const body = buildPrCommentBody(output, opts);
 
   // Find existing comment to update (idempotent)
-  const { data: comments } = await octokit.rest.issues.listComments({
+  const comments = await octokit.paginate(octokit.rest.issues.listComments, {
     owner,
     repo,
-    issue_number: prNumber
+    issue_number: prNumber,
+    per_page: 100
   });
 
   const existing = comments.find(c => c.body && c.body.includes(MARKER));

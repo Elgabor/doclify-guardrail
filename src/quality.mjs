@@ -1,4 +1,5 @@
 import { normalizeFinding } from './checker.mjs';
+import { extractFrontmatter, normalizeLineEndings } from './text-normalize.mjs';
 
 const DEFAULT_FRESHNESS_DAYS = 180;
 
@@ -15,26 +16,29 @@ function computeDocHealthScore({ errors = 0, warnings = 0 }) {
   return clamp(Math.round(raw), 0, 100);
 }
 
-function extractFrontmatter(content) {
-  if (!content.startsWith('---\n')) return null;
-  const endIdx = content.indexOf('\n---\n', 4);
-  if (endIdx === -1) return null;
-  return {
-    body: content.slice(4, endIdx),
-    startLine: 2
-  };
-}
-
 function parseIsoDate(value) {
   if (!value || typeof value !== 'string') return null;
   const cleaned = value.trim().replace(/^['"]|['"]$/g, '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return null;
-  const date = new Date(`${cleaned}T00:00:00Z`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  const [yearStr, monthStr, dayStr] = cleaned.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) return null;
+  if (
+    date.getUTCFullYear() !== year
+    || (date.getUTCMonth() + 1) !== month
+    || date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
 }
 
 function findFreshnessDate(content) {
-  const frontmatter = extractFrontmatter(content);
+  const normalized = normalizeLineEndings(content);
+  const frontmatter = extractFrontmatter(normalized);
   if (frontmatter) {
     const lines = frontmatter.body.split('\n');
     for (let i = 0; i < lines.length; i += 1) {
@@ -42,27 +46,31 @@ function findFreshnessDate(content) {
       const m = line.match(/^\s*(updated|last_updated|lastModified|date)\s*:\s*(.+)\s*$/i);
       if (!m) continue;
       const parsed = parseIsoDate(m[2]);
-      if (parsed) {
-        return {
-          date: parsed,
-          source: m[1],
-          line: frontmatter.startLine + i
-        };
-      }
+      return {
+        kind: parsed ? 'valid' : 'invalid',
+        rawValue: String(m[2] || '').trim(),
+        date: parsed,
+        source: m[1],
+        line: frontmatter.startLine + i
+      };
     }
   }
 
-  const lines = content.split('\n');
+  const lines = normalized.split('\n');
   for (let i = 0; i < lines.length; i += 1) {
-    const m = lines[i].match(/last\s*updated\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+    const m = lines[i].match(/last\s*updated\s*:\s*(.+?)\s*$/i);
     if (!m) continue;
     const parsed = parseIsoDate(m[1]);
-    if (parsed) {
-      return { date: parsed, source: 'last-updated', line: i + 1 };
-    }
+    return {
+      kind: parsed ? 'valid' : 'invalid',
+      rawValue: String(m[1] || '').trim(),
+      date: parsed,
+      source: 'last-updated',
+      line: i + 1
+    };
   }
 
-  return null;
+  return { kind: 'missing', line: 1 };
 }
 
 function checkDocFreshness(content, opts = {}) {
@@ -72,17 +80,36 @@ function checkDocFreshness(content, opts = {}) {
   const findings = [];
 
   const found = findFreshnessDate(content);
-  if (!found) {
+  if (found.kind === 'missing') {
     findings.push(normalizeFinding(
       'stale-doc',
       `No freshness date found. Add frontmatter \`updated: YYYY-MM-DD\` (max ${maxAgeDays} days).`,
-      1,
+      found.line,
+      sourceFile
+    ));
+    return findings;
+  }
+
+  if (found.kind === 'invalid') {
+    findings.push(normalizeFinding(
+      'stale-doc',
+      `Invalid freshness date "${found.rawValue}". Use a real calendar date in \`YYYY-MM-DD\` format.`,
+      found.line,
       sourceFile
     ));
     return findings;
   }
 
   const ageDays = Math.floor((now.getTime() - found.date.getTime()) / 86400000);
+  if (ageDays < 0) {
+    findings.push(normalizeFinding(
+      'stale-doc',
+      `Freshness date is in the future: ${found.rawValue}. Use a date not later than today.`,
+      found.line,
+      sourceFile
+    ));
+    return findings;
+  }
   if (ageDays > maxAgeDays) {
     findings.push(normalizeFinding(
       'stale-doc',

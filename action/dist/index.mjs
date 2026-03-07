@@ -35918,6 +35918,11 @@ legacyRestEndpointMethods.VERSION = VERSION;
 /************************************************************************/
 var __webpack_exports__ = {};
 
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  U: () => (/* binding */ resolveCliPath)
+});
+
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
@@ -35991,10 +35996,11 @@ async function postPrComment(octokit, ctx, output, opts = {}) {
   const body = buildPrCommentBody(output, opts);
 
   // Find existing comment to update (idempotent)
-  const { data: comments } = await octokit.rest.issues.listComments({
+  const comments = await octokit.paginate(octokit.rest.issues.listComments, {
     owner,
     repo,
-    issue_number: prNumber
+    issue_number: prNumber,
+    per_page: 100
   });
 
   const existing = comments.find(c => c.body && c.body.includes(MARKER));
@@ -36028,7 +36034,19 @@ async function postPrComment(octokit, ctx, output, opts = {}) {
 
 
 const entrypoint_dirname = external_node_path_namespaceObject.dirname((0,external_node_url_.fileURLToPath)(import.meta.url));
-const CLI = external_node_path_namespaceObject.resolve(entrypoint_dirname, '..', 'src', 'index.mjs');
+
+function resolveCliPath() {
+  const candidates = [
+    external_node_path_namespaceObject.resolve(entrypoint_dirname, '..', 'src', 'index.mjs'),
+    external_node_path_namespaceObject.resolve(entrypoint_dirname, '..', '..', 'src', 'index.mjs')
+  ];
+
+  for (const candidate of candidates) {
+    if ((0,external_node_fs_namespaceObject.existsSync)(candidate)) return candidate;
+  }
+
+  throw new Error(`Unable to locate doclify CLI. Tried: ${candidates.join(', ')}`);
+}
 
 function runDoclifyProcess(cliArgs) {
   return new Promise((resolve, reject) => {
@@ -36057,7 +36075,11 @@ function runDoclifyProcess(cliArgs) {
 
 async function run() {
   try {
+    const CLI = resolveCliPath();
     const scanPath = core.getInput('path') || '.';
+    if (/[\r\n]/.test(scanPath)) {
+      throw new Error('Action input "path" must be a single file, directory, or glob target.');
+    }
     const strict = core.getInput('strict') === 'true';
     const minScore = core.getInput('min-score');
     const checkLinks = core.getInput('check-links') === 'true';
@@ -36143,3 +36165,7 @@ async function run() {
 
 run();
 
+
+
+var __webpack_exports__resolveCliPath = __webpack_exports__.U;
+export { __webpack_exports__resolveCliPath as resolveCliPath };

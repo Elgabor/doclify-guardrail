@@ -7,7 +7,7 @@ branding:
 
 inputs:
   path:
-    description: 'Directory or files to scan'
+    description: 'Single scan target: file, directory, or glob'
     default: '.'
   strict:
     description: 'Treat warnings as errors'

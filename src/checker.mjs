@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { getFenceOpen, isFenceClose } from './fences.mjs';
+import { analyzeFences, getFenceOpen, isFenceClose } from './fences.mjs';
+import { hasFrontmatter, normalizeLineEndings } from './text-normalize.mjs';
 
 const DEFAULTS = {
   maxLineLength: 160,
@@ -345,12 +346,23 @@ function isSuppressed(suppressions, finding) {
 }
 
 function checkMarkdown(rawContent, opts = {}) {
+  const normalizedRawContent = normalizeLineEndings(rawContent);
   const maxLineLength = Number(opts.maxLineLength ?? DEFAULTS.maxLineLength);
   const filePath = opts.filePath || undefined;
   const absoluteFilePath = opts.absoluteFilePath ? path.resolve(opts.absoluteFilePath) : null;
+  const rawLines = normalizedRawContent.split('\n');
+  const fenceState = analyzeFences(rawLines);
 
   // File-level suppression: <!-- doclify-disable-file [rules] -->
-  const fileDisableMatch = rawContent.match(SUPPRESS_FILE_RX);
+  let fileDisableMatch = null;
+  for (let i = 0; i < rawLines.length; i += 1) {
+    if (fenceState.inFence[i]) continue;
+    const match = rawLines[i].match(SUPPRESS_FILE_RX);
+    if (match) {
+      fileDisableMatch = match;
+      break;
+    }
+  }
   let fileDisabledRules = null;
   if (fileDisableMatch) {
     const ruleIds = parseRuleIds(fileDisableMatch[1]);
@@ -365,16 +377,15 @@ function checkMarkdown(rawContent, opts = {}) {
   const warnings = [];
 
   // Strip code blocks for semantic rules
-  const content = stripCodeBlocks(rawContent);
+  const content = stripCodeBlocks(normalizedRawContent);
   const lines = content.split('\n');
-  const rawLines = rawContent.split('\n');
   const referenceData = collectReferenceLinks(lines);
 
   // Build suppression map from inline comments (uses stripped content)
   const suppressions = buildSuppressionMap(lines);
 
   // Rule: frontmatter (opt-in via --check-frontmatter or config)
-  if (opts.checkFrontmatter && !rawContent.startsWith('---\n')) {
+  if (opts.checkFrontmatter && !hasFrontmatter(normalizedRawContent)) {
     warnings.push(normalizeFinding('frontmatter', 'Missing frontmatter block at the beginning of the file.', 1, filePath));
   }
 

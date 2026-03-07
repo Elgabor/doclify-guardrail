@@ -7,7 +7,19 @@ import { fileURLToPath } from 'node:url';
 import { postPrComment } from './pr-comment.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.resolve(__dirname, '..', 'src', 'index.mjs');
+
+function resolveCliPath() {
+  const candidates = [
+    path.resolve(__dirname, '..', 'src', 'index.mjs'),
+    path.resolve(__dirname, '..', '..', 'src', 'index.mjs')
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  throw new Error(`Unable to locate doclify CLI. Tried: ${candidates.join(', ')}`);
+}
 
 function runDoclifyProcess(cliArgs) {
   return new Promise((resolve, reject) => {
@@ -36,7 +48,11 @@ function runDoclifyProcess(cliArgs) {
 
 async function run() {
   try {
+    const CLI = resolveCliPath();
     const scanPath = core.getInput('path') || '.';
+    if (/[\r\n]/.test(scanPath)) {
+      throw new Error('Action input "path" must be a single file, directory, or glob target.');
+    }
     const strict = core.getInput('strict') === 'true';
     const minScore = core.getInput('min-score');
     const checkLinks = core.getInput('check-links') === 'true';
@@ -121,3 +137,5 @@ async function run() {
 }
 
 run();
+
+export { resolveCliPath };

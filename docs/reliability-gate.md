@@ -31,6 +31,9 @@ Corpus corrente (commit pin-nati):
 - `nodejs-node` (`medium`)
 - `kubernetes-website` (`large`)
 
+Per la release `v1.7.0` questi 4 repository costituiscono anche
+il set minimo obbligatorio di dogfooding esterno della stable candidate.
+
 ## Setup locale
 
 Prerequisiti:
@@ -85,6 +88,8 @@ Regole:
 - ogni waiver deve avere `owner`, `reason`, `expiresOn`;
 - i waiver scaduti vengono ignorati automaticamente;
 - niente waiver senza data di scadenza.
+- per la stable candidate `v1.7.0`, PR e nightly devono restare verdi
+  senza introdurre waiver nuovi.
 
 Esempio:
 

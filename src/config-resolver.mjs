@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { DEFAULT_FRESHNESS_DAYS } from './quality.mjs';
 import { DEFAULT_LINK_CONCURRENCY, DEFAULT_LINK_TIMEOUT_MS } from './links.mjs';
 
@@ -29,9 +30,31 @@ function resolveConfiguredPath(value, configPath) {
   return path.resolve(baseDir, value);
 }
 
+function canonicalizePath(targetPath) {
+  const resolved = path.resolve(targetPath);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 function isDescendantOrSame(candidatePath, basePath) {
-  const rel = path.relative(basePath, candidatePath);
+  const resolvedCandidate = canonicalizePath(candidatePath);
+  const resolvedBase = canonicalizePath(basePath);
+  const rel = path.relative(resolvedBase, resolvedCandidate);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function findNearestGitRoot(startDir) {
+  const resolved = path.resolve(startDir);
+  const result = spawnSync('git', ['-C', resolved, 'rev-parse', '--show-toplevel'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  });
+  if (result.error || result.status !== 0) return null;
+  const gitRoot = String(result.stdout || '').trim();
+  return gitRoot ? path.resolve(gitRoot) : null;
 }
 
 function parseConfigFile(configPath) {
@@ -147,9 +170,9 @@ function validateResolvedOptions(resolved, contextPath) {
 function findParentConfigs(startDir, opts = {}) {
   const { baseDir = null } = opts;
   const configs = [];
-  let dir = path.resolve(startDir);
+  let dir = canonicalizePath(startDir);
   const root = path.parse(dir).root;
-  const boundary = baseDir ? path.resolve(baseDir) : root;
+  const boundary = baseDir ? canonicalizePath(baseDir) : root;
 
   while (isDescendantOrSame(dir, boundary)) {
     const configPath = path.join(dir, CONFIG_NAME);
@@ -165,27 +188,36 @@ function findParentConfigs(startDir, opts = {}) {
   return configs;
 }
 
+function getDefaultConfigPath(args = {}) {
+  return path.resolve(args.configPath || CONFIG_NAME);
+}
+
+function getDiscoveryRoot(filePath, args = {}) {
+  if (args.configExplicit === true) {
+    return path.dirname(getDefaultConfigPath(args));
+  }
+
+  const gitRoot = findNearestGitRoot(path.dirname(path.resolve(filePath)));
+  if (gitRoot) return gitRoot;
+  return path.parse(path.resolve(filePath)).root;
+}
+
 function getConfigChainForFile(filePath, args = {}) {
-  const rootConfigPath = path.resolve(args.configPath || CONFIG_NAME);
+  const rootConfigPath = getDefaultConfigPath(args);
   const rootDir = path.dirname(rootConfigPath);
   const fileDir = path.dirname(path.resolve(filePath));
+  const discoveryRoot = getDiscoveryRoot(filePath, args);
 
   const chain = [];
-  if (fs.existsSync(rootConfigPath)) {
+  if (args.configExplicit === true && fs.existsSync(rootConfigPath)) {
     chain.push(rootConfigPath);
   }
 
-  if (isDescendantOrSame(fileDir, rootDir)) {
-    const parentChain = findParentConfigs(fileDir, { baseDir: rootDir });
+  if (isDescendantOrSame(fileDir, discoveryRoot)) {
+    const parentChain = findParentConfigs(fileDir, { baseDir: discoveryRoot });
     for (const candidate of parentChain) {
-      if (candidate !== rootConfigPath) {
-        chain.push(candidate);
-      }
-    }
-  } else {
-    const nearest = path.join(fileDir, CONFIG_NAME);
-    if (fs.existsSync(nearest) && nearest !== rootConfigPath) {
-      chain.push(nearest);
+      if (args.configExplicit === true && candidate === rootConfigPath) continue;
+      chain.push(candidate);
     }
   }
 
@@ -193,10 +225,11 @@ function getConfigChainForFile(filePath, args = {}) {
 }
 
 function resolveOptions(args) {
-  const rootConfigPath = path.resolve(args.configPath);
+  const rootConfigPath = getDefaultConfigPath(args);
   const rootCfg = parseConfigFile(rootConfigPath);
   const merged = applyCliOverrides(mergeConfigLayer(DEFAULT_OPTIONS, rootCfg, rootConfigPath), args);
-  return validateResolvedOptions(merged, rootConfigPath);
+  const contextPath = fs.existsSync(rootConfigPath) ? rootConfigPath : null;
+  return validateResolvedOptions(merged, contextPath);
 }
 
 function resolveFileOptions(filePath, _baseResolved, args) {
@@ -209,9 +242,10 @@ function resolveFileOptions(filePath, _baseResolved, args) {
 
   const contextPath = chain.length > 0
     ? chain[chain.length - 1]
-    : path.resolve(args.configPath);
+    : (args.configExplicit === true ? getDefaultConfigPath(args) : null);
   const out = validateResolvedOptions(merged, contextPath);
   out.configChain = chain;
+  out.discoveryRoot = getDiscoveryRoot(filePath, args);
   return out;
 }
 
@@ -219,6 +253,7 @@ export {
   CONFIG_NAME,
   DEFAULT_OPTIONS,
   parseConfigFile,
+  findNearestGitRoot,
   findParentConfigs,
   resolveOptions,
   resolveFileOptions

@@ -229,7 +229,7 @@ instead of reporting a false `dead-link`.
 | `img-alt` | warning | Images must have alt text |
 | `dead-link` | error | No broken links (requires `--check-links`) |
 | `unverifiable-root-relative-link` | warning | Root-relative local links need `siteRoot` to be verified |
-| `stale-doc` | warning | Warn on stale docs (requires `--check-freshness`) |
+| `stale-doc` | warning | Warn on stale, invalid or future docs freshness metadata (requires `--check-freshness`) |
 
 ### Style Rules (new in v1.4)
 
@@ -329,7 +329,8 @@ Monitor files and re-scan automatically on save:
 doclify docs/ --watch --strict
 ```
 
-Output is incremental: only changed files are re-scanned with a 300ms debounce.
+Watch mode re-runs the canonical scan pipeline on each relevant change with a 300ms debounce.
+That means `--watch` now honors the same fix, link, freshness and strict semantics as a normal scan.
 
 ## Quality Gate
 
@@ -380,7 +381,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Doclify
-        uses: Elgabor/doclify-guardrail@v1.6
+        uses: Elgabor/doclify-guardrail@v1.7
         with:
           path: 'docs/'
           strict: 'false'
@@ -401,9 +402,12 @@ The action automatically:
 - Generates SARIF for GitHub Code Scanning
 - Sets outputs: `score`, `status`, `errors`, `warnings`
 
+`path` accepts a single file, directory or glob target.
+Multiline lists are rejected explicitly to keep the contract deterministic.
+
 The action contract lives in `action/action.yml`.
 GitHub executes the committed `action/dist/index.mjs`,
-which delegates to the CLI through `action/entrypoint.mjs`
+which resolves the CLI from both source and bundled layouts through `action/entrypoint.mjs`
 and can upsert PR comments via `action/pr-comment.mjs`.
 
 ## Programmatic API

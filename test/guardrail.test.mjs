@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
 import { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions, findParentConfigs } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
@@ -14,7 +14,7 @@ import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
 import { lint, fix, score } from '../src/api.mjs';
 import { getChangedMarkdownFiles } from '../src/diff.mjs';
 import { loadHistory, appendHistory, checkRegression, renderTrend } from '../src/trend.mjs';
-import { buildPrCommentBody } from '../action/pr-comment.mjs';
+import { buildPrCommentBody, postPrComment } from '../action/pr-comment.mjs';
 import { checkDeadLinks, checkDeadLinksDetailed, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import {
@@ -38,10 +38,52 @@ import {
 } from '../src/ci-output.mjs';
 
 const CLI_PATH = path.resolve('src/index.mjs');
+const ACTION_DIST_PATH = path.resolve('action/dist/index.mjs');
 const PKG_VERSION = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')).version;
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-guardrail-'));
+}
+
+function parseGithubOutput(filePath) {
+  if (!fs.existsSync(filePath)) return {};
+  const lines = fs.readFileSync(filePath, 'utf8').split('\n');
+  const entries = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const multiMatch = line.match(/^([^<]+)<<(.+)$/);
+    if (multiMatch) {
+      const key = multiMatch[1];
+      const delimiter = multiMatch[2];
+      const valueLines = [];
+      i += 1;
+      while (i < lines.length && lines[i] !== delimiter) {
+        valueLines.push(lines[i]);
+        i += 1;
+      }
+      entries.push([key, valueLines.join('\n')]);
+      continue;
+    }
+
+    const idx = line.indexOf('=');
+    if (idx >= 0) {
+      entries.push([line.slice(0, idx), line.slice(idx + 1)]);
+    }
+  }
+
+  return Object.fromEntries(entries);
+}
+
+async function waitFor(predicate, timeoutMs = 5000, intervalMs = 50) {
+  const startedAt = Date.now();
+  while ((Date.now() - startedAt) <= timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`Timed out after ${timeoutMs}ms`);
 }
 
 // === Core rules tests ===
@@ -93,7 +135,7 @@ test('findParentConfigs: returns root-to-child config chain', () => {
   fs.writeFileSync(docsCfg, '{}\n', 'utf8');
 
   const chain = findParentConfigs(apiDir, { baseDir: tmp });
-  assert.deepEqual(chain, [root, docsCfg]);
+  assert.deepEqual(chain, [fs.realpathSync(root), fs.realpathSync(docsCfg)]);
 });
 
 test('resolveFileOptions: merges hierarchical configs parent -> child', () => {
@@ -134,7 +176,30 @@ test('resolveFileOptions: resolves siteRoot relative to the config that declares
   const base = resolveOptions(args);
   const resolved = resolveFileOptions(file, base, args);
 
-  assert.equal(resolved.siteRoot, path.join(docsDir, 'public'));
+  assert.equal(resolved.siteRoot, fs.realpathSync(path.join(docsDir, 'public')));
+});
+
+test('resolveFileOptions: discovers full parent config chain outside cwd via git root', () => {
+  const repo = makeTempDir();
+  const docsDir = path.join(repo, 'docs', 'api');
+  const rootCfg = path.join(repo, '.doclify-guardrail.json');
+  const docsCfg = path.join(repo, 'docs', '.doclify-guardrail.json');
+  const file = path.join(docsDir, 'ref.md');
+
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(rootCfg, JSON.stringify({ strict: true, ignoreRules: ['placeholder'] }) + '\n', 'utf8');
+  fs.writeFileSync(docsCfg, JSON.stringify({ maxLineLength: 90 }) + '\n', 'utf8');
+  fs.writeFileSync(file, '# Title\n', 'utf8');
+  spawnSync('git', ['init', '-b', 'main', repo], { encoding: 'utf8' });
+
+  const args = parseArgs([file]);
+  const base = resolveOptions(args);
+  const resolved = resolveFileOptions(file, base, args);
+
+  assert.equal(resolved.strict, true);
+  assert.equal(resolved.maxLineLength, 90);
+  assert.equal(resolved.ignoreRules.has('placeholder'), true);
+  assert.deepEqual(resolved.configChain, [fs.realpathSync(rootCfg), fs.realpathSync(docsCfg)]);
 });
 
 test('CLI: strict mode trasforma warning in fail (exit 1)', () => {
@@ -223,6 +288,13 @@ test('frontmatter: finding has line 1 when enabled', () => {
   const fm = res.warnings.find((w) => w.code === 'frontmatter');
   assert.ok(fm, 'frontmatter warning should exist when enabled');
   assert.equal(fm.line, 1);
+});
+
+test('frontmatter: CRLF frontmatter is accepted when enabled', () => {
+  const md = '---\r\ntitle: Test\r\n---\r\n# Title\r\n';
+  const res = checkMarkdown(md, { checkFrontmatter: true });
+  const fm = res.warnings.find((w) => w.code === 'frontmatter');
+  assert.equal(fm, undefined);
 });
 
 test('single-h1: duplicate H1s produce one aggregated finding with first line', () => {
@@ -878,6 +950,44 @@ test('checkDeadLinksDetailed: allowPrivateLinks opt-in enables loopback checks',
   }
 });
 
+test('checkDeadLinksDetailed: falls back from HEAD to GET for method-limited statuses', async () => {
+  for (const status of [403, 404, 405, 501]) {
+    const tmp = makeTempDir();
+    const source = path.join(tmp, `doc-${status}.md`);
+    let headHits = 0;
+    let getHits = 0;
+    const server = http.createServer((req, res) => {
+      if (req.method === 'HEAD') {
+        headHits += 1;
+        res.statusCode = status;
+        res.end();
+        return;
+      }
+      getHits += 1;
+      res.statusCode = 200;
+      res.end('ok');
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const { port } = server.address();
+      const content = `# Title\n[fallback](http://127.0.0.1:${port}/ok)\n`;
+      fs.writeFileSync(source, content, 'utf8');
+      const result = await checkDeadLinksDetailed(content, {
+        sourceFile: source,
+        allowPrivateLinks: true,
+        remoteCache: new Map()
+      });
+
+      assert.equal(result.findings.length, 0);
+      assert.equal(headHits, 1);
+      assert.equal(getHits, 1);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  }
+});
+
 test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
   const tmp = makeTempDir();
   const source = path.join(tmp, 'doc.md');
@@ -1141,6 +1251,29 @@ test('checkDocFreshness: passes when recent updated date exists', () => {
   assert.equal(findings.length, 0);
 });
 
+test('checkDocFreshness: accepts CRLF frontmatter', () => {
+  const md = '---\r\nupdated: 2026-02-10\r\n---\r\n# Title\r\n';
+  const findings = checkDocFreshness(md, { now: new Date('2026-02-18T00:00:00Z') });
+  assert.equal(findings.length, 0);
+});
+
+test('checkDocFreshness: rejects impossible calendar dates', () => {
+  const md = `---\nupdated: 2026-02-31\n---\n# Title`;
+  const findings = checkDocFreshness(md, { now: new Date('2026-02-18T00:00:00Z') });
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].code, 'stale-doc');
+  assert.ok(findings[0].message.includes('Invalid freshness date'));
+  assert.equal(findings[0].line, 2);
+});
+
+test('checkDocFreshness: rejects future dates with explicit message', () => {
+  const md = `---\nupdated: 2026-03-01\n---\n# Title`;
+  const findings = checkDocFreshness(md, { now: new Date('2026-02-18T00:00:00Z') });
+  assert.equal(findings.length, 1);
+  assert.ok(findings[0].message.includes('future'));
+  assert.equal(findings[0].line, 2);
+});
+
 test('CLI: checkFreshness from config enables stale-doc checks without CLI flag', () => {
   const tmp = makeTempDir();
   const cfgPath = path.join(tmp, '.doclify-guardrail.json');
@@ -1240,6 +1373,38 @@ test('generateJUnitXml: emits testsuite and testcase', () => {
   const xml = generateJUnitXml(output);
   assert.ok(xml.includes('<testsuite'));
   assert.ok(xml.includes('<testcase'));
+});
+
+test('generateJUnitXml: warning-only strict failure is emitted as failure', () => {
+  const output = {
+    version: '1.0',
+    files: [
+      {
+        file: 'docs/a.md',
+        pass: false,
+        findings: {
+          errors: [],
+          warnings: [{ code: 'placeholder', severity: 'warning', message: 'TODO marker found', line: 3 }]
+        },
+        summary: { errors: 0, warnings: 1, status: 'FAIL' }
+      }
+    ],
+    summary: {
+      filesScanned: 1,
+      filesPassed: 0,
+      filesFailed: 1,
+      filesErrored: 0,
+      totalErrors: 0,
+      totalWarnings: 1,
+      elapsed: 0.1,
+      status: 'FAIL'
+    }
+  };
+
+  const xml = generateJUnitXml(output);
+  assert.ok(xml.includes('<failure'));
+  assert.ok(xml.includes('promoted to failure'));
+  assert.ok(xml.includes('<system-out>'));
 });
 
 test('generateSarifJson: emits valid sarif structure', () => {
@@ -1612,6 +1777,12 @@ test('doclify-disable-file with specific rules only suppresses those', () => {
   // single-h1 should NOT be suppressed (it passes), line-length SHOULD be suppressed
   assert.equal(result.warnings.filter(w => w.code === 'line-length').length, 0);
   assert.equal(result.errors.length, 0); // single-h1 passes (1 H1)
+});
+
+test('doclify-disable-file inside fenced code block does not suppress the file', () => {
+  const content = '# Title\n\n```md\n<!-- doclify-disable-file -->\n```\n\nTODO keep me\n';
+  const result = checkMarkdown(content);
+  assert.equal(result.warnings.some((w) => w.code === 'placeholder'), true);
 });
 
 // ─── P2: --ascii output mode ───────────────────────────────────────────────
@@ -2210,6 +2381,61 @@ test('run-corpus: executes deterministic repeated runs on local git fixture', as
   fs.rmSync(tmp, { recursive: true });
 });
 
+test('run-corpus: executes scans from checkout cwd so parent config is applied', async () => {
+  const tmp = makeTempDir();
+  const seedRepo = path.join(tmp, 'seed-repo');
+  const docsDir = path.join(seedRepo, 'docs');
+  const manifestPath = path.join(tmp, 'manifest.json');
+  const outPath = path.join(tmp, 'out.json');
+
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(seedRepo, '.doclify-guardrail.json'), JSON.stringify({
+    checkFreshness: true,
+    freshnessMaxDays: 1
+  }) + '\n', 'utf8');
+  fs.writeFileSync(path.join(docsDir, 'guide.md'), '---\nupdated: 2020-01-01\n---\n# Guide\n', 'utf8');
+  spawnSync('git', ['init', '-b', 'main', seedRepo], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'config', 'user.email', 'ci@example.com'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'config', 'user.name', 'CI Bot'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'add', '.'], { encoding: 'utf8' });
+  spawnSync('git', ['-C', seedRepo, 'commit', '-m', 'fixture'], { encoding: 'utf8' });
+  const commit = spawnSync('git', ['-C', seedRepo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    schemaVersion: 1,
+    profiles: {
+      deterministic: {
+        args: ['--json', '--ascii', '--no-color'],
+        checkLinks: false
+      }
+    },
+    repos: [
+      {
+        id: 'local-config-fixture',
+        url: seedRepo,
+        commit,
+        category: 'small',
+        scanPath: 'docs',
+        tags: ['local-config'],
+        extraArgs: []
+      }
+    ]
+  }, null, 2) + '\n', 'utf8');
+
+  const code = await runCorpus([
+    '--manifest', manifestPath,
+    '--profile', 'deterministic',
+    '--tag', 'local-config',
+    '--repeat', '1',
+    '--out', outPath
+  ]);
+
+  assert.equal(code, 0);
+  const parsed = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+  assert.ok(parsed.repos[0].runs[0].summary.totalWarnings >= 1);
+  fs.rmSync(tmp, { recursive: true });
+});
+
 test('compare-baseline: fails when p95 regression exceeds thresholds', () => {
   const current = {
     profile: 'deterministic',
@@ -2514,4 +2740,110 @@ test('PR comment: buildPrCommentBody includes delta when baseScore provided', ()
   };
   const body = buildPrCommentBody(output, { baseScore: 80 });
   assert.ok(body.includes('+10 vs base'));
+});
+
+test('PR comment: postPrComment paginates before updating marker comment', async () => {
+  const calls = [];
+  const octokit = {
+    paginate: async () => ([
+      { id: 1, body: 'other comment' },
+      { id: 55, body: '<!-- doclify-guardrail-comment -->\nold body' }
+    ]),
+    rest: {
+      issues: {
+        listComments: async () => ({ data: [] }),
+        updateComment: async (params) => { calls.push({ type: 'update', params }); },
+        createComment: async (params) => { calls.push({ type: 'create', params }); }
+      }
+    }
+  };
+  const output = {
+    version: '1.7.0',
+    files: [],
+    summary: { filesScanned: 0, filesPassed: 0, filesFailed: 0, totalErrors: 0, totalWarnings: 0, status: 'PASS', elapsed: '0.01', avgHealthScore: 100 }
+  };
+
+  await postPrComment(octokit, { owner: 'o', repo: 'r', prNumber: 12 }, output);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].type, 'update');
+  assert.equal(calls[0].params.comment_id, 55);
+});
+
+test('Action dist smoke: supports single file, directory and glob targets', () => {
+  const tmp = makeTempDir();
+  const docsDir = path.join(tmp, 'docs');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'README.md'), '# Root\n', 'utf8');
+  fs.writeFileSync(path.join(docsDir, 'guide.md'), '# Guide\n', 'utf8');
+
+  for (const target of ['README.md', 'docs', 'docs/*.md']) {
+    const githubOutput = path.join(tmp, `github-${target.replace(/[^\w]/g, '_')}.txt`);
+    fs.writeFileSync(githubOutput, '', 'utf8');
+    const run = spawnSync(process.execPath, [ACTION_DIST_PATH], {
+      cwd: tmp,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        INPUT_PATH: target,
+        GITHUB_OUTPUT: githubOutput
+      }
+    });
+
+    assert.equal(run.status, 0, run.stdout || run.stderr);
+    const outputs = parseGithubOutput(githubOutput);
+    assert.equal(outputs.status, 'PASS');
+    assert.ok(Number(outputs.score) >= 90);
+    assert.ok(fs.existsSync(path.join(tmp, 'doclify.sarif')));
+    fs.rmSync(path.join(tmp, 'doclify.sarif'), { force: true });
+  }
+});
+
+test('Action dist smoke: rejects multiline path input', () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'a.md'), '# A\n', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'b.md'), '# B\n', 'utf8');
+  const githubOutput = path.join(tmp, 'github-output.txt');
+  fs.writeFileSync(githubOutput, '', 'utf8');
+  const run = spawnSync(process.execPath, [ACTION_DIST_PATH], {
+    cwd: tmp,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      INPUT_PATH: 'a.md\nb.md',
+      GITHUB_OUTPUT: githubOutput
+    }
+  });
+
+  assert.equal(run.status, 1);
+  assert.ok(`${run.stdout}\n${run.stderr}`.includes('single file, directory, or glob target'));
+});
+
+test('CLI: --watch --fix applies canonical scan without self-loop storm', async () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n\nClean.\n', 'utf8');
+
+  const child = spawn(process.execPath, [CLI_PATH, tmp, '--watch', '--fix', '--ascii', '--no-color'], {
+    cwd: process.cwd(),
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+  try {
+    await waitFor(() => stderr.includes('Watching'));
+    fs.writeFileSync(mdPath, '# Title\n\nVisit http://example.com\n', 'utf8');
+    await waitFor(() => fs.readFileSync(mdPath, 'utf8').includes('https://example.com'), 4000);
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  } finally {
+    child.kill('SIGTERM');
+    await new Promise((resolve) => child.once('exit', resolve));
+  }
+
+  const changedEvents = (stderr.match(/Changed:/g) || []).length;
+  assert.ok(changedEvents >= 1, stderr);
+  assert.ok(changedEvents <= 3, stderr);
 });
