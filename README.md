@@ -76,6 +76,15 @@ doclify --trend
 # Fail if score dropped
 doclify docs/ --fail-on-regression
 
+# Verify a Doclify Cloud API key
+doclify login --key doclify_live_xxx
+
+# Run Drift Guard offline on repo docs
+doclify ai drift docs/ --diff --json
+
+# Embed Drift Guard in the standard scan
+doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
+
 # JSON output for tooling
 doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
@@ -121,6 +130,12 @@ If no files are specified, scans the current directory.
 | `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
 | `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
 | `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
+| `--ai-drift` | Run Drift Guard against changed code/config files |
+| `--ai-mode <mode>` | Drift Guard mode: `offline`, `cloud` |
+| `--fail-on-drift <level>` | Fail if drift risk reaches `high` or `medium` |
+| `--fail-on-drift-scope <scope>` | Drift gate scope: `unmodified` (default) or `all` |
+| `--api-url <url>` | Override Doclify Cloud API base URL |
+| `--token <apiKey>` | Override Doclify Cloud API key for this run |
 
 Remote link checks are SSRF-hardened by default:
 private, loopback, link-local and metadata destinations are blocked,
@@ -152,6 +167,9 @@ Use `--allow-private-links` only in trusted environments.
 |------|-------------|
 | `init` | Generate a `.doclify-guardrail.json` config |
 | `init --force` | Overwrite existing config |
+| `login --key <apiKey>` | Verify and persist a Doclify Cloud API key |
+| `whoami` | Show stored Doclify Cloud identity |
+| `logout` | Remove locally stored Doclify Cloud API key |
 
 #### Other
 
@@ -167,6 +185,16 @@ Use `--allow-private-links` only in trusted environments.
 | `--debug` | Show debug info |
 | `-h, --help` | Show help |
 
+#### AI
+
+| Command | Description |
+|---------|-------------|
+| `ai drift [target]` | Run Drift Guard on candidate docs |
+| `ai drift --mode cloud` | Send drift analysis to Doclify Cloud |
+| `ai memory export` | Export the local repo memory snapshot |
+
+`ai fix`, `ai prioritize` and `ai coverage` are not available yet and return an explicit roadmap hint.
+
 ### Exit Codes
 
 | Code | Meaning |
@@ -174,6 +202,23 @@ Use `--allow-private-links` only in trusted environments.
 | `0` | PASS — all files clean |
 | `1` | FAIL — errors found, or warnings in strict mode |
 | `2` | Usage error / invalid input |
+
+## JSON Output v2
+
+`--json` now emits `schemaVersion: 2` with stable backward compatibility for:
+
+- `summary.healthScore`
+- `summary.avgHealthScore`
+- `files[]`
+
+New machine-readable fields:
+
+- `scanId`
+- `repo`
+- `timings`
+- `engine.mode`
+- `engine.features`
+- `ai`
 
 ## Configuration
 

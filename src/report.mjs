@@ -20,6 +20,11 @@ function generateReport(output, options) {
   if (typeof output.summary.avgHealthScore === 'number') {
     lines.push(`**Avg health score:** ${output.summary.avgHealthScore}/100`);
   }
+  if (output.ai?.drift?.summary) {
+    const drift = output.ai.drift.summary;
+    const alertsByScope = drift.alertsByScope || {};
+    lines.push(`**Drift Guard:** ${drift.alerts} alert(s) · ${drift.high} high · ${drift.medium} medium · ${drift.low} low · scope ${drift.gatingScope || 'all'} (${alertsByScope.unmodified || 0} unmodified, ${alertsByScope.modified || 0} modified)`);
+  }
   lines.push('');
 
   // Summary table
@@ -54,6 +59,33 @@ function generateReport(output, options) {
       for (const finding of f.findings.warnings) {
         const lineRef = finding.line != null ? `line ${finding.line}` : '';
         lines.push(`- **WARNING** ${lineRef}: ${finding.message}`);
+      }
+      lines.push('');
+    }
+  }
+
+  if (output.ai?.drift?.alerts?.length > 0) {
+    const driftSummary = output.ai?.drift?.summary || {};
+    const gatingScope = driftSummary.gatingScope || 'all';
+    const scopedAlerts = output.ai.drift.alerts
+      .filter((alert) => gatingScope === 'all' || alert.scope === 'unmodified');
+    const topHigh = scopedAlerts
+      .filter((alert) => alert.risk === 'high')
+      .slice(0, 3);
+
+    lines.push('## Drift Guard');
+    lines.push('');
+    lines.push(`Gate scope: \`${gatingScope}\``);
+    if (topHigh.length === 0) {
+      lines.push('- No `high` alerts in gating scope.');
+      lines.push('');
+    } else {
+      lines.push('');
+      for (const alert of topHigh) {
+        lines.push(`- **${alert.doc}** (${alert.score}/100 · ${alert.risk.toUpperCase()} · ${alert.scope || 'unmodified'})`);
+        if (alert.reasons?.length > 0) {
+          lines.push(`  - ${alert.reasons.slice(0, 2).join(' | ')}`);
+        }
       }
       lines.push('');
     }

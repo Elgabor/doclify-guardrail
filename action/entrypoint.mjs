@@ -58,6 +58,12 @@ async function run() {
     const checkLinks = core.getInput('check-links') === 'true';
     const checkFreshness = core.getInput('check-freshness') === 'true';
     const checkFrontmatter = core.getInput('check-frontmatter') === 'true';
+    const aiDrift = core.getInput('ai-drift') === 'true';
+    const aiMode = core.getInput('ai-mode') || 'offline';
+    const failOnDrift = core.getInput('fail-on-drift');
+    const failOnDriftScope = core.getInput('fail-on-drift-scope') || 'unmodified';
+    const apiUrl = core.getInput('api-url');
+    const doclifyToken = core.getInput('doclify-token');
     const format = core.getInput('format') || 'compact';
     const sarifEnabled = core.getInput('sarif') !== 'false';
     const sarifFile = core.getInput('sarif-file') || 'doclify.sarif';
@@ -71,6 +77,12 @@ async function run() {
     if (checkLinks) cliArgs.push('--check-links');
     if (checkFreshness) cliArgs.push('--check-freshness');
     if (checkFrontmatter) cliArgs.push('--check-frontmatter');
+    if (aiDrift) cliArgs.push('--ai-drift');
+    if (aiMode) cliArgs.push('--ai-mode', aiMode);
+    if (failOnDrift) cliArgs.push('--fail-on-drift', failOnDrift);
+    if (failOnDriftScope) cliArgs.push('--fail-on-drift-scope', failOnDriftScope);
+    if (apiUrl) cliArgs.push('--api-url', apiUrl);
+    if (doclifyToken) cliArgs.push('--token', doclifyToken);
     if (sarifEnabled) cliArgs.push('--sarif', sarifFile);
     cliArgs.push('--format', format);
 

@@ -12,11 +12,15 @@ import { generateReport } from '../src/report.mjs';
 import { loadCustomRules } from '../src/rules-loader.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from '../src/fixer.mjs';
 import { lint, fix, score } from '../src/api.mjs';
-import { getChangedMarkdownFiles } from '../src/diff.mjs';
+import { getChangedFiles, getChangedMarkdownFiles } from '../src/diff.mjs';
 import { loadHistory, appendHistory, checkRegression, renderTrend } from '../src/trend.mjs';
 import { buildPrCommentBody, postPrComment } from '../action/pr-comment.mjs';
 import { checkDeadLinks, checkDeadLinksDetailed, extractLinks } from '../src/links.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
+import { clearAuthState, getAuthFilePath, loadAuthState, saveAuthState } from '../src/auth-store.mjs';
+import { analyzeDriftOffline } from '../src/drift.mjs';
+import { loadRepoMemory, saveRepoMemory } from '../src/repo-memory.mjs';
+import { canonicalizeRemoteUrl, getRepoFingerprint, getRepoMetadata } from '../src/repo.mjs';
 import {
   parseArgs as parseCorpusArgs,
   assertManifest as assertCorpusManifest,
@@ -1306,6 +1310,40 @@ test('CLI: output includes health score fields', () => {
   assert.equal(typeof parsed.engine.timeoutRate, 'number');
 });
 
+test('CLI: JSON output includes schemaVersion 2 metadata', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '---\ntitle: T\n---\n# T\nBody', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--json'], { encoding: 'utf8' });
+  assert.equal(run.status, 0);
+  const parsed = JSON.parse(run.stdout);
+  assert.equal(parsed.schemaVersion, 2);
+  assert.equal(typeof parsed.scanId, 'string');
+  assert.equal(typeof parsed.repo, 'object');
+  assert.equal(typeof parsed.repo.fingerprint, 'string');
+  assert.equal(typeof parsed.timings.elapsedMs, 'number');
+  assert.equal(parsed.engine.schemaVersion, 2);
+  assert.equal(parsed.engine.mode, 'scan');
+});
+
+test('parseArgs: supports ai drift flags', () => {
+  const args = parseArgs(['docs', '--ai-drift', '--ai-mode', 'cloud', '--fail-on-drift', 'medium', '--fail-on-drift-scope', 'all', '--api-url', 'https://example.com', '--token', 'secret']);
+  assert.equal(args.aiDrift, true);
+  assert.equal(args.aiMode, 'cloud');
+  assert.equal(args.failOnDrift, 'medium');
+  assert.equal(args.failOnDriftScope, 'all');
+  assert.equal(args.apiUrl, 'https://example.com');
+  assert.equal(args.token, 'secret');
+});
+
+test('parseArgs: validates --fail-on-drift-scope', () => {
+  assert.throws(
+    () => parseArgs(['docs', '--ai-drift', '--fail-on-drift-scope', 'invalid']),
+    /Invalid --fail-on-drift-scope/
+  );
+});
+
 test('CLI: --check-freshness adds stale-doc warning for old docs', () => {
   const tmp = makeTempDir();
   const mdPath = path.join(tmp, 'doc.md');
@@ -2225,6 +2263,442 @@ test('CLI: --diff rejects --base with shell metacharacters', () => {
   fs.rmSync(tmpDir, { recursive: true });
 });
 
+test('diff: getChangedFiles preserves rename metadata', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'docs', 'old.md'), '# Old\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    assert.equal(spawnSync('git', ['mv', 'docs/old.md', 'docs/new.md'], { encoding: 'utf8' }).status, 0);
+
+    const files = getChangedFiles({ base: 'HEAD' });
+    assert.equal(files.length, 1);
+    assert.ok(files[0].status.startsWith('R'));
+    assert.ok(files[0].path.endsWith(path.join('docs', 'new.md')));
+    assert.ok(files[0].previousPath.endsWith(path.join('docs', 'old.md')));
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('repo: canonicalizeRemoteUrl normalizes git ssh remotes', () => {
+  assert.equal(canonicalizeRemoteUrl('git@github.com:owner/repo.git'), 'https://github.com/owner/repo');
+});
+
+test('repo: getRepoFingerprint honors DOCLIFY_REPO_ID override', () => {
+  const previous = process.env.DOCLIFY_REPO_ID;
+  process.env.DOCLIFY_REPO_ID = 'repo-test-id';
+  try {
+    assert.equal(getRepoFingerprint(), 'repo-test-id');
+    const metadata = getRepoMetadata();
+    assert.equal(metadata.fingerprint, 'repo-test-id');
+    assert.equal(metadata.source, 'override');
+  } finally {
+    if (previous === undefined) delete process.env.DOCLIFY_REPO_ID;
+    else process.env.DOCLIFY_REPO_ID = previous;
+  }
+});
+
+test('auth-store: save/load/clear persists auth state in DOCLIFY_HOME', () => {
+  const tmp = makeTempDir();
+  const previous = process.env.DOCLIFY_HOME;
+  process.env.DOCLIFY_HOME = tmp;
+
+  try {
+    saveAuthState({
+      apiKey: 'doclify_test_key',
+      apiUrl: 'https://api.example.test',
+      verifiedAt: '2026-03-07T12:00:00.000Z'
+    });
+
+    const filePath = getAuthFilePath();
+    assert.ok(fs.existsSync(filePath));
+    const loaded = loadAuthState();
+    assert.equal(loaded.apiKey, 'doclify_test_key');
+    clearAuthState();
+    assert.equal(fs.existsSync(filePath), false);
+  } finally {
+    if (previous === undefined) delete process.env.DOCLIFY_HOME;
+    else process.env.DOCLIFY_HOME = previous;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('repo-memory: save/load roundtrip uses repo fingerprint namespace', () => {
+  const tmp = makeTempDir();
+  const previous = process.env.DOCLIFY_HOME;
+  process.env.DOCLIFY_HOME = tmp;
+
+  try {
+    const repo = { fingerprint: 'repo-123' };
+    saveRepoMemory(repo, {
+      terms: ['Doclify'],
+      acceptedFixes: ['insecure-link']
+    });
+    const loaded = loadRepoMemory(repo);
+    assert.deepEqual(loaded.terms, ['Doclify']);
+    assert.deepEqual(loaded.acceptedFixes, ['insecure-link']);
+  } finally {
+    if (previous === undefined) delete process.env.DOCLIFY_HOME;
+    else process.env.DOCLIFY_HOME = previous;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('drift: analyzeDriftOffline detects docs related to changed CLI flags', () => {
+  const tmp = makeTempDir();
+  const docsPath = path.join(tmp, 'docs', 'cli.md');
+  const codePath = path.join(tmp, 'src', 'cli.mjs');
+  fs.mkdirSync(path.dirname(docsPath), { recursive: true });
+  fs.mkdirSync(path.dirname(codePath), { recursive: true });
+  fs.writeFileSync(docsPath, '# CLI\n\nUse `--fail-on-drift` to fail the build.\n', 'utf8');
+  fs.writeFileSync(codePath, 'export const HELP = "--fail-on-drift";\n', 'utf8');
+
+  const result = analyzeDriftOffline({
+    changedFiles: [{ status: 'M', path: codePath, previousPath: null }],
+    targetFiles: [docsPath],
+    repoMetadata: { fingerprint: 'repo-test', root: tmp }
+  });
+
+  assert.equal(result.mode, 'offline');
+  assert.equal(result.summary.alerts >= 1, true);
+  assert.equal(result.alerts[0].doc, path.join('docs', 'cli.md'));
+  assert.ok(['high', 'medium'].includes(result.alerts[0].risk));
+  assert.equal(result.alerts[0].scope, 'unmodified');
+  assert.equal(typeof result.alerts[0].confidence, 'number');
+  assert.equal(typeof result.alerts[0].scoreBreakdown, 'object');
+  assert.ok(result.alerts[0].matchedTokens.includes('--fail-on-drift') || result.alerts[0].reasons.some((reason) => reason.includes('shared flag')));
+});
+
+test('drift: generic token overlap is capped to low risk without strong signals', () => {
+  const tmp = makeTempDir();
+  const docsPath = path.join(tmp, 'docs', 'adapter-engine.md');
+  const codePath = path.join(tmp, 'src', 'adapter-engine.mjs');
+  fs.mkdirSync(path.dirname(docsPath), { recursive: true });
+  fs.mkdirSync(path.dirname(codePath), { recursive: true });
+  fs.writeFileSync(
+    docsPath,
+    '# Adapter Engine\n\nThis adapter engine orchestrates renderer pipelines.\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    codePath,
+    'export function buildAdapterEngine(rendererPipeline) { return rendererPipeline; }\n',
+    'utf8'
+  );
+
+  const result = analyzeDriftOffline({
+    changedFiles: [{ status: 'M', path: codePath, previousPath: null }],
+    targetFiles: [docsPath],
+    repoMetadata: { fingerprint: 'repo-test', root: tmp }
+  });
+
+  assert.equal(result.summary.alerts >= 1, true);
+  assert.equal(result.alerts.some((alert) => alert.risk === 'high' || alert.risk === 'medium'), false);
+});
+
+test('drift: markdown file changed in diff reduces severity and marks scope as modified', () => {
+  const tmp = makeTempDir();
+  const docsPath = path.join(tmp, 'docs', 'cli.md');
+  const codePath = path.join(tmp, 'src', 'cli.mjs');
+  fs.mkdirSync(path.dirname(docsPath), { recursive: true });
+  fs.mkdirSync(path.dirname(codePath), { recursive: true });
+  fs.writeFileSync(
+    docsPath,
+    '# CLI\n\nUse `--fail-on-drift` and `/v1/auth/verify-key` from `src/cli.mjs`.\n',
+    'utf8'
+  );
+  fs.writeFileSync(
+    codePath,
+    'export const HELP = "--fail-on-drift";\nexport const VERIFY = "/v1/auth/verify-key";\n',
+    'utf8'
+  );
+
+  const baseline = analyzeDriftOffline({
+    changedFiles: [{ status: 'M', path: codePath, previousPath: null }],
+    targetFiles: [docsPath],
+    repoMetadata: { fingerprint: 'repo-test', root: tmp }
+  });
+  const withDocChanged = analyzeDriftOffline({
+    changedFiles: [
+      { status: 'M', path: codePath, previousPath: null },
+      { status: 'M', path: docsPath, previousPath: null }
+    ],
+    targetFiles: [docsPath],
+    repoMetadata: { fingerprint: 'repo-test', root: tmp }
+  });
+
+  assert.equal(baseline.summary.alerts >= 1, true);
+  assert.equal(withDocChanged.summary.alerts >= 1, true);
+  assert.ok(withDocChanged.alerts[0].score <= baseline.alerts[0].score - 20);
+  const riskRank = { high: 3, medium: 2, low: 1 };
+  assert.ok(riskRank[withDocChanged.alerts[0].risk] <= riskRank[baseline.alerts[0].risk]);
+  assert.equal(withDocChanged.alerts[0].scope, 'modified');
+});
+
+test('CLI: login/whoami/logout use local auth store and verification endpoint', async () => {
+  const tmp = makeTempDir();
+  const previousHome = process.env.DOCLIFY_HOME;
+  const previousApiUrl = process.env.DOCLIFY_API_URL;
+  const runCliAsync = (args, env) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [CLI_PATH, ...args], {
+      encoding: 'utf8',
+      env
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({ status: code, stdout, stderr });
+    });
+  });
+  const server = http.createServer(async (req, res) => {
+    if (req.url === '/v1/auth/verify-key' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) {
+        body += chunk;
+      }
+      const parsed = JSON.parse(body);
+      if (req.headers.authorization === 'Bearer doclify_live_test' && parsed.apiKey === 'doclify_live_test') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ account: { name: 'Acme Docs' } }));
+        return;
+      }
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid key' }));
+      return;
+    }
+
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  process.env.DOCLIFY_HOME = tmp;
+  process.env.DOCLIFY_API_URL = `http://127.0.0.1:${port}`;
+
+  try {
+    const login = await runCliAsync(['login', '--key', 'doclify_live_test', '--json'], process.env);
+    assert.equal(login.status, 0, login.stderr);
+    const loginPayload = JSON.parse(login.stdout);
+    assert.equal(loginPayload.account.name, 'Acme Docs');
+
+    const whoami = await runCliAsync(['whoami', '--json'], process.env);
+    assert.equal(whoami.status, 0, whoami.stderr);
+    const whoamiPayload = JSON.parse(whoami.stdout);
+    assert.equal(whoamiPayload.account.name, 'Acme Docs');
+
+    const logout = await runCliAsync(['logout'], process.env);
+    assert.equal(logout.status, 0, logout.stderr);
+    assert.equal(fs.existsSync(path.join(tmp, 'auth.json')), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previousHome === undefined) delete process.env.DOCLIFY_HOME;
+    else process.env.DOCLIFY_HOME = previousHome;
+    if (previousApiUrl === undefined) delete process.env.DOCLIFY_API_URL;
+    else process.env.DOCLIFY_API_URL = previousApiUrl;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: ai drift reports alerts for changed code related to docs', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'docs', 'cli.md'), '# CLI\n\nUse `--fail-on-drift` in CI.\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'src', 'cli.mjs'), 'export const HELP = "--fail-on-drift";\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(path.join(tmp, 'src', 'cli.mjs'), 'export const HELP = "--fail-on-drift";\nexport const EXTRA = "/v1/auth/verify-key";\n', 'utf8');
+
+    const run = spawnSync(process.execPath, [CLI_PATH, 'ai', 'drift', 'docs', '--diff', '--json'], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const parsed = JSON.parse(run.stdout);
+    assert.equal(parsed.schemaVersion, 2);
+    assert.equal(parsed.engine.mode, 'ai');
+    assert.equal(parsed.ai.drift.summary.alerts >= 1, true);
+    assert.equal(parsed.ai.drift.alerts[0].doc, path.join('docs', 'cli.md'));
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: --ai-drift embeds drift summary in scan JSON output', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'docs', 'cli.md'), '# CLI\n\nUse `--fail-on-drift` in CI.\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'src', 'cli.mjs'), 'export const HELP = "--fail-on-drift";\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(path.join(tmp, 'src', 'cli.mjs'), 'export const HELP = "--fail-on-drift";\nexport const EXTRA = "/v1/auth/verify-key";\n', 'utf8');
+
+    const run = spawnSync(process.execPath, [CLI_PATH, 'docs/cli.md', '--json', '--ai-drift'], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const parsed = JSON.parse(run.stdout);
+    assert.equal(typeof parsed.ai, 'object');
+    assert.equal(parsed.ai.drift.summary.alerts >= 1, true);
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: drift gating with unmodified scope ignores modified docs', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    const docsPath = path.join(tmp, 'docs', 'cli.md');
+    const codePath = path.join(tmp, 'src', 'cli.mjs');
+    fs.writeFileSync(docsPath, '# CLI\n\nUse `--fail-on-drift` and `/v1/auth/verify-key` from `src/cli.mjs`.\n', 'utf8');
+    fs.writeFileSync(codePath, 'export const HELP = "--fail-on-drift";\nexport const VERIFY = "/v1/auth/verify-key";\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(codePath, 'export const HELP = "--fail-on-drift";\nexport const VERIFY = "/v1/auth/verify-key";\nexport const VERSION = "2.0.0";\n', 'utf8');
+    const runUnmodified = spawnSync(process.execPath, [
+      CLI_PATH,
+      'docs/cli.md',
+      '--json',
+      '--ai-drift',
+      '--fail-on-drift',
+      'high',
+      '--fail-on-drift-scope',
+      'unmodified'
+    ], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+    assert.equal(runUnmodified.status, 1, runUnmodified.stderr);
+    const parsedUnmodified = JSON.parse(runUnmodified.stdout);
+    assert.equal(parsedUnmodified.ai.drift.summary.gatingScope, 'unmodified');
+    assert.ok(parsedUnmodified.ai.drift.summary.alertsByScope.unmodified >= 1);
+
+    fs.writeFileSync(
+      docsPath,
+      '# CLI\n\nUse `--fail-on-drift` and `/v1/auth/verify-key` from `src/cli.mjs`.\n\nUpdated for v2.\n',
+      'utf8'
+    );
+    const runModified = spawnSync(process.execPath, [
+      CLI_PATH,
+      'docs/cli.md',
+      '--json',
+      '--ai-drift',
+      '--fail-on-drift',
+      'high',
+      '--fail-on-drift-scope',
+      'unmodified'
+    ], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+    assert.equal(runModified.status, 0, runModified.stderr);
+    const parsedModified = JSON.parse(runModified.stdout);
+    assert.equal(parsedModified.ai.drift.summary.gatingScope, 'unmodified');
+    assert.equal(parsedModified.ai.drift.summary.alertsByScope.unmodified, 0);
+    assert.ok(parsedModified.ai.drift.summary.alertsByScope.modified >= 1);
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: diff fallback with ai drift limits targets to README/CHANGELOG/docs', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+
+    fs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'README.md'), '# Root\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'CHANGELOG.md'), '# Changelog\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'notes.md'), '# Notes\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'docs', 'guide.md'), '# Guide\n', 'utf8');
+    fs.writeFileSync(path.join(tmp, 'src', 'index.mjs'), 'export const VERSION = "1.0.0";\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    fs.writeFileSync(path.join(tmp, 'src', 'index.mjs'), 'export const VERSION = "1.1.0";\n', 'utf8');
+    const run = spawnSync(process.execPath, [CLI_PATH, '--diff', '--ai-drift', '--json'], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    const parsed = JSON.parse(run.stdout);
+    const scanned = parsed.files.map((file) => file.file);
+    assert.equal(scanned.includes('notes.md'), false);
+    assert.equal(scanned.includes('README.md'), true);
+    assert.equal(scanned.includes('CHANGELOG.md'), true);
+    assert.equal(scanned.includes(path.join('docs', 'guide.md')), true);
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: ai fix is explicitly unavailable in v1 surface', () => {
+  const run = spawnSync(process.execPath, [CLI_PATH, 'ai', 'fix'], { encoding: 'utf8' });
+  assert.equal(run.status, 2);
+  assert.ok(`${run.stdout}\n${run.stderr}`.includes('not available yet'));
+});
+
 // --list-rules shows all current built-in rules
 test('CLI: --list-rules shows all 35 rules', () => {
   const r = spawnSync('node', [CLI_PATH, '--list-rules', '--ascii'], { encoding: 'utf8' });
@@ -2742,6 +3216,40 @@ test('PR comment: buildPrCommentBody includes delta when baseScore provided', ()
   assert.ok(body.includes('+10 vs base'));
 });
 
+test('PR comment: includes drift scope counts and top high alerts', () => {
+  const output = {
+    version: '1.7.1',
+    files: [],
+    summary: { filesScanned: 0, filesPassed: 0, filesFailed: 0, totalErrors: 0, totalWarnings: 0, status: 'PASS', elapsed: '0.01', avgHealthScore: 100 },
+    ai: {
+      drift: {
+        summary: {
+          alerts: 3,
+          high: 2,
+          medium: 1,
+          low: 0,
+          gatingScope: 'unmodified',
+          alertsByScope: {
+            unmodified: 2,
+            modified: 1
+          }
+        },
+        alerts: [
+          { doc: 'README.md', score: 92, risk: 'high', scope: 'unmodified', reasons: ['shared flag: --x'] },
+          { doc: 'docs/api.md', score: 85, risk: 'high', scope: 'unmodified', reasons: ['shared endpoint: /v1/test'] },
+          { doc: 'docs/changelog.md', score: 62, risk: 'medium', scope: 'modified', reasons: ['shared tokens'] }
+        ]
+      }
+    }
+  };
+
+  const body = buildPrCommentBody(output);
+  assert.ok(body.includes('scope unmodified (2 unmodified, 1 modified)'));
+  assert.ok(body.includes('Top high alerts (gate scope)'));
+  assert.ok(body.includes('README.md'));
+  assert.ok(body.includes('docs/api.md'));
+});
+
 test('PR comment: postPrComment paginates before updating marker comment', async () => {
   const calls = [];
   const octokit = {
@@ -2817,6 +3325,31 @@ test('Action dist smoke: rejects multiline path input', () => {
 
   assert.equal(run.status, 1);
   assert.ok(`${run.stdout}\n${run.stderr}`.includes('single file, directory, or glob target'));
+});
+
+test('Action dist smoke: accepts fail-on-drift-scope input', () => {
+  const tmp = makeTempDir();
+  const docsDir = path.join(tmp, 'docs');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.writeFileSync(path.join(docsDir, 'guide.md'), '# Guide\n', 'utf8');
+  const githubOutput = path.join(tmp, 'github-output-drift-scope.txt');
+  fs.writeFileSync(githubOutput, '', 'utf8');
+
+  const run = spawnSync(process.execPath, [ACTION_DIST_PATH], {
+    cwd: tmp,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      INPUT_PATH: 'docs',
+      INPUT_AI_DRIFT: 'true',
+      INPUT_FAIL_ON_DRIFT_SCOPE: 'all',
+      GITHUB_OUTPUT: githubOutput
+    }
+  });
+
+  assert.equal(run.status, 0, run.stdout || run.stderr);
+  const outputs = parseGithubOutput(githubOutput);
+  assert.equal(outputs.status, 'PASS');
 });
 
 test('CLI: --watch --fix applies canonical scan without self-loop storm', async () => {

@@ -16,6 +16,11 @@ src/links.mjs             link checker HTTP e locali
 src/quality.mjs           health score e freshness
 src/ci-output.mjs         JUnit, SARIF e badge
 src/api.mjs               API lint, fix, score, RULE_CATALOG
+src/repo.mjs              fingerprint repo, scan id e home dir
+src/auth-store.mjs        storage locale credenziali cloud
+src/cloud-client.mjs      client zero-deps per auth e AI cloud
+src/repo-memory.mjs       cache locale memoria repo
+src/drift.mjs             Drift Guard offline deterministico
 action/action.yml         contratto pubblico della action
 action/entrypoint.mjs     runner action e bridge verso il CLI
 action/pr-comment.mjs     upsert del commento PR
@@ -65,6 +70,13 @@ file config e override CLI.
 
 `buildOutput()` aggrega finding e score.
 
+`runScan()` e il runner canonico riusabile dal CLI.
+
+I comandi top-level `login`, `whoami`, `logout` e `ai drift`
+riusano gli stessi moduli core senza toccare l'API JS pubblica.
+`ai fix`, `ai prioritize` e `ai coverage` oggi rispondono
+esplicitamente con "not available yet".
+
 I report CI vengono generati da `src/ci-output.mjs`.
 
 ## Score e output
@@ -79,11 +91,25 @@ score          = clamp(round(100 - errorPenalty - warningPenalty), 0, 100)
 
 Il summary JSON espone:
 
+`schemaVersion: 2`: contratto top-level del payload CLI.
+
+`scanId`: id univoco del run.
+
 `summary.healthScore`: score progetto canonico.
 
 `summary.avgHealthScore`: alias backward-compatible.
 
 `files[].summary.healthScore`: score del singolo file.
+
+`repo`: fingerprint, root, remote e source del repository corrente.
+
+`timings`: millisecondi canonici del run.
+
+`engine.mode`: `scan` oppure `ai`.
+
+`engine.features`: superficie attivata nel run corrente.
+
+`ai.drift`: eventuale payload Drift Guard integrato nello scan.
 
 `src/ci-output.mjs` deve riusare questi campi prima di qualsiasi fallback.
 In particolare JUnit deve derivare le failure dal pass/fail canonico per file,
@@ -95,10 +121,22 @@ non solo dal conteggio errori.
 L'input `path` e stabilizzato come singolo target
 (file, directory o glob), non come lista multilinea.
 
+La action supporta anche:
+
+- `ai-drift`
+- `ai-mode`
+- `fail-on-drift`
+- `fail-on-drift-scope`
+- `api-url`
+- `doclify-token`
+
 `action/entrypoint.mjs` risolve il percorso del CLI
 sia da sorgente sia dal bundle,
 esegue il CLI con `--json`,
 interpreta stdout e setta gli output della action.
+
+Per compatibilita il token GitHub per i commenti PR resta separato
+dal token Doclify Cloud usato dalle feature AI.
 
 `action/pr-comment.mjs` aggiorna o crea un commento PR
 marcato con `<!-- doclify-guardrail-comment -->`

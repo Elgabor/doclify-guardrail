@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { resolveFileList } from './glob.mjs';
@@ -11,10 +12,15 @@ import { checkDeadLinksDetailed } from './links.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore, checkDocFreshness } from './quality.mjs';
 import { CONFIG_NAME, findParentConfigs, resolveOptions, resolveFileOptions } from './config-resolver.mjs';
-import { getChangedMarkdownFiles } from './diff.mjs';
+import { getChangedFiles, getChangedMarkdownFiles } from './diff.mjs';
 import { loadHistory, appendHistory, getCurrentCommit, checkRegression, renderTrend } from './trend.mjs';
 import { createFileScanContext } from './scan-context.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
+import { clearAuthState, loadAuthState, resolveApiKey, saveAuthState } from './auth-store.mjs';
+import { CloudError, normalizeApiUrl, requestAiDrift, verifyApiKey } from './cloud-client.mjs';
+import { analyzeDriftOffline, classifyRisk } from './drift.mjs';
+import { loadRepoMemory } from './repo-memory.mjs';
+import { createScanId, getRepoMetadata } from './repo.mjs';
 import {
   generateJUnitReport,
   generateSarifReport,
@@ -50,6 +56,9 @@ function printHelp() {
   ${y('USAGE')}
     $ doclify [files...] [options]
     $ doclify --dir <path> [options]
+    $ doclify login --key <apiKey>
+    $ doclify whoami
+    $ doclify ai drift [target] [options]
 
     If no files are specified, scans the current directory.
 
@@ -77,6 +86,12 @@ function printHelp() {
     --link-allow-list <list> Skip URLs/domains for link checks ${d('(comma-separated)')}
     --link-timeout-ms <n>    Timeout per remote link check ${d('(default: 8000)')}
     --link-concurrency <n>   Remote link checks in parallel ${d('(default: 5)')}
+    --ai-drift               Run Drift Guard against git/code changes
+    --ai-mode <mode>         AI engine mode: ${d('offline, cloud')}
+    --fail-on-drift <level>  Fail if drift risk reaches ${d('high or medium')}
+    --fail-on-drift-scope <scope>  Drift gate scope: ${d('unmodified, all')}
+    --api-url <url>          Override Doclify Cloud API base URL
+    --token <apiKey>         Override Doclify Cloud API key for this run
 
   ${y('FIX')}
     --fix                    Auto-fix safe issues ${d('(http → https)')}
@@ -94,6 +109,9 @@ function printHelp() {
   ${y('SETUP')}
     init                     Generate a .doclify-guardrail.json config
     init --force             Overwrite existing config
+    login --key <apiKey>     Verify and persist a Doclify Cloud key
+    whoami                   Show stored Doclify Cloud identity
+    logout                   Remove locally stored Doclify Cloud key
 
   ${y('OTHER')}
     --list-rules             List all built-in rules
@@ -110,6 +128,14 @@ function printHelp() {
     --trend                  Show ASCII score trend graph
     --fail-on-regression     Fail if score dropped vs last tracked run
 
+  ${y('AI')}
+    ai drift [target]        Run Drift Guard on candidate docs
+    ai drift --mode cloud    Send drift analysis request to Doclify Cloud
+    ai memory export         Export current local repo memory snapshot
+    ai fix                   Not available yet (planned)
+    ai prioritize            Not available yet (planned)
+    ai coverage              Not available yet (planned)
+
   ${y('EXAMPLES')}
     $ doclify README.md
     $ doclify docs/ --strict --check-links
@@ -121,6 +147,9 @@ function printHelp() {
     $ doclify docs/ --track
     $ doclify --trend
     $ doclify docs/ --fail-on-regression
+    $ doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
+    $ doclify ai drift docs/ --diff --base origin/main --json
+    $ doclify login --key doclify_live_xxx
 
   ${y('EXIT CODES')}
     0  PASS ${d('— all files clean')}
@@ -175,6 +204,12 @@ function parseArgs(argv) {
     track: false,
     trend: false,
     failOnRegression: false,
+    aiDrift: false,
+    aiMode: 'offline',
+    failOnDrift: null,
+    failOnDriftScope: 'unmodified',
+    apiUrl: null,
+    token: null,
     cliFlags: {
       strict: false,
       checkLinks: false,
@@ -421,6 +456,70 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (a === '--ai-drift') {
+      args.aiDrift = true;
+      continue;
+    }
+
+    if (a === '--ai-mode') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --ai-mode');
+      }
+      if (!['offline', 'cloud'].includes(value)) {
+        throw new Error(`Invalid --ai-mode: ${value} (must be: offline, cloud)`);
+      }
+      args.aiMode = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--fail-on-drift') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --fail-on-drift');
+      }
+      if (!['high', 'medium'].includes(value)) {
+        throw new Error(`Invalid --fail-on-drift: ${value} (must be: high, medium)`);
+      }
+      args.failOnDrift = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--fail-on-drift-scope') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --fail-on-drift-scope');
+      }
+      if (!['unmodified', 'all'].includes(value)) {
+        throw new Error(`Invalid --fail-on-drift-scope: ${value} (must be: unmodified, all)`);
+      }
+      args.failOnDriftScope = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--api-url') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --api-url');
+      }
+      args.apiUrl = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--token') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --token');
+      }
+      args.token = value;
+      i += 1;
+      continue;
+    }
+
     if (a === '--config') {
       const value = argv[i + 1];
       if (!value || value.startsWith('-')) {
@@ -589,7 +688,7 @@ function buildFileResult(filePath, analysis, opts) {
   };
 }
 
-function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary, engineSummary = null) {
+function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary, engineSummary = null, meta = {}) {
   const totalErrors = fileResults.reduce((s, r) => s + r.summary.errors, 0);
   const totalWarnings = fileResults.reduce((s, r) => s + r.summary.warnings, 0);
   const passed = fileResults.filter(r => r.pass).length;
@@ -625,14 +724,24 @@ function buildOutput(fileResults, fileErrors, opts, elapsed, fixSummary, engineS
     : 0;
 
   return {
+    schemaVersion: 2,
     version: VERSION,
+    scanId: meta.scanId || createScanId(),
     strict: opts.strict,
     files: fileResults,
     fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
     fix: fixSummary,
     summary,
+    repo: meta.repo || undefined,
+    timings: {
+      elapsedMs: Math.round(elapsed * 1000),
+      scanMs: Number(engineSummary?.scanMs ?? Math.round(elapsed * 1000))
+    },
+    ai: meta.ai || {},
     engine: {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mode: meta.mode || 'scan',
+      features: meta.features || [],
       scanMs: Number(engineSummary?.scanMs ?? Math.round(elapsed * 1000)),
       peakMemoryMb: Number(engineSummary?.peakMemoryMb ?? 0),
       remoteLinksChecked,
@@ -727,9 +836,484 @@ function getWatchPath(args) {
   return current;
 }
 
-async function runCanonicalScan(args, resolved, filePaths, customRules, opts = {}) {
+function createRepoOutput(repoMetadata) {
+  return {
+    fingerprint: repoMetadata.fingerprint,
+    root: repoMetadata.root,
+    remote: repoMetadata.remote,
+    source: repoMetadata.source
+  };
+}
+
+function riskRank(risk) {
+  if (risk === 'high') return 3;
+  if (risk === 'medium') return 2;
+  if (risk === 'low') return 1;
+  return 0;
+}
+
+function shouldFailForRisk(highestRisk, threshold) {
+  if (!threshold) return false;
+  return riskRank(highestRisk) >= riskRank(threshold);
+}
+
+function normalizePathKey(value) {
+  return String(value || '').replace(/\\/g, '/').toLowerCase();
+}
+
+function enrichDriftResultScope(result, changedFiles = [], gatingScope = 'unmodified') {
+  if (!result || !Array.isArray(result.alerts)) return result;
+  const scope = gatingScope === 'all' ? 'all' : 'unmodified';
+  const changedMarkdownKeys = new Set();
+  for (const entry of changedFiles) {
+    if (!entry) continue;
+    for (const candidate of [entry.path, entry.previousPath]) {
+      if (!candidate || !isMarkdownPath(candidate)) continue;
+      changedMarkdownKeys.add(normalizePathKey(candidate));
+      changedMarkdownKeys.add(normalizePathKey(toRelativePath(candidate)));
+    }
+  }
+
+  const alerts = result.alerts.map((alert) => {
+    const existingScope = alert?.scope;
+    if (existingScope === 'modified' || existingScope === 'unmodified') {
+      return alert;
+    }
+    const key = normalizePathKey(alert?.doc);
+    const derivedScope = changedMarkdownKeys.has(key) ? 'modified' : 'unmodified';
+    return {
+      ...alert,
+      scope: derivedScope
+    };
+  });
+
+  const highestRisk = alerts.reduce(
+    (current, alert) => riskRank(alert.risk) > riskRank(current) ? alert.risk : current,
+    null
+  );
+  const alertsByScope = {
+    modified: alerts.filter((alert) => alert.scope === 'modified').length,
+    unmodified: alerts.filter((alert) => alert.scope === 'unmodified').length
+  };
+  const highestRiskByScope = {
+    modified: alerts
+      .filter((alert) => alert.scope === 'modified')
+      .reduce((current, alert) => riskRank(alert.risk) > riskRank(current) ? alert.risk : current, null),
+    unmodified: alerts
+      .filter((alert) => alert.scope === 'unmodified')
+      .reduce((current, alert) => riskRank(alert.risk) > riskRank(current) ? alert.risk : current, null)
+  };
+  const gatingRisk = scope === 'all' ? highestRisk : highestRiskByScope.unmodified;
+
+  return {
+    ...result,
+    alerts,
+    summary: {
+      ...(result.summary || {}),
+      alerts: alerts.length,
+      high: alerts.filter((alert) => alert.risk === 'high').length,
+      medium: alerts.filter((alert) => alert.risk === 'medium').length,
+      low: alerts.filter((alert) => alert.risk === 'low').length,
+      highestRisk,
+      alertsByScope,
+      highestRiskByScope,
+      gatingScope: scope,
+      gatingRisk
+    }
+  };
+}
+
+function getDriftGateRisk(summary, gatingScope = 'unmodified') {
+  if (!summary) return null;
+  if (gatingScope === 'all') return summary.highestRisk || null;
+  return summary.highestRiskByScope?.unmodified || null;
+}
+
+function printDriftSummary(result) {
+  const summary = result.summary || {};
+  const alertsByScope = summary.alertsByScope || {
+    modified: 0,
+    unmodified: summary.alerts || 0
+  };
+  const gatingScope = summary.gatingScope || 'all';
+  const gatingRisk = summary.gatingRisk || summary.highestRisk || null;
+  if (!summary.alerts) {
+    log(c.green(icons.pass), `Drift Guard: no likely doc drift across ${c.bold(String(summary.changedCodeFiles || 0))} changed code file${summary.changedCodeFiles === 1 ? '' : 's'}`);
+    return;
+  }
+
+  const highestRisk = gatingRisk || summary.highestRisk || 'low';
+  const color = highestRisk === 'high' ? c.red : highestRisk === 'medium' ? c.yellow : c.cyan;
+  log(
+    color(highestRisk === 'high' ? icons.fail : highestRisk === 'medium' ? icons.warn : icons.info),
+    `Drift Guard: ${c.bold(String(summary.alerts))} alert${summary.alerts === 1 ? '' : 's'} (${summary.high || 0} high, ${summary.medium || 0} medium, ${summary.low || 0} low) · scope ${gatingScope} (${alertsByScope.unmodified || 0} unmodified, ${alertsByScope.modified || 0} modified)`
+  );
+
+  const orderedAlerts = (result.alerts || [])
+    .filter((alert) => gatingScope === 'all' || alert.scope === 'unmodified')
+    .slice(0, 5);
+  for (const alert of orderedAlerts) {
+    const severity = alert.risk === 'high' ? c.red(alert.risk.toUpperCase()) : alert.risk === 'medium' ? c.yellow(alert.risk.toUpperCase()) : c.cyan(alert.risk.toUpperCase());
+    const reasons = alert.reasons.slice(0, 2).join(' | ');
+    console.error(`      ${severity} ${c.bold(alert.doc)} ${c.dim(`[${alert.score}/100]`)} ${c.dim(`(${alert.scope})`)} ${c.dim(reasons)}`);
+  }
+}
+
+function resolveDriftFallbackTargets() {
+  const targets = [];
+  const rootFiles = fs.readdirSync(process.cwd(), { withFileTypes: true });
+  for (const entry of rootFiles) {
+    if (!entry.isFile()) continue;
+    if (!/^(readme|changelog)/i.test(entry.name)) continue;
+    const candidate = path.resolve(process.cwd(), entry.name);
+    if (isMarkdownPath(candidate)) targets.push(candidate);
+  }
+
+  const docsDir = path.join(process.cwd(), 'docs');
+  if (fs.existsSync(docsDir)) {
+    const docsTargets = resolveFileList({ files: [], dir: docsDir });
+    targets.push(...docsTargets.filter((candidate) => isMarkdownPath(candidate)));
+  }
+
+  return [...new Set(targets)];
+}
+
+function resolveTargetFiles(target) {
+  if (!target) {
+    return resolveFileList({ files: [process.cwd()], dir: null });
+  }
+  return resolveFileList({ files: [target], dir: null });
+}
+
+function parseLoginArgs(argv) {
+  const args = { key: null, apiUrl: null, json: false };
+  for (let i = 0; i < argv.length; i += 1) {
+    const current = argv[i];
+    if (current === '--key') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --key');
+      args.key = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--api-url') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --api-url');
+      args.apiUrl = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--json') {
+      args.json = true;
+      continue;
+    }
+    throw new Error(`Unknown option for login: ${current}`);
+  }
+  return args;
+}
+
+function parseWhoamiArgs(argv) {
+  const args = { json: false };
+  for (const current of argv) {
+    if (current === '--json') {
+      args.json = true;
+      continue;
+    }
+    throw new Error(`Unknown option for whoami: ${current}`);
+  }
+  return args;
+}
+
+function parseAiDriftArgs(argv) {
+  const args = {
+    target: null,
+    diff: false,
+    staged: false,
+    base: 'HEAD',
+    mode: 'offline',
+    json: false,
+    failOnDrift: null,
+    failOnDriftScope: 'unmodified',
+    apiUrl: null,
+    token: null
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const current = argv[i];
+    if (current === '--diff') {
+      args.diff = true;
+      continue;
+    }
+    if (current === '--staged') {
+      args.staged = true;
+      continue;
+    }
+    if (current === '--base') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --base');
+      args.base = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--mode') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --mode');
+      if (!['offline', 'cloud'].includes(value)) throw new Error(`Invalid --mode: ${value}`);
+      args.mode = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--json') {
+      args.json = true;
+      continue;
+    }
+    if (current === '--fail-on-drift') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --fail-on-drift');
+      if (!['high', 'medium'].includes(value)) throw new Error(`Invalid --fail-on-drift: ${value}`);
+      args.failOnDrift = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--fail-on-drift-scope') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --fail-on-drift-scope');
+      if (!['unmodified', 'all'].includes(value)) throw new Error(`Invalid --fail-on-drift-scope: ${value}`);
+      args.failOnDriftScope = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--api-url') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --api-url');
+      args.apiUrl = value;
+      i += 1;
+      continue;
+    }
+    if (current === '--token') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) throw new Error('Missing value for --token');
+      args.token = value;
+      i += 1;
+      continue;
+    }
+    if (current.startsWith('-')) {
+      throw new Error(`Unknown option for ai drift: ${current}`);
+    }
+    if (args.target) {
+      throw new Error(`Unexpected extra target: ${current}`);
+    }
+    args.target = current;
+  }
+
+  if (!args.diff && !args.staged) {
+    args.diff = true;
+  }
+
+  return args;
+}
+
+function parseAiMemoryArgs(argv) {
+  const args = { json: false };
+  for (const current of argv) {
+    if (current === '--json') {
+      args.json = true;
+      continue;
+    }
+    throw new Error(`Unknown option for ai memory export: ${current}`);
+  }
+  return args;
+}
+
+function buildAiEnvelope(command, feature, result, repoMetadata) {
+  return {
+    schemaVersion: 2,
+    version: VERSION,
+    scanId: createScanId(),
+    command,
+    repo: createRepoOutput(repoMetadata),
+    summary: result.summary,
+    ai: {
+      [feature]: result
+    },
+    engine: {
+      schemaVersion: 2,
+      mode: 'ai',
+      features: [feature]
+    }
+  };
+}
+
+async function runDriftGuard(options = {}) {
+  const repoMetadata = options.repoMetadata || getRepoMetadata();
+  const changedFiles = getChangedFiles({
+    base: options.base || 'HEAD',
+    staged: Boolean(options.staged)
+  });
+  const gatingScope = options.failOnDriftScope === 'all' ? 'all' : 'unmodified';
+
+  if (options.mode === 'cloud') {
+    const payload = {
+      repo: createRepoOutput(repoMetadata),
+      threshold: options.threshold || null,
+      gatingScope,
+      targets: options.targetFiles.map((filePath) => toRelativePath(filePath)),
+      changedFiles: changedFiles.map((entry) => ({
+        status: entry.status,
+        path: toRelativePath(entry.path),
+        previousPath: entry.previousPath ? toRelativePath(entry.previousPath) : null
+      }))
+    };
+    const response = await requestAiDrift({
+      apiUrl: options.apiUrl,
+      apiKey: options.apiKey,
+      payload
+    });
+    return enrichDriftResultScope({
+      ...response,
+      mode: 'cloud'
+    }, changedFiles, gatingScope);
+  }
+
+  const offline = analyzeDriftOffline({
+    changedFiles,
+    targetFiles: options.targetFiles,
+    repoMetadata,
+    threshold: options.threshold || null,
+    gatingScope
+  });
+  return enrichDriftResultScope(offline, changedFiles, gatingScope);
+}
+
+async function handleLogin(argv) {
+  const args = parseLoginArgs(argv);
+  const apiKey = resolveApiKey(args.key);
+  if (!apiKey) {
+    console.error('Missing API key. Use `doclify login --key <apiKey>` or DOCLIFY_TOKEN.');
+    return 2;
+  }
+
+  const verification = await verifyApiKey({
+    apiKey,
+    apiUrl: args.apiUrl
+  });
+  const state = {
+    apiKey,
+    apiUrl: normalizeApiUrl(args.apiUrl),
+    verifiedAt: new Date().toISOString(),
+    account: verification.account || verification.user || verification.customer || null
+  };
+  const filePath = saveAuthState(state);
+
+  if (args.json) {
+    await writeJsonToStdout({
+      ok: true,
+      apiUrl: state.apiUrl,
+      authFile: filePath,
+      account: state.account
+    });
+    return 0;
+  }
+
+  log(c.green(icons.pass), `Stored Doclify Cloud credentials in ${c.dim(filePath)}`);
+  if (state.account?.name) {
+    log(c.cyan(icons.info), `Authenticated as ${c.bold(state.account.name)}`);
+  }
+  return 0;
+}
+
+async function handleWhoami(argv) {
+  const args = parseWhoamiArgs(argv);
+  const authState = loadAuthState();
+  if (!authState) {
+    console.error('No Doclify Cloud credentials found. Run `doclify login --key <apiKey>` first.');
+    return 1;
+  }
+
+  const payload = {
+    apiUrl: authState.apiUrl,
+    verifiedAt: authState.verifiedAt,
+    account: authState.account || null
+  };
+
+  if (args.json) {
+    await writeJsonToStdout(payload);
+    return 0;
+  }
+
+  log(c.cyan(icons.info), `API URL: ${c.bold(authState.apiUrl)}`);
+  log(c.cyan(icons.info), `Verified at: ${c.bold(authState.verifiedAt || 'unknown')}`);
+  if (authState.account?.name) {
+    log(c.cyan(icons.info), `Account: ${c.bold(authState.account.name)}`);
+  }
+  return 0;
+}
+
+async function handleLogout() {
+  const filePath = clearAuthState();
+  log(c.green(icons.pass), `Removed Doclify Cloud credentials from ${c.dim(filePath)}`);
+  return 0;
+}
+
+async function handleAiDrift(argv) {
+  const args = parseAiDriftArgs(argv);
+  const repoMetadata = getRepoMetadata();
+  const targetFiles = resolveTargetFiles(args.target);
+  if (targetFiles.length === 0) {
+    console.error('Error: no Markdown/MDX files found.');
+    return 2;
+  }
+
+  const result = await runDriftGuard({
+    targetFiles,
+    mode: args.mode,
+    threshold: args.failOnDrift,
+    failOnDriftScope: args.failOnDriftScope,
+    base: args.base,
+    staged: args.staged,
+    apiUrl: args.apiUrl,
+    apiKey: args.token,
+    repoMetadata
+  });
+  const envelope = buildAiEnvelope('ai drift', 'drift', result, repoMetadata);
+
+  if (args.json) {
+    await writeJsonToStdout(envelope);
+  } else {
+    printBanner(targetFiles.length, VERSION);
+    printDriftSummary(result);
+  }
+
+  return shouldFailForRisk(getDriftGateRisk(result.summary, args.failOnDriftScope), args.failOnDrift) ? 1 : 0;
+}
+
+async function handleAiMemory(argv) {
+  if (argv[0] !== 'export') {
+    throw new Error(`Unknown ai memory command: ${argv[0] || '(missing)'}`);
+  }
+  const args = parseAiMemoryArgs(argv.slice(1));
+  const repoMetadata = getRepoMetadata();
+  const memory = loadRepoMemory(repoMetadata);
+  const payload = {
+    schemaVersion: 2,
+    version: VERSION,
+    repo: createRepoOutput(repoMetadata),
+    memory
+  };
+
+  if (args.json || process.stdout.isTTY === false) {
+    await writeJsonToStdout(payload);
+  } else {
+    log(c.cyan(icons.info), `Repo memory path fingerprint ${c.bold(repoMetadata.fingerprint)}`);
+    console.error(JSON.stringify(payload, null, 2));
+  }
+  return 0;
+}
+
+async function runScan(args, resolved, filePaths, customRules, opts = {}) {
   const logger = opts.logger || log;
   const shouldLog = opts.logProgress !== false;
+  const repoMetadata = opts.repoMetadata || getRepoMetadata();
   const fixSummary = createFixSummary(args);
   const fileResults = [];
   const fileErrors = [];
@@ -889,14 +1473,64 @@ async function runCanonicalScan(args, resolved, filePaths, customRules, opts = {
     remoteCacheMisses: linkEngineStats.remoteCacheMisses,
     remoteTimeouts: linkEngineStats.remoteTimeouts
   };
+  const features = [];
+  if (args.checkLinks) features.push('check-links');
+  if (args.checkFreshness) features.push('check-freshness');
+  if (args.fix) features.push('fix');
+  if (args.aiDrift) features.push(`drift:${args.aiMode}`);
 
   return {
-    output: buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed, fixSummary, engineSummary),
+    output: buildOutput(fileResults, fileErrors, { strict: resolved.strict }, elapsed, fixSummary, engineSummary, {
+      repo: createRepoOutput(repoMetadata),
+      scanId: opts.scanId || createScanId(),
+      mode: 'scan',
+      features,
+      ai: opts.ai || {}
+    }),
     fixSummary
   };
 }
 
 async function runCli(argv = process.argv.slice(2)) {
+  const topLevel = argv[0];
+  try {
+    if (topLevel === 'login') {
+      initColors(false);
+      return await handleLogin(argv.slice(1));
+    }
+    if (topLevel === 'whoami') {
+      initColors(false);
+      return await handleWhoami(argv.slice(1));
+    }
+    if (topLevel === 'logout') {
+      initColors(false);
+      return await handleLogout();
+    }
+    if (topLevel === 'ai') {
+      initColors(false);
+      const aiCommand = argv[1];
+      if (aiCommand === 'drift') {
+        return await handleAiDrift(argv.slice(2));
+      }
+      if (aiCommand === 'memory') {
+        return await handleAiMemory(argv.slice(2));
+      }
+      if (['fix', 'prioritize', 'coverage'].includes(aiCommand)) {
+        console.error(`ai ${aiCommand} is not available yet. See roadmap for rollout timing.`);
+        return 2;
+      }
+      console.error(`Unknown ai command: ${aiCommand || '(missing)'}`);
+      return 2;
+    }
+  } catch (err) {
+    if (err instanceof CloudError) {
+      console.error(`Cloud error${err.status ? ` (${err.status})` : ''}: ${err.message}`);
+      return err.status === 401 ? 1 : 2;
+    }
+    console.error(err.message);
+    return 2;
+  }
+
   let args;
   try {
     args = parseArgs(argv);
@@ -970,6 +1604,7 @@ async function runCli(argv = process.argv.slice(2)) {
 
   initColors(args.noColor);
   setAsciiMode(args.ascii);
+  const repoMetadata = getRepoMetadata();
 
   // --trend: show score history graph and exit
   if (args.trend) {
@@ -1001,10 +1636,15 @@ async function runCli(argv = process.argv.slice(2)) {
 
   // In diff/staged mode, zero changed files is a valid success (not an error)
   if ((args.diff || args.staged) && filePaths.length === 0) {
-    printBanner(0, VERSION);
-    log(c.dim(icons.info), 'No changed Markdown/MDX files found.');
-    console.error('');
-    return 0;
+    if (args.aiDrift) {
+      const fallbackTargets = resolveDriftFallbackTargets();
+      filePaths = fallbackTargets.filter((candidate) => !isExcludedFile(candidate, resolved.exclude));
+    } else {
+      printBanner(0, VERSION);
+      log(c.dim(icons.info), 'No changed Markdown/MDX files found.');
+      console.error('');
+      return 0;
+    }
   }
 
   if (filePaths.length === 0) {
@@ -1054,9 +1694,28 @@ async function runCli(argv = process.argv.slice(2)) {
         return;
       }
 
-      const { output } = await runCanonicalScan(args, currentResolved, existingPaths, customRules, {
-        watchState
+      const { output } = await runScan(args, currentResolved, existingPaths, customRules, {
+        watchState,
+        repoMetadata
       });
+      if (args.aiDrift) {
+        try {
+          const drift = await runDriftGuard({
+            targetFiles: existingPaths,
+            mode: args.aiMode,
+            threshold: args.failOnDrift,
+            failOnDriftScope: args.failOnDriftScope,
+            base: args.base,
+            staged: args.staged,
+            apiUrl: args.apiUrl,
+            apiKey: args.token,
+            repoMetadata
+          });
+          output.ai = { ...(output.ai || {}), drift };
+        } catch (err) {
+          log(c.yellow(icons.warn), `Drift Guard skipped: ${err.message}`);
+        }
+      }
       if (args.format === 'compact') {
         printCompactResults(output);
       } else {
@@ -1122,7 +1781,32 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   console.error('');
-  const { output, fixSummary } = await runCanonicalScan(args, resolved, filePaths, customRules);
+  const { output, fixSummary } = await runScan(args, resolved, filePaths, customRules, {
+    repoMetadata
+  });
+  let driftResult = null;
+  if (args.aiDrift) {
+    try {
+      driftResult = await runDriftGuard({
+        targetFiles: filePaths,
+        mode: args.aiMode,
+        threshold: args.failOnDrift,
+        failOnDriftScope: args.failOnDriftScope,
+        base: args.base,
+        staged: args.staged,
+        apiUrl: args.apiUrl,
+        apiKey: args.token,
+        repoMetadata
+      });
+      output.ai = { ...(output.ai || {}), drift: driftResult };
+    } catch (err) {
+      if (err instanceof CloudError) {
+        console.error(`Cloud error${err.status ? ` (${err.status})` : ''}: ${err.message}`);
+        return err.status === 401 ? 1 : 2;
+      }
+      log(c.yellow(icons.warn), `Drift Guard skipped: ${err.message}`);
+    }
+  }
 
   if (args.debug) {
     console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
@@ -1132,6 +1816,10 @@ async function runCli(argv = process.argv.slice(2)) {
     printCompactResults(output);
   } else {
     printResults(output);
+  }
+
+  if (driftResult) {
+    printDriftSummary(driftResult);
   }
 
   if (args.fix) {
@@ -1218,6 +1906,12 @@ async function runCli(argv = process.argv.slice(2)) {
   // Quality gate: --min-score
   if (args.minScore !== null && output.summary.avgHealthScore < args.minScore) {
     log(c.red(icons.fail), `Health score ${c.bold(String(output.summary.avgHealthScore))} is below minimum ${c.bold(String(args.minScore))}`);
+    return 1;
+  }
+
+  if (driftResult && shouldFailForRisk(getDriftGateRisk(driftResult.summary, args.failOnDriftScope), args.failOnDrift)) {
+    const gatingRisk = getDriftGateRisk(driftResult.summary, args.failOnDriftScope) || 'none';
+    log(c.red(icons.fail), `Drift Guard threshold reached (${args.failOnDriftScope}): ${c.bold(gatingRisk)} >= ${c.bold(args.failOnDrift)}`);
     return 1;
   }
 

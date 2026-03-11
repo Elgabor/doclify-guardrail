@@ -6,3 +6,4 @@ node_modules/
 doclify-report.md
 bench/out/*
 !bench/out/.gitkeep
+/tasks

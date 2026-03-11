@@ -12,6 +12,7 @@ e restituisce PASS o FAIL.
 - Segnala documenti stantii e metadata freshness invalidi o futuri.
 - Produce output terminale, JSON, report Markdown, JUnit, SARIF e badge SVG.
 - Supporta git diff, watch mode, trend score e GitHub Action integrata.
+- Espone auth locale per Doclify Cloud e un primo `Drift Guard` AI-first.
 
 ## Flusso operativo
 
@@ -20,7 +21,8 @@ e restituisce PASS o FAIL.
 3. Costruisce un contesto di scan immutabile per ogni file.
 4. Applica il catalogo built-in e le eventuali custom rules.
 5. Esegue, se richiesto, dead-link checker, freshness checker e auto-fix safe.
-6. Aggrega risultati, score e artifact CI.
+6. Esegue, se richiesto, `Drift Guard` offline o cloud.
+7. Aggrega risultati, score e artifact CI.
 
 Nel watch mode il passo 1-6 viene rilanciato in forma canonica a ogni change rilevante:
 non esiste piu un percorso semplificato separato da CLI/report/action.
@@ -55,6 +57,21 @@ La action built-in espone lo stesso summary del CLI:
 - accetta un singolo target `path` (file, directory o glob)
 - esporta `score`, `status`, `errors` e `warnings`
 - puo aggiornare un commento PR tramite `action/pr-comment.mjs`
+- puo inoltrare `ai-drift`, `ai-mode`, `fail-on-drift`, `fail-on-drift-scope`, `api-url` e `doclify-token`
+
+## Surface AI v1
+
+- `doclify login --key <apiKey>`
+- `doclify whoami`
+- `doclify logout`
+- `doclify ai drift [target] --diff --json`
+- `doclify ai memory export`
+
+Comandi pianificati ma non ancora disponibili:
+
+- `doclify ai fix`
+- `doclify ai prioritize`
+- `doclify ai coverage`
 
 ## Dove approfondire
 

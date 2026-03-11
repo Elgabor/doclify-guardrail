@@ -24,6 +24,24 @@ inputs:
   check-frontmatter:
     description: 'Require YAML frontmatter block'
     default: 'false'
+  ai-drift:
+    description: 'Run Drift Guard alongside the standard scan'
+    default: 'false'
+  ai-mode:
+    description: 'Drift Guard mode: offline or cloud'
+    default: 'offline'
+  fail-on-drift:
+    description: 'Fail if drift risk reaches this threshold (high or medium)'
+    default: ''
+  fail-on-drift-scope:
+    description: 'Drift gate scope: unmodified docs only or all docs'
+    default: 'unmodified'
+  api-url:
+    description: 'Doclify Cloud API base URL override'
+    default: ''
+  doclify-token:
+    description: 'Doclify Cloud API key used for AI features'
+    default: ''
   format:
     description: 'Output format: default, compact'
     default: 'compact'

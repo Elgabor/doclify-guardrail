@@ -137,6 +137,8 @@ function stableStringify(value) {
 
 function normalizeOutputForHash(output) {
   const clone = JSON.parse(JSON.stringify(output));
+  delete clone.scanId;
+  delete clone.timings;
   if (clone.summary) {
     delete clone.summary.elapsed;
   }

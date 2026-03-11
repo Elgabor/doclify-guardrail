@@ -10,23 +10,53 @@ function assertSafeBaseRef(base) {
   }
 }
 
+function buildGitArgs(base = 'HEAD', staged = false) {
+  let gitArgs;
+  if (staged) {
+    gitArgs = ['diff', '--cached', '--name-status', '--find-renames', '--diff-filter=ACMR'];
+  } else {
+    assertSafeBaseRef(base);
+    gitArgs = ['diff', '--name-status', '--find-renames', '--diff-filter=ACMR', base];
+  }
+  return gitArgs;
+}
+
+function parseChangedFiles(stdout, cwd) {
+  return stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split('\t');
+      const status = parts[0];
+      if (status.startsWith('R')) {
+        const previousPath = parts[1];
+        const currentPath = parts[2];
+        return {
+          status,
+          path: path.resolve(cwd, currentPath),
+          previousPath: path.resolve(cwd, previousPath)
+        };
+      }
+      return {
+        status,
+        path: path.resolve(cwd, parts[1] || parts[0]),
+        previousPath: null
+      };
+    });
+}
+
 /**
- * Get Markdown/MDX files changed in git relative to a base ref.
+ * Get files changed in git relative to a base ref.
  * @param {object} opts
  * @param {string} [opts.base] - Base git ref (default: HEAD)
  * @param {boolean} [opts.staged] - Only staged files
- * @returns {string[]} Array of absolute file paths
+ * @param {boolean} [opts.markdownOnly] - Filter to .md/.mdx files only
+ * @returns {{ status: string, path: string, previousPath: string | null }[]}
  */
-function getChangedMarkdownFiles(opts = {}) {
-  const { base = 'HEAD', staged = false } = opts;
-
-  let gitArgs;
-  if (staged) {
-    gitArgs = ['diff', '--cached', '--name-only', '--diff-filter=ACMR'];
-  } else {
-    assertSafeBaseRef(base);
-    gitArgs = ['diff', '--name-only', '--diff-filter=ACMR', base];
-  }
+function getChangedFiles(opts = {}) {
+  const { base = 'HEAD', staged = false, markdownOnly = false } = opts;
+  const gitArgs = buildGitArgs(base, staged);
 
   const result = spawnSync('git', gitArgs, {
     encoding: 'utf8',
@@ -43,11 +73,23 @@ function getChangedMarkdownFiles(opts = {}) {
   }
 
   const cwd = process.cwd();
-  return result.stdout
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0 && isMarkdownPath(line))
-    .map(rel => path.resolve(cwd, rel));
+  const changedFiles = parseChangedFiles(result.stdout, cwd);
+  if (!markdownOnly) {
+    return changedFiles;
+  }
+
+  return changedFiles.filter((entry) => isMarkdownPath(entry.path));
 }
 
-export { getChangedMarkdownFiles };
+/**
+ * Get Markdown/MDX files changed in git relative to a base ref.
+ * @param {object} opts
+ * @param {string} [opts.base] - Base git ref (default: HEAD)
+ * @param {boolean} [opts.staged] - Only staged files
+ * @returns {string[]} Array of absolute file paths
+ */
+function getChangedMarkdownFiles(opts = {}) {
+  return getChangedFiles({ ...opts, markdownOnly: true }).map((entry) => entry.path);
+}
+
+export { getChangedFiles, getChangedMarkdownFiles };
