@@ -1,6 +1,32 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+function canonicalizeForBoundaryCheck(targetPath) {
+  const resolved = path.resolve(targetPath);
+  if (fs.existsSync(resolved)) {
+    try {
+      return fs.realpathSync(resolved);
+    } catch {
+      return resolved;
+    }
+  }
+
+  const parentDir = path.dirname(resolved);
+  try {
+    const canonicalParent = fs.realpathSync(parentDir);
+    return path.join(canonicalParent, path.basename(resolved));
+  } catch {
+    return resolved;
+  }
+}
+
+function isDescendantOrSame(candidatePath, basePath) {
+  const resolvedCandidate = canonicalizeForBoundaryCheck(candidatePath);
+  const resolvedBase = canonicalizeForBoundaryCheck(basePath);
+  const rel = path.relative(resolvedBase, resolvedCandidate);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 /**
  * Generate a markdown report from scan results and write it to disk.
  * @param {object} output - full output object with files[], summary
@@ -108,6 +134,9 @@ function generateReport(output, options) {
 
   const reportContent = lines.join('\n');
   const resolvedPath = path.resolve(options.reportPath);
+  if (!isDescendantOrSame(resolvedPath, process.cwd())) {
+    throw new Error(`Report path must be inside workspace: ${resolvedPath}`);
+  }
   fs.writeFileSync(resolvedPath, reportContent, 'utf8');
   return resolvedPath;
 }
