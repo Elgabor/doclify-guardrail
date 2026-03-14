@@ -1394,8 +1394,13 @@ async function runScan(args, resolved, filePaths, customRules, opts = {}) {
         }
 
         if (!args.dryRun && (fixed.modified || formatted.modified)) {
-          fs.writeFileSync(filePath, content, 'utf8');
-          recordSelfWrite(opts.watchState, filePath);
+          try {
+            fs.writeFileSync(filePath, content, 'utf8');
+            recordSelfWrite(opts.watchState, filePath);
+          } catch (err) {
+            const reason = err && err.message ? err.message : String(err);
+            throw new Error(`Unable to write fixed file "${toRelativePath(filePath)}": ${reason}`);
+          }
         }
       }
 
