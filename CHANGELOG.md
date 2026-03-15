@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- feat: push score summary to Doclify Cloud via `--push` (#21)
+- feat: `--project-id` flag and `DOCLIFY_PROJECT_ID` env var for cloud project binding
+- feat: config file supports `push` and `projectId` fields
+- feat: GitHub Action supports `push` and `project-id` inputs
+
 ## v1.7.1
 
 Patch release per chiudere le regressioni emerse subito dopo `v1.7.0`.

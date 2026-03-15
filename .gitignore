@@ -5,9 +5,18 @@ node_modules/
 .claude/settings.json
 .claude/settings.local.json
 doclify-report.md
+report.md
 bench/out/*
 !bench/out/.gitkeep
 /tasks
+
+# Secrets e auth locale
+.env
+.env.*
+.doclify/
+
+# Artifact locale di --track
+.doclify-history.json
 
 # Handoff tra sessioni Claude Code (effimeri, non condivisi)
 docs/handoffs/

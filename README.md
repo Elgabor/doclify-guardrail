@@ -61,6 +61,9 @@ doclify --diff --staged --strict
 # Quality gate: fail if score below 80
 doclify docs/ --min-score 80
 
+# Push score to Doclify Cloud
+doclify docs/ --push --project-id my-project
+
 # Watch mode: re-scan on file changes
 doclify docs/ --watch
 
@@ -134,6 +137,8 @@ If no files are specified, scans the current directory.
 | `--ai-mode <mode>` | Drift Guard mode: `offline`, `cloud` |
 | `--fail-on-drift <level>` | Fail if drift risk reaches `high` or `medium` |
 | `--fail-on-drift-scope <scope>` | Drift gate scope: `unmodified` (default) or `all` |
+| `--push` | Push score summary to Doclify Cloud (opt-in) |
+| `--project-id <id>` | Set cloud project id for score push |
 | `--api-url <url>` | Override Doclify Cloud API base URL |
 | `--token <apiKey>` | Override Doclify Cloud API key for this run |
 
@@ -236,6 +241,8 @@ This creates `.doclify-guardrail.json`:
   "strict": false,
   "exclude": ["node_modules/**", "vendor/**"],
   "ignoreRules": [],
+  "push": false,
+  "projectId": null,
   "checkLinks": false,
   "checkFreshness": false,
   "checkFrontmatter": false,
@@ -248,7 +255,7 @@ This creates `.doclify-guardrail.json`:
 }
 ```
 
-CLI flags override config file values.
+CLI flags override config file values. `DOCLIFY_PROJECT_ID` env var is supported as an alternative to `--project-id`.
 Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
 Root-relative local links (`/docs/page.md`) require `siteRoot`
 to be verified; otherwise Doclify emits
@@ -431,6 +438,9 @@ jobs:
           path: 'docs/'
           strict: 'false'
           min-score: '70'
+          push: 'true'
+          project-id: 'my-project'
+          doclify-token: ${{ secrets.DOCLIFY_TOKEN }}
           sarif: 'true'
           pr-comment: 'true'
 
@@ -659,6 +669,8 @@ src/
   fixer.mjs        14 auto-fix functions (insecure links + formatting)
   diff.mjs         Git diff integration (--diff, --staged)
   trend.mjs        Score history tracking + ASCII trend graph
+  cloud-client.mjs Cloud API client (score push, auth, AI drift)
+  repo.mjs         Repo fingerprint, branch detection, scan ID
   api.mjs          Programmatic API (lint, fix, score)
   links.mjs        Dead link checker (HTTP + local file paths)
   quality.mjs      Health score + freshness checker
