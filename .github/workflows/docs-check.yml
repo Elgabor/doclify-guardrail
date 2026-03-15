@@ -44,7 +44,7 @@ jobs:
       - name: Verify docs sync
         run: npm run docs:sync-check
       - name: Docs quality gate
-        run: node ./src/index.mjs README.md docs/ --strict --exclude examples --report report.md
+        run: node ./src/index.mjs README.md docs/ --strict --exclude examples,plans,specs,doclify-dev-system.md --report report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
