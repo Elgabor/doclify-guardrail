@@ -17,10 +17,10 @@ import { loadHistory, appendHistory, getCurrentCommit, checkRegression, renderTr
 import { createFileScanContext } from './scan-context.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { clearAuthState, loadAuthState, resolveApiKey, saveAuthState } from './auth-store.mjs';
-import { CloudError, normalizeApiUrl, requestAiDrift, verifyApiKey } from './cloud-client.mjs';
+import { CloudError, buildScorePayload, normalizeApiUrl, pushScoreReport, requestAiDrift, verifyApiKey } from './cloud-client.mjs';
 import { analyzeDriftOffline, classifyRisk } from './drift.mjs';
 import { loadRepoMemory } from './repo-memory.mjs';
-import { createScanId, getRepoMetadata } from './repo.mjs';
+import { createScanId, getCurrentBranch, getRepoMetadata } from './repo.mjs';
 import {
   generateJUnitReport,
   generateSarifReport,
@@ -92,6 +92,8 @@ function printHelp() {
     --fail-on-drift-scope <scope>  Drift gate scope: ${d('unmodified, all')}
     --api-url <url>          Override Doclify Cloud API base URL
     --token <apiKey>         Override Doclify Cloud API key for this run
+    --push                   Push score summary to Doclify Cloud ${d('(opt-in)')}
+    --project-id <id>        Set cloud project id for score push
 
   ${y('FIX')}
     --fix                    Auto-fix safe issues ${d('(http → https)')}
@@ -147,6 +149,7 @@ function printHelp() {
     $ doclify docs/ --track
     $ doclify --trend
     $ doclify docs/ --fail-on-regression
+    $ doclify docs/ --push --project-id my-project
     $ doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
     $ doclify ai drift docs/ --diff --base origin/main --json
     $ doclify login --key doclify_live_xxx
@@ -210,6 +213,8 @@ function parseArgs(argv) {
     failOnDriftScope: 'unmodified',
     apiUrl: null,
     token: null,
+    push: false,
+    projectId: null,
     cliFlags: {
       strict: false,
       checkLinks: false,
@@ -516,6 +521,21 @@ function parseArgs(argv) {
         throw new Error('Missing value for --token');
       }
       args.token = value;
+      i += 1;
+      continue;
+    }
+
+    if (a === '--push') {
+      args.push = true;
+      continue;
+    }
+
+    if (a === '--project-id') {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('-')) {
+        throw new Error('Missing value for --project-id');
+      }
+      args.projectId = value.trim();
       i += 1;
       continue;
     }
@@ -843,6 +863,19 @@ function createRepoOutput(repoMetadata) {
     remote: repoMetadata.remote,
     source: repoMetadata.source
   };
+}
+
+function resolveProjectId(args, resolved) {
+  if (typeof args.projectId === 'string' && args.projectId.trim().length > 0) {
+    return args.projectId.trim();
+  }
+  if (typeof process.env.DOCLIFY_PROJECT_ID === 'string' && process.env.DOCLIFY_PROJECT_ID.trim().length > 0) {
+    return process.env.DOCLIFY_PROJECT_ID.trim();
+  }
+  if (typeof resolved.projectId === 'string' && resolved.projectId.trim().length > 0) {
+    return resolved.projectId.trim();
+  }
+  return null;
 }
 
 function riskRank(risk) {
@@ -1583,6 +1616,8 @@ async function runCli(argv = process.argv.slice(2)) {
 
     const defaultConfig = {
       strict: false,
+      push: false,
+      projectId: null,
       maxLineLength: 160,
       ignoreRules: [],
       exclude: [],
@@ -1896,6 +1931,52 @@ async function runCli(argv = process.argv.slice(2)) {
       filesScanned: output.summary.filesScanned
     });
     log(c.green(icons.pass), `Score tracked ${c.dim('→')} .doclify-history.json`);
+  }
+
+  const shouldPushScore = args.push || resolved.push === true;
+  if (shouldPushScore) {
+    if (output.summary.filesScanned === 0) {
+      log(c.dim(icons.info), c.dim('Score push skipped: no files scanned.'));
+    } else {
+      const apiKey = resolveApiKey(args.token);
+      if (!apiKey) {
+        console.error('Cannot push: no API token configured. Run `doclify login --key <token>` or set DOCLIFY_TOKEN.');
+      } else {
+        const projectId = resolveProjectId(args, resolved);
+        const gate = args.minScore === null
+          ? null
+          : {
+              minScore: args.minScore,
+              result: output.summary.avgHealthScore >= args.minScore ? 'PASS' : 'FAIL'
+            };
+        const payload = buildScorePayload({
+          output,
+          projectId,
+          commit: getCurrentCommit(),
+          branch: getCurrentBranch(),
+          version: VERSION,
+          gate
+        });
+
+        try {
+          const pushed = await pushScoreReport({
+            apiUrl: args.apiUrl,
+            apiKey,
+            payload
+          });
+          const deltaValue = typeof pushed.delta === 'number'
+            ? `${pushed.delta > 0 ? `+${pushed.delta}` : String(pushed.delta)} vs previous`
+            : null;
+          log(
+            c.green(icons.pass),
+            `Score pushed ${c.dim('→')} ${c.bold(`${output.summary.avgHealthScore}/100`)}${deltaValue ? ` ${c.dim(`(${deltaValue})`)}` : ''}`
+          );
+        } catch (err) {
+          const message = err instanceof CloudError ? err.message : (err?.message || String(err));
+          log(c.yellow(icons.warn), `Score push failed: ${message}`);
+        }
+      }
+    }
   }
 
   // Regression check: --fail-on-regression

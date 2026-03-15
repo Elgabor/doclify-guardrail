@@ -21,6 +21,8 @@ import { clearAuthState, getAuthFilePath, loadAuthState, saveAuthState } from '.
 import { analyzeDriftOffline } from '../src/drift.mjs';
 import { loadRepoMemory, saveRepoMemory } from '../src/repo-memory.mjs';
 import { canonicalizeRemoteUrl, getRepoFingerprint, getRepoMetadata } from '../src/repo.mjs';
+import * as cloudClient from '../src/cloud-client.mjs';
+import * as repoModule from '../src/repo.mjs';
 import {
   parseArgs as parseCorpusArgs,
   assertManifest as assertCorpusManifest,
@@ -88,6 +90,54 @@ async function waitFor(predicate, timeoutMs = 5000, intervalMs = 50) {
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   throw new Error(`Timed out after ${timeoutMs}ms`);
+}
+
+function runCliAsync(args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [CLI_PATH, ...args], {
+      cwd: options.cwd,
+      env: options.env
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        status: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
+function runNodeAsync(scriptPath, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: options.cwd,
+      env: options.env
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        status: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+  });
 }
 
 // === Core rules tests ===
@@ -1936,6 +1986,25 @@ test('resolveOptions merges exclude from config and CLI', () => {
   fs.rmSync(tmpDir, { recursive: true });
 });
 
+test('score-api: resolveOptions supports push/projectId from config and CLI override', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-score-api-config-'));
+  const configPath = path.join(tmpDir, '.doclify-guardrail.json');
+  const mdPath = path.join(tmpDir, 'doc.md');
+  fs.writeFileSync(configPath, JSON.stringify({ push: true, projectId: 'cfg-proj' }), 'utf8');
+  fs.writeFileSync(mdPath, '# Title\n', 'utf8');
+
+  const argsFromConfig = parseArgs(['--config', configPath, mdPath]);
+  const resolvedFromConfig = resolveOptions(argsFromConfig);
+  assert.equal(resolvedFromConfig.push, true);
+  assert.equal(resolvedFromConfig.projectId, 'cfg-proj');
+
+  const argsWithOverride = parseArgs(['--config', configPath, mdPath, '--project-id', 'cli-proj']);
+  const resolvedWithOverride = resolveOptions(argsWithOverride);
+  assert.equal(resolvedWithOverride.projectId, 'cli-proj');
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
 // ─── P2: disable-file suppression ──────────────────────────────────────────
 
 test('doclify-disable-file suppresses all rules', () => {
@@ -2477,6 +2546,40 @@ test('repo: getRepoFingerprint honors DOCLIFY_REPO_ID override', () => {
   }
 });
 
+test('score-api: repo getCurrentBranch resolves git branch and detached HEAD', () => {
+  assert.equal(typeof repoModule.getCurrentBranch, 'function');
+
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+  try {
+    process.chdir(tmp);
+    assert.equal(spawnSync('git', ['init'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { encoding: 'utf8' }).status, 0);
+    fs.writeFileSync(path.join(tmp, 'README.md'), '# Title\n', 'utf8');
+    assert.equal(spawnSync('git', ['add', '.'], { encoding: 'utf8' }).status, 0);
+    assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { encoding: 'utf8' }).status, 0);
+
+    const branch = repoModule.getCurrentBranch({ cwd: tmp });
+    assert.ok(branch && branch !== 'unknown' && branch !== 'HEAD');
+
+    assert.equal(spawnSync('git', ['checkout', '--detach', 'HEAD'], { encoding: 'utf8' }).status, 0);
+    const detached = repoModule.getCurrentBranch({ cwd: tmp });
+    assert.equal(detached, 'HEAD');
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('score-api: repo getCurrentBranch returns unknown outside git repo', () => {
+  assert.equal(typeof repoModule.getCurrentBranch, 'function');
+  const tmp = makeTempDir();
+  const branch = repoModule.getCurrentBranch({ cwd: tmp });
+  assert.equal(branch, 'unknown');
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
 test('auth-store: save/load/clear persists auth state in DOCLIFY_HOME', () => {
   const tmp = makeTempDir();
   const previous = process.env.DOCLIFY_HOME;
@@ -2614,6 +2717,149 @@ test('drift: markdown file changed in diff reduces severity and marks scope as m
   assert.equal(withDocChanged.alerts[0].scope, 'modified');
 });
 
+test('score-api: buildScorePayload maps output fields to cloud payload', () => {
+  assert.equal(typeof cloudClient.buildScorePayload, 'function');
+  const payload = cloudClient.buildScorePayload({
+    output: {
+      version: '1.7.2',
+      scanId: 'scan-1',
+      summary: {
+        avgHealthScore: 82,
+        totalErrors: 2,
+        totalWarnings: 5,
+        filesScanned: 12,
+        filesPassed: 10,
+        filesFailed: 2,
+        status: 'FAIL'
+      },
+      repo: {
+        fingerprint: 'git:abc123',
+        remote: 'https://github.com/acme/docs'
+      }
+    },
+    projectId: 'proj-1',
+    commit: 'abc1234',
+    branch: 'feat/docs-update',
+    version: '1.7.2',
+    gate: { minScore: 80, result: 'PASS' },
+    meta: { ci: 'github-actions' }
+  });
+
+  assert.deepEqual(payload, {
+    projectId: 'proj-1',
+    scanId: 'scan-1',
+    commit: 'abc1234',
+    branch: 'feat/docs-update',
+    version: '1.7.2',
+    score: 82,
+    errors: 2,
+    warnings: 5,
+    filesScanned: 12,
+    filesPassed: 10,
+    filesFailed: 2,
+    status: 'FAIL',
+    repo: {
+      fingerprint: 'git:abc123',
+      remote: 'https://github.com/acme/docs'
+    },
+    gate: { minScore: 80, result: 'PASS' },
+    meta: { ci: 'github-actions' }
+  });
+});
+
+test('score-api: pushScoreReport posts payload and returns id with optional delta', async () => {
+  assert.equal(typeof cloudClient.pushScoreReport, 'function');
+
+  let firstRequest = null;
+  let requestCount = 0;
+  const server = http.createServer(async (req, res) => {
+    if (req.url !== '/v1/scores' || req.method !== 'POST') {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'not found' }));
+      return;
+    }
+
+    requestCount += 1;
+    let raw = '';
+    req.setEncoding('utf8');
+    for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw);
+    if (!firstRequest) {
+      firstRequest = {
+        headers: req.headers,
+        body
+      };
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 'rpt-1', delta: 3 }));
+      return;
+    }
+
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ id: 'rpt-2' }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const resultWithDelta = await cloudClient.pushScoreReport({
+      apiUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'doclify_live_test',
+      payload: { scanId: 'scan-1', score: 80 },
+      retries: 0,
+      timeoutMs: 1000
+    });
+    assert.equal(resultWithDelta.id, 'rpt-1');
+    assert.equal(resultWithDelta.delta, 3);
+    assert.equal(firstRequest.headers.authorization, 'Bearer doclify_live_test');
+    assert.equal(firstRequest.body.scanId, 'scan-1');
+    assert.equal(firstRequest.body.score, 80);
+
+    const resultWithoutDelta = await cloudClient.pushScoreReport({
+      apiUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'doclify_live_test',
+      payload: { scanId: 'scan-2', score: 88 },
+      retries: 0,
+      timeoutMs: 1000
+    });
+    assert.equal(resultWithoutDelta.id, 'rpt-2');
+    assert.equal(resultWithoutDelta.delta, undefined);
+    assert.equal(requestCount, 2);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('score-api: pushScoreReport throws CloudError on non-2xx responses', async () => {
+  assert.equal(typeof cloudClient.pushScoreReport, 'function');
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid token' }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    await assert.rejects(
+      () => cloudClient.pushScoreReport({
+        apiUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'doclify_live_test',
+        payload: { scanId: 'scan-1', score: 80 },
+        retries: 0
+      }),
+      (error) => error instanceof cloudClient.CloudError && error.status === 401
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test('CLI: login/whoami/logout use local auth store and verification endpoint', async () => {
   const tmp = makeTempDir();
   const previousHome = process.env.DOCLIFY_HOME;
@@ -2683,6 +2929,179 @@ test('CLI: login/whoami/logout use local auth store and verification endpoint', 
     else process.env.DOCLIFY_HOME = previousHome;
     if (previousApiUrl === undefined) delete process.env.DOCLIFY_API_URL;
     else process.env.DOCLIFY_API_URL = previousApiUrl;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('score-api: CLI --push sends score payload and projectId uses CLI > env > config precedence', async () => {
+  const tmp = makeTempDir();
+  const configPath = path.join(tmp, '.doclify-guardrail.json');
+  fs.writeFileSync(configPath, JSON.stringify({ push: true, projectId: 'cfg-proj' }) + '\n', 'utf8');
+  fs.writeFileSync(path.join(tmp, 'doc.md'), '# Title\n\nHealthy content.\n', 'utf8');
+
+  assert.equal(spawnSync('git', ['init'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['add', '.'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+
+  let receivedPayload = null;
+  const server = http.createServer(async (req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      let raw = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) raw += chunk;
+      receivedPayload = JSON.parse(raw);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 'report-1', delta: 2 }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const run = await runCliAsync([
+      path.join(tmp, 'doc.md'),
+      '--push',
+      '--project-id',
+      'cli-proj',
+      '--api-url',
+      `http://127.0.0.1:${port}`,
+      '--ascii'
+    ], {
+      cwd: tmp,
+      env: {
+        ...process.env,
+        DOCLIFY_PROJECT_ID: 'env-proj',
+        DOCLIFY_TOKEN: 'doclify_live_test'
+      }
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(run.stderr.includes('Score pushed'), run.stderr);
+    assert.ok(receivedPayload, 'Score payload should be sent');
+    assert.equal(receivedPayload.projectId, 'cli-proj');
+    assert.equal(receivedPayload.score, 100);
+    assert.equal(receivedPayload.filesScanned, 1);
+    assert.equal(receivedPayload.filesPassed, 1);
+    assert.equal(receivedPayload.filesFailed, 0);
+    assert.equal(receivedPayload.status, 'PASS');
+    assert.equal(typeof receivedPayload.scanId, 'string');
+    assert.equal(typeof receivedPayload.branch, 'string');
+    assert.equal(typeof receivedPayload.commit, 'string');
+    assert.equal(
+      receivedPayload.repo.fingerprint.startsWith('git:') || receivedPayload.repo.fingerprint.startsWith('cwd:'),
+      true
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('score-api: CLI --push without token logs clear error and keeps lint exit code', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n\nClean content.\n', 'utf8');
+
+  const env = { ...process.env };
+  delete env.DOCLIFY_TOKEN;
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--push', '--ascii'], {
+    cwd: tmp,
+    encoding: 'utf8',
+    env
+  });
+
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stderr.includes('Cannot push: no API token configured'), run.stderr);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('score-api: CLI --push cloud errors do not change lint exit code', async () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  fs.writeFileSync(mdPath, '# Title\n\nClean content.\n', 'utf8');
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'boom' }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const run = await runCliAsync([
+      mdPath,
+      '--push',
+      '--api-url',
+      `http://127.0.0.1:${port}`,
+      '--ascii'
+    ], {
+      cwd: tmp,
+      env: {
+        ...process.env,
+        DOCLIFY_TOKEN: 'doclify_live_test'
+      }
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stderr, /score push failed|push failed|Cloud/i);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('score-api: CLI skips push when --diff has no changed markdown files', async () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'doc.md'), '# Title\n', 'utf8');
+  assert.equal(spawnSync('git', ['init'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['config', 'user.name', 'Doclify Test'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['config', 'user.email', 'doclify@example.com'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['add', '.'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync('git', ['commit', '-m', 'seed'], { cwd: tmp, encoding: 'utf8' }).status, 0);
+
+  let scoreCalls = 0;
+  const server = http.createServer((req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      scoreCalls += 1;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ id: 'report' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const run = spawnSync(process.execPath, [
+      CLI_PATH,
+      '--diff',
+      '--push',
+      '--api-url',
+      `http://127.0.0.1:${port}`,
+      '--ascii'
+    ], {
+      cwd: tmp,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DOCLIFY_TOKEN: 'doclify_live_test'
+      }
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(scoreCalls, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
@@ -3356,6 +3775,16 @@ test('parseArgs: --track, --trend, --fail-on-regression flags', () => {
   assert.equal(args2.trend, true);
 });
 
+test('score-api: parseArgs supports --push and --project-id', () => {
+  const args = parseArgs(['docs/', '--push', '--project-id', 'my-proj']);
+  assert.equal(args.push, true);
+  assert.equal(args.projectId, 'my-proj');
+
+  const defaults = parseArgs(['docs/']);
+  assert.equal(defaults.push, false);
+  assert.equal(defaults.projectId, null);
+});
+
 // PR comment body
 test('PR comment: buildPrCommentBody generates markdown table', () => {
   const output = {
@@ -3518,6 +3947,94 @@ test('Action dist smoke: accepts fail-on-drift-scope input', () => {
   assert.equal(run.status, 0, run.stdout || run.stderr);
   const outputs = parseGithubOutput(githubOutput);
   assert.equal(outputs.status, 'PASS');
+});
+
+test('score-api: Action dist forwards --push and --project-id when INPUT_PUSH=true', async () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'doc.md'), '# Title\n\nHealthy content.\n', 'utf8');
+  const githubOutput = path.join(tmp, 'github-output-score-api.txt');
+  fs.writeFileSync(githubOutput, '', 'utf8');
+
+  let pushedPayload = null;
+  const server = http.createServer(async (req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      let raw = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) raw += chunk;
+      pushedPayload = JSON.parse(raw);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ id: 'action-report', delta: 1 }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const run = await runNodeAsync(ACTION_DIST_PATH, [], {
+      cwd: tmp,
+      env: {
+        ...process.env,
+        INPUT_PATH: 'doc.md',
+        INPUT_PUSH: 'true',
+        'INPUT_PROJECT-ID': 'action-proj',
+        'INPUT_DOCLIFY-TOKEN': 'doclify_live_test',
+        'INPUT_API-URL': `http://127.0.0.1:${port}`,
+        'INPUT_PR-COMMENT': 'false',
+        INPUT_SARIF: 'false',
+        GITHUB_OUTPUT: githubOutput
+      }
+    });
+
+    assert.equal(run.status, 0, run.stdout || run.stderr);
+    assert.ok(pushedPayload, 'Action should push score payload when INPUT_PUSH=true');
+    assert.equal(pushedPayload.projectId, 'action-proj');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('score-api: Action dist does not push when INPUT_PUSH=false', async () => {
+  const tmp = makeTempDir();
+  fs.writeFileSync(path.join(tmp, 'doc.md'), '# Title\n\nHealthy content.\n', 'utf8');
+  const githubOutput = path.join(tmp, 'github-output-score-api-no-push.txt');
+  fs.writeFileSync(githubOutput, '', 'utf8');
+
+  let pushCalls = 0;
+  const server = http.createServer((req, res) => {
+    if (req.url === '/v1/scores' && req.method === 'POST') {
+      pushCalls += 1;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ id: 'ok' }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    const run = await runNodeAsync(ACTION_DIST_PATH, [], {
+      cwd: tmp,
+      env: {
+        ...process.env,
+        INPUT_PATH: 'doc.md',
+        INPUT_PUSH: 'false',
+        'INPUT_DOCLIFY-TOKEN': 'doclify_live_test',
+        'INPUT_API-URL': `http://127.0.0.1:${port}`,
+        'INPUT_PR-COMMENT': 'false',
+        INPUT_SARIF: 'false',
+        GITHUB_OUTPUT: githubOutput
+      }
+    });
+
+    assert.equal(run.status, 0, run.stdout || run.stderr);
+    assert.equal(pushCalls, 0);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('CLI: --watch --fix applies canonical scan without self-loop storm', async () => {

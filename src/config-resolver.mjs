@@ -9,6 +9,8 @@ const CONFIG_NAME = '.doclify-guardrail.json';
 const DEFAULT_OPTIONS = {
   maxLineLength: 160,
   strict: false,
+  push: false,
+  projectId: null,
   checkLinks: false,
   checkFreshness: false,
   checkFrontmatter: false,
@@ -77,6 +79,8 @@ function mergeConfigLayer(current, layer, configPath = null) {
     ...current,
     maxLineLength: layer.maxLineLength ?? current.maxLineLength,
     strict: layer.strict ?? current.strict,
+    push: layer.push ?? current.push,
+    projectId: layer.projectId ?? current.projectId,
     checkLinks: layer.checkLinks ?? current.checkLinks,
     checkFreshness: layer.checkFreshness ?? current.checkFreshness,
     checkFrontmatter: layer.checkFrontmatter ?? current.checkFrontmatter,
@@ -110,6 +114,8 @@ function applyCliOverrides(current, args = {}) {
 
   if (args.maxLineLength != null) merged.maxLineLength = args.maxLineLength;
   if (args.strict === true) merged.strict = true;
+  if (args.push === true) merged.push = true;
+  if (args.projectId != null) merged.projectId = args.projectId;
   if (args.checkLinks === true) merged.checkLinks = true;
   if (args.checkFreshness === true) merged.checkFreshness = true;
   if (args.checkFrontmatter === true) merged.checkFrontmatter = true;
@@ -146,11 +152,17 @@ function validateResolvedOptions(resolved, contextPath) {
     throw new Error(`Invalid siteRoot in config: ${resolved.siteRoot}`);
   }
 
+  if (resolved.projectId != null && (typeof resolved.projectId !== 'string' || resolved.projectId.trim() === '')) {
+    throw new Error(`Invalid projectId in config: ${resolved.projectId}`);
+  }
+
   const dedupe = (arr) => [...new Set(arr.filter(Boolean))];
 
   return {
     maxLineLength,
     strict: Boolean(resolved.strict),
+    push: Boolean(resolved.push),
+    projectId: resolved.projectId ? String(resolved.projectId).trim() : null,
     checkLinks: Boolean(resolved.checkLinks),
     checkFreshness: Boolean(resolved.checkFreshness),
     checkFrontmatter: Boolean(resolved.checkFrontmatter),

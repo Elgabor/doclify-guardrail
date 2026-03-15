@@ -71,6 +71,12 @@ function getCanonicalRemoteUrl(cwd = process.cwd()) {
   return canonicalizeRemoteUrl(remote);
 }
 
+function getCurrentBranch(opts = {}) {
+  const cwd = path.resolve(opts.cwd || process.cwd());
+  const branch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
+  return branch || 'unknown';
+}
+
 function getRepoFingerprint(opts = {}) {
   const repoId = typeof opts.repoId === 'string' && opts.repoId.trim().length > 0
     ? opts.repoId.trim()
@@ -137,6 +143,7 @@ export {
   createScanId,
   ensureDir,
   findGitRoot,
+  getCurrentBranch,
   getCanonicalRemoteUrl,
   getDoclifyHome,
   getRepoFingerprint,
