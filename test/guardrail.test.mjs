@@ -562,7 +562,8 @@ test('parseArgs: --report with custom path', () => {
 
 test('generateReport: produces valid markdown with findings', () => {
   const tmp = makeTempDir();
-  const reportPath = path.join(tmp, 'report.md');
+  const previousCwd = process.cwd();
+  const reportPath = 'report.md';
 
   const output = {
     version: '1.0',
@@ -584,28 +585,89 @@ test('generateReport: produces valid markdown with findings', () => {
     }
   };
 
-  const result = generateReport(output, { reportPath });
-  assert.ok(fs.existsSync(result), 'Report file should exist');
-  const content = fs.readFileSync(result, 'utf8');
-  assert.ok(content.includes('# Doclify Guardrail Report'), 'Should have title');
-  assert.ok(content.includes('test.md'), 'Should contain filename');
-  assert.ok(content.includes('ERROR'), 'Should contain error details');
-  assert.ok(content.includes('WARNING'), 'Should contain warning details');
+  try {
+    process.chdir(tmp);
+    const result = generateReport(output, { reportPath });
+    assert.ok(fs.existsSync(result), 'Report file should exist');
+    const content = fs.readFileSync(result, 'utf8');
+    assert.ok(content.includes('# Doclify Guardrail Report'), 'Should have title');
+    assert.ok(content.includes('test.md'), 'Should contain filename');
+    assert.ok(content.includes('ERROR'), 'Should contain error details');
+    assert.ok(content.includes('WARNING'), 'Should contain warning details');
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('generateReport: rejects report path outside workspace', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  const output = {
+    version: '1.0',
+    strict: false,
+    files: [],
+    summary: {
+      filesScanned: 0,
+      filesPassed: 0,
+      filesFailed: 0,
+      filesErrored: 0,
+      totalErrors: 0,
+      totalWarnings: 0,
+      status: 'PASS',
+      elapsed: 0.01
+    }
+  };
+
+  try {
+    process.chdir(tmp);
+    assert.throws(
+      () => generateReport(output, { reportPath: '../outside.md' }),
+      /inside workspace/i
+    );
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('CLI: --report writes file to disk', () => {
   const tmp = makeTempDir();
-  const mdPath = path.join(tmp, 'doc.md');
-  const reportPath = path.join(tmp, 'report.md');
-  fs.writeFileSync(mdPath, '# Titolo\nTODO: fix', 'utf8');
+  const mdPath = 'doc.md';
+  const reportPath = 'doclify-report.md';
+  fs.writeFileSync(path.join(tmp, mdPath), '# Titolo\nTODO: fix', 'utf8');
 
   const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--report', reportPath], {
+    cwd: tmp,
     encoding: 'utf8'
   });
 
-  assert.ok(fs.existsSync(reportPath), 'Report file should be created');
-  const content = fs.readFileSync(reportPath, 'utf8');
+  assert.equal(run.status, 0);
+  assert.ok(fs.existsSync(path.join(tmp, reportPath)), 'Report file should be created');
+  const content = fs.readFileSync(path.join(tmp, reportPath), 'utf8');
   assert.ok(content.includes('Doclify Guardrail Report'));
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('CLI: --report rejects path traversal outside workspace', () => {
+  const tmp = makeTempDir();
+  const mdPath = 'doc.md';
+  const outsideName = `outside-${Date.now()}-${Math.round(Math.random() * 1e9)}.md`;
+  const traversalTarget = `../${outsideName}`;
+  const absoluteOutside = path.resolve(tmp, traversalTarget);
+  fs.writeFileSync(path.join(tmp, mdPath), '# Titolo\nTODO: fix', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--report', traversalTarget], {
+    cwd: tmp,
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 2);
+  assert.ok(run.stderr.includes('Failed to write report:'), 'stderr should include report failure prefix');
+  assert.ok(run.stderr.match(/inside workspace/i), 'stderr should include workspace boundary reason');
+  assert.equal(fs.existsSync(absoluteOutside), false, 'outside file must not be created');
+  fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 // === Custom rules tests ===
@@ -643,6 +705,33 @@ test('loadCustomRules: rejects invalid regex', () => {
   }), 'utf8');
 
   assert.throws(() => loadCustomRules(rulesPath), /bad-regex/);
+});
+
+test('loadCustomRules: rejects unsafe nested quantifier regex', () => {
+  const tmp = makeTempDir();
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'redos-risk', severity: 'warning', pattern: '(a+)+$', message: 'bad' }
+    ]
+  }), 'utf8');
+
+  assert.throws(() => loadCustomRules(rulesPath), /redos-risk.*ReDoS/i);
+});
+
+test('loadCustomRules: allows grouped fixed quantifiers', () => {
+  const tmp = makeTempDir();
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'fixed-group', severity: 'warning', pattern: '([a-z]{2})+', message: 'ok' }
+    ]
+  }), 'utf8');
+
+  const rules = loadCustomRules(rulesPath);
+  assert.equal(rules.length, 1);
+  assert.equal(rules[0].id, 'fixed-group');
+  assert.ok(rules[0].pattern instanceof RegExp);
 });
 
 test('custom rule detects pattern with line number', () => {
@@ -698,6 +787,26 @@ test('CLI: --rules applies custom rules', () => {
   const parsed = JSON.parse(run.stdout);
   const errors = parsed.files[0].findings.errors;
   assert.ok(errors.some(e => e.code === 'no-foo'), 'Custom rule should produce error');
+});
+
+test('CLI: --rules rejects unsafe nested quantifier pattern', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const rulesPath = path.join(tmp, 'rules.json');
+  fs.writeFileSync(mdPath, '# Title\ntext', 'utf8');
+  fs.writeFileSync(rulesPath, JSON.stringify({
+    rules: [
+      { id: 'redos-risk', severity: 'warning', pattern: '(a+)+$', message: 'bad' }
+    ]
+  }), 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--rules', rulesPath], {
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 2);
+  assert.ok(run.stderr.includes('Custom rules error:'), 'stderr should include custom-rules error prefix');
+  assert.ok(run.stderr.match(/redos-risk.*ReDoS/i), 'stderr should include unsafe regex details');
 });
 
 // === Color output tests ===
@@ -841,6 +950,26 @@ test('CLI: --fix modifies file on disk', () => {
   assert.equal(run.status, 0);
   const updated = fs.readFileSync(mdPath, 'utf8');
   assert.ok(updated.includes('https://example.com'));
+});
+
+test('CLI: --fix reports user-friendly error when file write fails', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'readonly.md');
+  fs.writeFileSync(mdPath, '# Title\nVisit http://example.com', 'utf8');
+  fs.chmodSync(mdPath, 0o444);
+
+  try {
+    const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--fix', '--json'], { encoding: 'utf8' });
+    assert.equal(run.status, 1);
+    const parsed = JSON.parse(run.stdout);
+    assert.ok(Array.isArray(parsed.fileErrors), 'Should expose fileErrors in JSON output');
+    assert.equal(parsed.fileErrors.length, 1);
+    assert.ok(parsed.fileErrors[0].error.includes('Unable to write fixed file'), 'Should contain user-facing write prefix');
+    assert.ok(parsed.fileErrors[0].error.includes('readonly.md'), 'Should contain target filename');
+  } finally {
+    fs.chmodSync(mdPath, 0o644);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('checkDeadLinks: reports missing local file links', async () => {
@@ -1584,12 +1713,19 @@ test('inline suppression: comma-separated rule ids are supported', () => {
   assert.equal(lineLength.length, 0);
 });
 
-test('inline suppression: doclify-enable without rules re-enables all', () => {
-  const md = `# Title\n<!-- doclify-disable placeholder -->\nTODO hidden\n<!-- doclify-enable -->\nTODO visible`;
+test('inline suppression: doclify-enable without rules re-enables global block suppressions', () => {
+  const md = `# Title\n<!-- doclify-disable -->\nTODO hidden\n<!-- doclify-enable -->\nTODO visible`;
   const res = checkMarkdown(md);
   const todoWarnings = res.warnings.filter((w) => w.code === 'placeholder' && w.message.includes('TODO marker'));
   assert.equal(todoWarnings.length, 1);
   assert.equal(todoWarnings[0].line, 5);
+});
+
+test('inline suppression: doclify-enable without rules keeps specific disables active', () => {
+  const md = `# Title\n<!-- doclify-disable placeholder -->\nTODO hidden specific\n<!-- doclify-disable -->\nTODO hidden global\n<!-- doclify-enable -->\nTODO still hidden specific`;
+  const res = checkMarkdown(md);
+  const todoWarnings = res.warnings.filter((w) => w.code === 'placeholder' && w.message.includes('TODO marker'));
+  assert.equal(todoWarnings.length, 0);
 });
 
 test('inline suppression directives do not trigger placeholder warnings', () => {
@@ -2242,6 +2378,38 @@ test('diff: getChangedMarkdownFiles includes .mdx files', () => {
     const files = getChangedMarkdownFiles({ base: 'HEAD' });
     assert.equal(files.length, 1);
     assert.ok(files[0].endsWith('guide.mdx'));
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('diff: getChangedFiles rejects base refs starting with "-"', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.throws(
+      () => getChangedFiles({ base: '--force' }),
+      /Invalid --base value: must not start with "-"/
+    );
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('diff: getChangedMarkdownFiles rejects base refs starting with "-"', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+
+  try {
+    process.chdir(tmp);
+    assert.throws(
+      () => getChangedMarkdownFiles({ base: '--force' }),
+      /Invalid --base value: must not start with "-"/
+    );
   } finally {
     process.chdir(previousCwd);
     fs.rmSync(tmp, { recursive: true, force: true });

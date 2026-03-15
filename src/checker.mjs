@@ -308,7 +308,7 @@ function buildSuppressionMap(lines) {
     if (blockEndMatch) {
       const ruleIds = parseRuleIds(blockEndMatch[1]);
       if (ruleIds === null) {
-        activeDisables.clear();
+        activeDisables.delete('*');
       } else {
         for (const id of ruleIds) {
           const count = activeDisables.get(id) || 0;

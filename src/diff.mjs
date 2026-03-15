@@ -8,6 +8,9 @@ function assertSafeBaseRef(base) {
   if (typeof base !== 'string' || base.length === 0 || FORBIDDEN_BASE_CHARS_RX.test(base)) {
     throw new Error('Invalid --base value: contains forbidden shell metacharacters');
   }
+  if (base.startsWith('-')) {
+    throw new Error('Invalid --base value: must not start with "-"');
+  }
 }
 
 function buildGitArgs(base = 'HEAD', staged = false) {
