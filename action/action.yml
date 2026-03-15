@@ -42,6 +42,12 @@ inputs:
   doclify-token:
     description: 'Doclify Cloud API key used for AI features'
     default: ''
+  push:
+    description: 'Push score summary to Doclify Cloud'
+    default: 'false'
+  project-id:
+    description: 'Doclify Cloud project id used for score push'
+    default: ''
   format:
     description: 'Output format: default, compact'
     default: 'compact'

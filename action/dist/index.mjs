@@ -36111,6 +36111,8 @@ async function run() {
     const failOnDriftScope = core.getInput('fail-on-drift-scope') || 'unmodified';
     const apiUrl = core.getInput('api-url');
     const doclifyToken = core.getInput('doclify-token');
+    const push = core.getInput('push') === 'true';
+    const projectId = core.getInput('project-id');
     const format = core.getInput('format') || 'compact';
     const sarifEnabled = core.getInput('sarif') !== 'false';
     const sarifFile = core.getInput('sarif-file') || 'doclify.sarif';
@@ -36130,6 +36132,8 @@ async function run() {
     if (failOnDriftScope) cliArgs.push('--fail-on-drift-scope', failOnDriftScope);
     if (apiUrl) cliArgs.push('--api-url', apiUrl);
     if (doclifyToken) cliArgs.push('--token', doclifyToken);
+    if (push) cliArgs.push('--push');
+    if (projectId) cliArgs.push('--project-id', projectId);
     if (sarifEnabled) cliArgs.push('--sarif', sarifFile);
     cliArgs.push('--format', format);
 

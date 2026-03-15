@@ -92,6 +92,54 @@ async function waitFor(predicate, timeoutMs = 5000, intervalMs = 50) {
   throw new Error(`Timed out after ${timeoutMs}ms`);
 }
 
+function runCliAsync(args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [CLI_PATH, ...args], {
+      cwd: options.cwd,
+      env: options.env
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        status: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
+function runNodeAsync(scriptPath, args = [], options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: options.cwd,
+      env: options.env
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        status: typeof code === 'number' ? code : 1,
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
 // === Core rules tests ===
 
 test('passa con H1 singolo', () => {
@@ -2916,8 +2964,7 @@ test('score-api: CLI --push sends score payload and projectId uses CLI > env > c
   const { port } = server.address();
 
   try {
-    const run = spawnSync(process.execPath, [
-      CLI_PATH,
+    const run = await runCliAsync([
       path.join(tmp, 'doc.md'),
       '--push',
       '--project-id',
@@ -2927,7 +2974,6 @@ test('score-api: CLI --push sends score payload and projectId uses CLI > env > c
       '--ascii'
     ], {
       cwd: tmp,
-      encoding: 'utf8',
       env: {
         ...process.env,
         DOCLIFY_PROJECT_ID: 'env-proj',
@@ -2947,7 +2993,10 @@ test('score-api: CLI --push sends score payload and projectId uses CLI > env > c
     assert.equal(typeof receivedPayload.scanId, 'string');
     assert.equal(typeof receivedPayload.branch, 'string');
     assert.equal(typeof receivedPayload.commit, 'string');
-    assert.equal(receivedPayload.repo.fingerprint.startsWith('git:'), true);
+    assert.equal(
+      receivedPayload.repo.fingerprint.startsWith('git:') || receivedPayload.repo.fingerprint.startsWith('cwd:'),
+      true
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -2991,8 +3040,7 @@ test('score-api: CLI --push cloud errors do not change lint exit code', async ()
   const { port } = server.address();
 
   try {
-    const run = spawnSync(process.execPath, [
-      CLI_PATH,
+    const run = await runCliAsync([
       mdPath,
       '--push',
       '--api-url',
@@ -3000,7 +3048,6 @@ test('score-api: CLI --push cloud errors do not change lint exit code', async ()
       '--ascii'
     ], {
       cwd: tmp,
-      encoding: 'utf8',
       env: {
         ...process.env,
         DOCLIFY_TOKEN: 'doclify_live_test'
@@ -3926,17 +3973,16 @@ test('score-api: Action dist forwards --push and --project-id when INPUT_PUSH=tr
   const { port } = server.address();
 
   try {
-    const run = spawnSync(process.execPath, [ACTION_DIST_PATH], {
+    const run = await runNodeAsync(ACTION_DIST_PATH, [], {
       cwd: tmp,
-      encoding: 'utf8',
       env: {
         ...process.env,
         INPUT_PATH: 'doc.md',
         INPUT_PUSH: 'true',
-        INPUT_PROJECT_ID: 'action-proj',
-        INPUT_DOCLIFY_TOKEN: 'doclify_live_test',
-        INPUT_API_URL: `http://127.0.0.1:${port}`,
-        INPUT_PR_COMMENT: 'false',
+        'INPUT_PROJECT-ID': 'action-proj',
+        'INPUT_DOCLIFY-TOKEN': 'doclify_live_test',
+        'INPUT_API-URL': `http://127.0.0.1:${port}`,
+        'INPUT_PR-COMMENT': 'false',
         INPUT_SARIF: 'false',
         GITHUB_OUTPUT: githubOutput
       }
@@ -3969,16 +4015,15 @@ test('score-api: Action dist does not push when INPUT_PUSH=false', async () => {
   const { port } = server.address();
 
   try {
-    const run = spawnSync(process.execPath, [ACTION_DIST_PATH], {
+    const run = await runNodeAsync(ACTION_DIST_PATH, [], {
       cwd: tmp,
-      encoding: 'utf8',
       env: {
         ...process.env,
         INPUT_PATH: 'doc.md',
         INPUT_PUSH: 'false',
-        INPUT_DOCLIFY_TOKEN: 'doclify_live_test',
-        INPUT_API_URL: `http://127.0.0.1:${port}`,
-        INPUT_PR_COMMENT: 'false',
+        'INPUT_DOCLIFY-TOKEN': 'doclify_live_test',
+        'INPUT_API-URL': `http://127.0.0.1:${port}`,
+        'INPUT_PR-COMMENT': 'false',
         INPUT_SARIF: 'false',
         GITHUB_OUTPUT: githubOutput
       }

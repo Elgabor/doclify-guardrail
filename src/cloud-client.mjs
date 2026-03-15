@@ -122,10 +122,82 @@ async function requestAiDrift(options = {}) {
   });
 }
 
+function buildScorePayload(options = {}) {
+  const {
+    output = {},
+    projectId = null,
+    commit = 'unknown',
+    branch = 'unknown',
+    version = null,
+    gate = null,
+    meta = null
+  } = options;
+
+  const summary = output.summary || {};
+  const payload = {
+    scanId: output.scanId || null,
+    commit,
+    branch,
+    version: version || output.version || null,
+    score: Number(summary.avgHealthScore ?? summary.healthScore ?? 0),
+    errors: Number(summary.totalErrors ?? 0),
+    warnings: Number(summary.totalWarnings ?? 0),
+    filesScanned: Number(summary.filesScanned ?? 0),
+    filesPassed: Number(summary.filesPassed ?? 0),
+    filesFailed: Number(summary.filesFailed ?? 0),
+    status: summary.status || 'FAIL'
+  };
+
+  if (projectId) {
+    payload.projectId = projectId;
+  }
+
+  const repo = output.repo || {};
+  const repoPayload = {};
+  if (repo.fingerprint) repoPayload.fingerprint = repo.fingerprint;
+  if (repo.remote) repoPayload.remote = repo.remote;
+  if (Object.keys(repoPayload).length > 0) {
+    payload.repo = repoPayload;
+  }
+
+  if (gate && typeof gate === 'object') {
+    payload.gate = gate;
+  }
+  if (meta && typeof meta === 'object' && Object.keys(meta).length > 0) {
+    payload.meta = meta;
+  }
+
+  return payload;
+}
+
+async function pushScoreReport(options = {}) {
+  const response = await requestJson({
+    apiUrl: options.apiUrl,
+    pathName: '/v1/scores',
+    method: 'POST',
+    apiKey: options.apiKey,
+    body: options.payload,
+    timeoutMs: options.timeoutMs ?? 5000,
+    retries: options.retries ?? 1
+  });
+
+  if (!response || typeof response.id !== 'string' || response.id.trim().length === 0) {
+    throw new CloudError('Invalid score push response: missing report id', { status: 502, details: response });
+  }
+
+  const result = { id: response.id.trim() };
+  if (typeof response.delta === 'number') {
+    result.delta = response.delta;
+  }
+  return result;
+}
+
 export {
+  buildScorePayload,
   CloudError,
   DEFAULT_API_URL,
   normalizeApiUrl,
+  pushScoreReport,
   requestAiDrift,
   requestJson,
   verifyApiKey
