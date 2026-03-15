@@ -7,3 +7,14 @@ doclify-report.md
 bench/out/*
 !bench/out/.gitkeep
 /tasks
+
+# Handoff tra sessioni Claude Code (effimeri, non condivisi)
+docs/handoffs/
+
+# Preferenze personali Claude Code
+CLAUDE.local.md
+
+# Build artifacts
+dist/
+coverage/
+*.tgz
