@@ -18,11 +18,22 @@ bench/out/*
 # Artifact locale di --track
 .doclify-history.json
 
-# Handoff tra sessioni Claude Code (effimeri, non condivisi)
-docs/handoffs/
-
-# Preferenze personali Claude Code
+# Documentazione interna e workflow (non pubblici)
+CLAUDE.md
 CLAUDE.local.md
+.claude/commands/
+agent-docs/
+docs/plans/
+docs/specs/
+docs/reviews/
+docs/changelog/
+docs/handoffs/
+docs/doclify-dev-system.md
+docs/documentazione-tecnica.md
+docs/panoramica.md
+docs/reliability-gate.md
+specs/
+workflows/
 
 # Build artifacts
 dist/
