@@ -2,40 +2,30 @@ node_modules/
 .cache/
 *.log
 .DS_Store
-.claude/settings.json
-.claude/settings.local.json
 doclify-report.md
 report.md
-bench/out/*
-!bench/out/.gitkeep
+/bench/out/
 /tasks
 
-# Secrets e auth locale
+# Local secrets and auth
 .env
 .env.*
 .doclify/
 
-# Artifact locale di --track
+# Local --track artifacts
 .doclify-history.json
 
-# Documentazione interna e workflow (non pubblici)
+# Internal docs and workflows (not public)
 CLAUDE.md
 CLAUDE.local.md
-.claude/commands/
+.claude/
+.codex/
 agent-docs/
-docs/plans/
-docs/specs/
-docs/reviews/
-docs/changelog/
-docs/handoffs/
-docs/doclify-dev-system.md
-docs/documentazione-tecnica.md
-docs/panoramica.md
-docs/reliability-gate.md
-specs/
-workflows/
+/docs/
+/specs/
+/workflows/
 
 # Build artifacts
-dist/
+/dist/
 coverage/
 *.tgz

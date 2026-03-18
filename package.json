@@ -1,8 +1,16 @@
 {
   "name": "doclify-guardrail",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "type": "module",
   "description": "Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.",
+  "homepage": "https://github.com/Elgabor/doclify-guardrail#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elgabor/doclify-guardrail.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Elgabor/doclify-guardrail/issues"
+  },
   "files": [
     "src/",
     "README.md"
@@ -19,7 +27,6 @@
     "start": "node ./src/index.mjs",
     "test": "node --test test/guardrail.test.mjs",
     "docs:sync-check": "node ./scripts/check-docs-sync.mjs",
-    "demo": "bash ./scripts/demo.sh",
     "reliability:pr": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag pr-sample --repeat 2 --out bench/out/pr-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/pr-deterministic.json --baseline bench/baselines/pr-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/pr-deterministic-report.md",
     "reliability:nightly:det": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag nightly-det-full --repeat 3 --out bench/out/nightly-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/nightly-deterministic.json --baseline bench/baselines/nightly-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/nightly-deterministic-report.md",
     "reliability:nightly:net": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile network --tag nightly-net-sample --repeat 1 --out bench/out/nightly-network.json && node scripts/compare-baseline.mjs --current bench/out/nightly-network.json --baseline bench/baselines/nightly-network.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/nightly-network-report.md",

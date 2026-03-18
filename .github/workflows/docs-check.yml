@@ -3,10 +3,12 @@ name: Docs Check
 on:
   push:
     paths:
-      - 'docs/**/*.md'
-      - 'docs/**/*.mdx'
+      - 'examples/**'
       - '*.md'
       - '*.mdx'
+      - '.editorconfig'
+      - '.gitignore'
+      - '.github/workflows/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -14,10 +16,12 @@ on:
       - 'package.json'
   pull_request:
     paths:
-      - 'docs/**/*.md'
-      - 'docs/**/*.mdx'
+      - 'examples/**'
       - '*.md'
       - '*.mdx'
+      - '.editorconfig'
+      - '.gitignore'
+      - '.github/workflows/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -32,10 +36,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install --no-audit --no-fund
       - name: Install action dependencies
         working-directory: action
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+      - name: Verify action bundle parity
+        working-directory: action
+        run: |
+          npm run build
+          git diff --exit-code -- dist/index.mjs dist/licenses.txt
       - name: Audit action dependency chain
         working-directory: action
         run: npm audit --omit=dev
@@ -43,8 +51,10 @@ jobs:
         run: npm test
       - name: Verify docs sync
         run: npm run docs:sync-check
+      - name: Verify npm package contents
+        run: npm pack --dry-run
       - name: Docs quality gate
-        run: node ./src/index.mjs README.md docs/ --strict --exclude examples,plans,specs,doclify-dev-system.md --report report.md
+        run: node ./src/index.mjs README.md --strict --report report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

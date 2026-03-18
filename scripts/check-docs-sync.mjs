@@ -30,54 +30,91 @@ const checks = [
       {
         label: 'action bundle reference',
         pattern: /action\/dist\/index\.mjs/
+      },
+      {
+        label: 'public examples section',
+        pattern: /## Repository Examples/
+      },
+      {
+        label: 'clean example reference',
+        pattern: /examples\/clean\.md/
+      },
+      {
+        label: 'warning example reference',
+        pattern: /examples\/with-warnings\.md/
+      },
+      {
+        label: 'error example reference',
+        pattern: /examples\/with-errors\.md/
+      },
+      {
+        label: 'action subpath tag reference',
+        pattern: /Elgabor\/doclify-guardrail\/action@v1/
+      },
+      {
+        label: 'action tag policy',
+        pattern: /Use `@v1` for the supported floating major tag/
       }
     ]
   },
   {
-    file: 'docs/panoramica.md',
+    file: '.github/workflows/docs-check.yml',
     expectations: [
       {
-        label: 'panoramica rule count',
-        pattern: new RegExp(`\\*\\*${ruleCount} regole built-in\\*\\*`)
+        label: 'examples trigger',
+        pattern: /'examples\/\*\*'/
       },
       {
-        label: 'siteRoot mention',
-        pattern: /`siteRoot`/
+        label: 'action npm ci step',
+        pattern: /run: npm ci --no-audit --no-fund/
       },
       {
-        label: 'root-relative warning mention',
-        pattern: /`unverifiable-root-relative-link`/
-      }
-    ]
-  },
-  {
-    file: 'docs/documentazione-tecnica.md',
-    expectations: [
-      {
-        label: 'technical doc rule count',
-        pattern: new RegExp(`\\*\\*${ruleCount} regole built-in\\*\\*`)
+        label: 'action bundle parity build step',
+        pattern: /npm run build/
       },
       {
-        label: 'action manifest reference',
-        pattern: /`action\/action\.yml`/
+        label: 'action bundle parity git diff step',
+        pattern: /git diff --exit-code -- dist\/index\.mjs dist\/licenses\.txt/
       },
       {
-        label: 'action entrypoint reference',
-        pattern: /`action\/entrypoint\.mjs`/
+        label: 'docs sync step',
+        pattern: /run: npm run docs:sync-check/
       },
       {
-        label: 'action PR comment reference',
-        pattern: /`action\/pr-comment\.mjs`/
+        label: 'npm pack dry run step',
+        pattern: /run: npm pack --dry-run/
       },
       {
-        label: 'action bundle reference',
-        pattern: /`action\/dist\/index\.mjs`/
+        label: 'README-only docs gate',
+        pattern: /run: node \.\/src\/index\.mjs README\.md --strict --report report\.md/
       }
     ]
   }
 ];
 
+const requiredFiles = [
+  'examples/clean.md',
+  'examples/with-errors.md',
+  'examples/with-warnings.md',
+  'action/action.yml'
+];
+
+const forbiddenRefs = [
+  'docs/reliability-gate.md',
+  'docs/panoramica.md',
+  'docs/documentazione-tecnica.md',
+  'docs/examples/',
+  'Elgabor/doclify-guardrail@v1.7',
+  'scripts/demo.sh'
+];
+
 const failures = [];
+
+for (const file of requiredFiles) {
+  if (!fs.existsSync(path.join(rootDir, file))) {
+    failures.push(`${file}: required public file is missing`);
+  }
+}
 
 for (const check of checks) {
   const absolutePath = path.join(rootDir, check.file);
@@ -91,6 +128,13 @@ for (const check of checks) {
     if (!expectation.pattern.test(content)) {
       failures.push(`${check.file}: missing ${expectation.label}`);
     }
+  }
+}
+
+const readmeContent = fs.readFileSync(path.join(rootDir, 'README.md'), 'utf8');
+for (const forbiddenRef of forbiddenRefs) {
+  if (readmeContent.includes(forbiddenRef)) {
+    failures.push(`README.md: forbidden reference still present (${forbiddenRef})`);
   }
 }
 

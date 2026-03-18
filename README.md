@@ -92,6 +92,25 @@ doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
 doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
 
+## Repository Examples
+
+After cloning this repository, you can use the three public examples under `examples/`:
+
+- [`examples/clean.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/clean.md) — a clean document with frontmatter
+- [`examples/with-warnings.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/with-warnings.md) — warning-heavy sample
+- [`examples/with-errors.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/with-errors.md) — failing sample
+
+```bash
+# Clean example
+doclify examples/clean.md --strict --check-frontmatter
+
+# Warnings without failing the run
+doclify examples/with-warnings.md
+
+# Failing example in strict mode
+doclify examples/with-errors.md --strict
+```
+
 ## Usage
 
 ```bash
@@ -433,7 +452,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run Doclify
-        uses: Elgabor/doclify-guardrail@v1.7
+        uses: Elgabor/doclify-guardrail/action@v1
         with:
           path: 'docs/'
           strict: 'false'
@@ -464,6 +483,12 @@ The action contract lives in `action/action.yml`.
 GitHub executes the committed `action/dist/index.mjs`,
 which resolves the CLI from both source and bundled layouts through `action/entrypoint.mjs`
 and can upsert PR comments via `action/pr-comment.mjs`.
+
+Tag policy for the action:
+
+- Use `@v1` for the supported floating major tag
+- Use an immutable `@v1.x.y` tag when you want an exact release
+- Do not rely on undocumented minor tags such as `@v1.7`
 
 ## Programmatic API
 
@@ -655,11 +680,19 @@ npm run reliability:nightly:net
 npm run reliability:bootstrap
 ```
 
-Detailed setup and policy: `docs/reliability-gate.md`.
+Policy summary:
+
+- `reliability:pr` is the fast gate used on branch and PR changes
+- `reliability:nightly:det` is the full deterministic corpus run
+- `reliability:nightly:net` is the network sample run
+- Baselines live under `bench/baselines/`
+- Reports under `bench/out/` are generated artifacts and are not tracked
 
 ## Project Architecture
 
 ```text
+.github/
+  workflows/       Public CI workflows
 src/
   index.mjs        CLI orchestrator, arg parsing, main flow
   checker.mjs      35-rule lint engine + inline suppressions
@@ -687,10 +720,22 @@ bench/
   corpus.manifest.json        OSS corpus + profiles + pinned commits
   reliability-thresholds.json Reliability hard limits
   waivers.json                Temporary exceptions with expiry
+examples/
+  clean.md            Public clean example
+  with-errors.md      Public failing example
+  with-warnings.md    Public warning example
 scripts/
   run-corpus.mjs       Corpus runner + deterministic fingerprinting
   compare-baseline.mjs Baseline comparator + report generation
 ```
+
+## Public Repo Rules
+
+- The tracked public surface is limited to root metadata files, `.github/`, `action/`, `bench/`, `examples/`, `scripts/`, `src/`, and `test/`
+- Local planning stays under `docs/plans/` and is intentionally gitignored
+- Every public-facing file in the repo stays in English
+- Releases use immutable `v1.x.y` tags; the GitHub Action also maintains a floating `v1` tag
+- `doclify` is the canonical command in public docs; `doclify-guardrail` stays available for compatibility
 
 ## License
 
