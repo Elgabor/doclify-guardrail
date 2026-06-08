@@ -1,17 +1,18 @@
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
-import { lookup } from 'node:dns/promises';
-import net from 'node:net';
 import { stripCodeBlocks, stripInlineCode } from './checker.mjs';
 import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
+import {
+  createPrivateNetworkBlockingLookup,
+  getBlockedRemoteUrlReason
+} from './network-guard.mjs';
 
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
 const MAX_REDIRECTS = 5;
 const HEAD_FALLBACK_STATUSES = new Set([403, 404, 405, 501]);
-const METADATA_HOSTNAMES = new Set([
-  'metadata.google.internal'
-]);
 
 function sanitizeCapturedUrl(url, kind) {
   let normalized = url.trim().replace(/[>*_`]+$/g, '');
@@ -93,143 +94,69 @@ function isAllowListed(url, allowList) {
   return false;
 }
 
+function getHeader(headers, name) {
+  const value = headers[name.toLowerCase()];
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
 async function fetchWithTimeout(url, opts, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function normalizeHost(input) {
-  if (!input) return '';
-  let host = input.trim().toLowerCase();
-  if (host.startsWith('[') && host.endsWith(']')) {
-    host = host.slice(1, -1);
-  }
-  if (host.endsWith('.')) {
-    host = host.slice(0, -1);
-  }
-  const zoneIndex = host.indexOf('%');
-  if (zoneIndex >= 0) {
-    host = host.slice(0, zoneIndex);
-  }
-  return host;
-}
-
-function isBlockedIpv4(host) {
-  const parts = host.split('.');
-  if (parts.length !== 4) return false;
-  const octets = parts.map((part) => Number(part));
-  if (octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
-
-  const [a, b] = octets;
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 168) return true;
-  return false;
-}
-
-function isBlockedIpv6(host) {
-  if (host === '::' || host === '::1') return true;
-
-  const mappedV4 = host.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (mappedV4 && isBlockedIpv4(mappedV4[1])) return true;
-
-  const first = host.split(':')[0];
-  const firstHextet = parseInt(first || '0', 16);
-  if (!Number.isNaN(firstHextet)) {
-    if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7
-    if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10
-  }
-  return false;
-}
-
-function blockedHostReason(host, resolvedIp = null) {
-  const normalizedHost = normalizeHost(host);
-  const candidateIp = normalizeHost(resolvedIp || normalizedHost);
-  if (!normalizedHost) return null;
-
-  const localHost = normalizedHost === 'localhost' || normalizedHost.endsWith('.localhost');
-  if (localHost || METADATA_HOSTNAMES.has(normalizedHost)) {
-    return resolvedIp
-      ? `Blocked private host/IP (${normalizedHost} -> ${resolvedIp})`
-      : `Blocked private host/IP (${normalizedHost})`;
+  if (typeof opts.requestFn === 'function') {
+    return opts.requestFn(url, opts, timeoutMs);
   }
 
-  const ipVersion = net.isIP(candidateIp);
-  if (ipVersion === 4 && isBlockedIpv4(candidateIp)) {
-    return resolvedIp
-      ? `Blocked private host/IP (${normalizedHost} -> ${candidateIp})`
-      : `Blocked private host/IP (${normalizedHost})`;
-  }
-  if (ipVersion === 6 && isBlockedIpv6(candidateIp)) {
-    return resolvedIp
-      ? `Blocked private host/IP (${normalizedHost} -> ${candidateIp})`
-      : `Blocked private host/IP (${normalizedHost})`;
-  }
-  return null;
-}
-
-async function resolveAddresses(hostname, dnsCache) {
-  if (dnsCache.has(hostname)) {
-    return dnsCache.get(hostname);
+  const parsed = new URL(url);
+  const client = parsed.protocol === 'https:' ? https : http;
+  if (client !== http && client !== https) {
+    throw new Error(`Unsupported URL protocol: ${parsed.protocol}`);
   }
 
-  const promise = lookup(hostname, { all: true, verbatim: true })
-    .then((entries) => entries.map((entry) => normalizeHost(entry.address)).filter(Boolean))
-    .catch(() => []);
-  dnsCache.set(hostname, promise);
-  return promise;
-}
-
-async function getBlockedRemoteUrlReason(url, { dnsCache } = {}) {
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return null;
-  }
-
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return null;
-  }
-
-  const host = normalizeHost(parsed.hostname);
-  const directReason = blockedHostReason(host);
-  if (directReason) return directReason;
-
-  if (net.isIP(host) !== 0) return null;
-
-  const cache = dnsCache instanceof Map ? dnsCache : new Map();
-  const addresses = await resolveAddresses(host, cache);
-  for (const address of addresses) {
-    const reason = blockedHostReason(host, address);
-    if (reason) return reason;
-  }
-
-  return null;
+  return new Promise((resolve, reject) => {
+    const timeoutError = new Error(`Timeout (${timeoutMs / 1000}s)`);
+    timeoutError.name = 'AbortError';
+    const req = client.request(parsed, {
+      method: opts.method,
+      lookup: opts.lookup
+    }, (res) => {
+      res.resume();
+      resolve({
+        status: res.statusCode ?? 0,
+        headers: {
+          get: (name) => getHeader(res.headers, name)
+        }
+      });
+    });
+    const timer = setTimeout(() => {
+      req.destroy(timeoutError);
+    }, timeoutMs);
+    req.on('error', reject);
+    req.on('close', () => {
+      clearTimeout(timer);
+    });
+    req.end();
+  });
 }
 
 function isRedirectStatus(status) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-async function fetchFollowingRedirects(url, { method, timeoutMs, allowPrivateLinks, dnsCache }) {
+async function fetchFollowingRedirects(url, { method, timeoutMs, allowPrivateLinks, dnsCache, lookupFn, requestFn }) {
   let currentUrl = url;
 
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
     if (!allowPrivateLinks) {
-      const blocked = await getBlockedRemoteUrlReason(currentUrl, { dnsCache });
+      const blocked = await getBlockedRemoteUrlReason(currentUrl, { dnsCache, lookupFn });
       if (blocked) {
         return { error: blocked };
       }
     }
 
-    const response = await fetchWithTimeout(currentUrl, { method, redirect: 'manual' }, timeoutMs);
+    const response = await fetchWithTimeout(currentUrl, {
+      method,
+      lookup: allowPrivateLinks ? undefined : createPrivateNetworkBlockingLookup({ lookupFn }),
+      requestFn
+    }, timeoutMs);
     if (!isRedirectStatus(response.status)) {
       return { response };
     }
@@ -257,13 +184,17 @@ async function checkRemoteUrl(url, opts = {}) {
   const timeoutMs = Number.isInteger(opts.timeoutMs) ? opts.timeoutMs : DEFAULT_LINK_TIMEOUT_MS;
   const allowPrivateLinks = Boolean(opts.allowPrivateLinks);
   const dnsCache = opts.dnsCache instanceof Map ? opts.dnsCache : new Map();
+  const lookupFn = opts.lookupFn;
+  const requestFn = opts.requestFn;
 
   try {
     const headResult = await fetchFollowingRedirects(url, {
       method: 'HEAD',
       timeoutMs,
       allowPrivateLinks,
-      dnsCache
+      dnsCache,
+      lookupFn,
+      requestFn
     });
     if (headResult.error) {
       return headResult.error;
@@ -279,7 +210,9 @@ async function checkRemoteUrl(url, opts = {}) {
         method: 'GET',
         timeoutMs,
         allowPrivateLinks,
-        dnsCache
+        dnsCache,
+        lookupFn,
+        requestFn
       });
       if (getResult.error) {
         return getResult.error;
@@ -383,7 +316,17 @@ function buildEmptyStats() {
   };
 }
 
-async function checkDeadLinksDetailed(content, { sourceFile, siteRoot, linkAllowList, timeoutMs, concurrency, remoteCache, allowPrivateLinks } = {}) {
+async function checkDeadLinksDetailed(content, {
+  sourceFile,
+  siteRoot,
+  linkAllowList,
+  timeoutMs,
+  concurrency,
+  remoteCache,
+  allowPrivateLinks,
+  lookupFn,
+  requestFn
+} = {}) {
   const links = extractLinks(content);
   const findings = [];
   const seen = new Set();
@@ -409,7 +352,7 @@ async function checkDeadLinksDetailed(content, { sourceFile, siteRoot, linkAllow
     if (url.startsWith('http://') || url.startsWith('https://')) {
       if (remoteChecks.has(url)) continue;
       if (!allowPrivate) {
-        const blocked = await getBlockedRemoteUrlReason(url, { dnsCache });
+        const blocked = await getBlockedRemoteUrlReason(url, { dnsCache, lookupFn });
         if (blocked) {
           findings.push({
             code: 'dead-link',
@@ -449,7 +392,13 @@ async function checkDeadLinksDetailed(content, { sourceFile, siteRoot, linkAllow
         stats.remoteCacheHits += 1;
       } else {
         stats.remoteCacheMisses += 1;
-        error = await checkRemoteUrl(url, { timeoutMs, allowPrivateLinks: allowPrivate, dnsCache });
+        error = await checkRemoteUrl(url, {
+          timeoutMs,
+          allowPrivateLinks: allowPrivate,
+          dnsCache,
+          lookupFn,
+          requestFn
+        });
         cache.set(url, error);
       }
       if (typeof error === 'string' && error.startsWith('Timeout')) {

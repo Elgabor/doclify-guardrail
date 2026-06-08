@@ -54,6 +54,18 @@ const checks = [
       {
         label: 'action tag policy',
         pattern: /Use `@v1` for the supported floating major tag/
+      },
+      {
+        label: 'hardened checkout example',
+        pattern: /persist-credentials: false/
+      },
+      {
+        label: 'current checkout action example',
+        pattern: /actions\/checkout@v5\.0\.1/
+      },
+      {
+        label: 'current setup-node action example',
+        pattern: /actions\/setup-node@v5\.0\.0/
       }
     ]
   },
@@ -61,12 +73,28 @@ const checks = [
     file: '.github/workflows/docs-check.yml',
     expectations: [
       {
+        label: 'least-privilege permissions',
+        pattern: /permissions:\s*\n\s+contents: read/
+      },
+      {
+        label: 'current checkout action',
+        pattern: /uses: actions\/checkout@v5\.0\.1/
+      },
+      {
+        label: 'non-persisted checkout credentials',
+        pattern: /persist-credentials: false/
+      },
+      {
+        label: 'current setup-node action',
+        pattern: /uses: actions\/setup-node@v5\.0\.0/
+      },
+      {
         label: 'examples trigger',
         pattern: /'examples\/\*\*'/
       },
       {
         label: 'action npm ci step',
-        pattern: /run: npm ci --no-audit --no-fund/
+        pattern: /run: npm ci --no-audit --no-fund --ignore-scripts/
       },
       {
         label: 'action bundle parity build step',
@@ -87,6 +115,56 @@ const checks = [
       {
         label: 'README-only docs gate',
         pattern: /run: node \.\/src\/index\.mjs README\.md --strict --report report\.md/
+      },
+      {
+        label: 'current upload-artifact action',
+        pattern: /uses: actions\/upload-artifact@v7\.0\.1/
+      }
+    ]
+  },
+  {
+    file: '.github/workflows/reliability-gate.yml',
+    expectations: [
+      {
+        label: 'least-privilege permissions',
+        pattern: /permissions:\s*\n\s+contents: read/
+      },
+      {
+        label: 'current checkout action',
+        pattern: /uses: actions\/checkout@v5\.0\.1/
+      },
+      {
+        label: 'non-persisted checkout credentials',
+        pattern: /persist-credentials: false/
+      },
+      {
+        label: 'current setup-node action',
+        pattern: /uses: actions\/setup-node@v5\.0\.0/
+      },
+      {
+        label: 'current cache action',
+        pattern: /uses: actions\/cache@v5\.0\.5/
+      },
+      {
+        label: 'current upload-artifact action',
+        pattern: /uses: actions\/upload-artifact@v7\.0\.1/
+      },
+      {
+        label: 'install ignores package scripts',
+        pattern: /npm install --no-audit --no-fund --ignore-scripts/
+      },
+      {
+        label: 'network gate advisory',
+        pattern: /continue-on-error: true/
+      }
+    ]
+  },
+  {
+    file: 'action/action.yml',
+    expectations: [
+      {
+        label: 'Node 24 action runtime',
+        pattern: /using: 'node24'/
       }
     ]
   }

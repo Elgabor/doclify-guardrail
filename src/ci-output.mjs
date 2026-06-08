@@ -1,7 +1,7 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { RULE_CATALOG } from './checker.mjs';
 import { computeDocHealthScore } from './quality.mjs';
+import { resolveWorkspacePath } from './workspace-path.mjs';
 
 const RULE_DESCRIPTIONS = Object.fromEntries(RULE_CATALOG.map(r => [r.id, r.description]));
 
@@ -225,8 +225,11 @@ function generateBadgeSvg(score, label = 'docs health') {
   const rightWidth = badgeWidth(value);
   const totalWidth = leftWidth + rightWidth;
   const valueX = leftWidth + (rightWidth / 2);
+  const safeLabel = escapeXml(label);
+  const safeValue = escapeXml(value);
+  const safeAriaLabel = escapeXml(`${label}: ${value}`);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" role="img" aria-label="${label}: ${value}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" role="img" aria-label="${safeAriaLabel}">
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>
@@ -240,24 +243,24 @@ function generateBadgeSvg(score, label = 'docs health') {
     <rect width="${totalWidth}" height="20" fill="url(#s)"/>
   </g>
   <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-    <text x="${Math.round(leftWidth / 2)}" y="15" fill="#010101" fill-opacity=".3">${label}</text>
-    <text x="${Math.round(leftWidth / 2)}" y="14">${label}</text>
-    <text x="${Math.round(valueX)}" y="15" fill="#010101" fill-opacity=".3">${value}</text>
-    <text x="${Math.round(valueX)}" y="14">${value}</text>
+    <text x="${Math.round(leftWidth / 2)}" y="15" fill="#010101" fill-opacity=".3">${safeLabel}</text>
+    <text x="${Math.round(leftWidth / 2)}" y="14">${safeLabel}</text>
+    <text x="${Math.round(valueX)}" y="15" fill="#010101" fill-opacity=".3">${safeValue}</text>
+    <text x="${Math.round(valueX)}" y="14">${safeValue}</text>
   </g>
 </svg>
 `;
 }
 
 function generateJUnitReport(output, options) {
-  const junitPath = path.resolve(options.junitPath);
+  const junitPath = resolveWorkspacePath(options.junitPath, { label: 'JUnit report path' });
   const xml = generateJUnitXml(output);
   fs.writeFileSync(junitPath, xml, 'utf8');
   return junitPath;
 }
 
 function generateSarifReport(output, options) {
-  const sarifPath = path.resolve(options.sarifPath);
+  const sarifPath = resolveWorkspacePath(options.sarifPath, { label: 'SARIF report path' });
   const sarif = generateSarifJson(output);
   fs.writeFileSync(sarifPath, JSON.stringify(sarif, null, 2), 'utf8');
   return sarifPath;
@@ -265,7 +268,7 @@ function generateSarifReport(output, options) {
 
 function generateBadge(output, options = {}) {
   const label = (options.label || 'docs health').trim() || 'docs health';
-  const badgePath = path.resolve(options.badgePath || 'doclify-badge.svg');
+  const badgePath = resolveWorkspacePath(options.badgePath || 'doclify-badge.svg', { label: 'Badge path' });
   const score = output.summary?.healthScore ?? 0;
   const svg = generateBadgeSvg(score, label);
   fs.writeFileSync(badgePath, svg, 'utf8');

@@ -1,5 +1,8 @@
 name: Docs Check
 
+permissions:
+  contents: read
+
 on:
   push:
     paths:
@@ -32,13 +35,15 @@ jobs:
   guardrail:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5.0.0
         with:
           node-version: '20'
       - name: Install action dependencies
         working-directory: action
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --ignore-scripts
       - name: Verify action bundle parity
         working-directory: action
         run: |
@@ -55,7 +60,7 @@ jobs:
         run: npm pack --dry-run
       - name: Docs quality gate
         run: node ./src/index.mjs README.md --strict --report report.md
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.1
         if: failure()
         with:
           name: guardrail-report

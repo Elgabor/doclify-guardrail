@@ -668,6 +668,30 @@ function isDescendantOrSamePath(candidatePath, basePath) {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+function redactSecretValue(value) {
+  if (typeof value !== 'string') return value;
+  if (value.length <= 8) return '[REDACTED]';
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+function redactDebugObject(value, key = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactDebugObject(item));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [
+        entryKey,
+        redactDebugObject(entryValue, entryKey)
+      ])
+    );
+  }
+  if (/token|api[-_]?key|authorization|password|secret/i.test(key)) {
+    return redactSecretValue(value);
+  }
+  return value;
+}
+
 function isExcludedFile(filePath, patterns = []) {
   if (!patterns || patterns.length === 0) return false;
   const rel = path.relative(process.cwd(), filePath);
@@ -1849,7 +1873,7 @@ async function runCli(argv = process.argv.slice(2)) {
   }
 
   if (args.debug) {
-    console.error(JSON.stringify({ debug: { args, resolved } }, null, 2));
+    console.error(JSON.stringify(redactDebugObject({ debug: { args, resolved } }), null, 2));
   }
 
   if (args.format === 'compact') {

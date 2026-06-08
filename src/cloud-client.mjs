@@ -1,4 +1,12 @@
+import http from 'node:http';
+import https from 'node:https';
 import { resolveApiKey, resolveApiUrl } from './auth-store.mjs';
+import {
+  blockedHostReason,
+  createPrivateNetworkBlockingLookup,
+  getBlockedRemoteUrlReason,
+  isLocalDevelopmentHost
+} from './network-guard.mjs';
 
 const DEFAULT_API_URL = 'https://api.doclify.app';
 
@@ -14,7 +22,80 @@ class CloudError extends Error {
 function normalizeApiUrl(apiUrl = null) {
   const chosen = resolveApiUrl(apiUrl) || DEFAULT_API_URL;
   const parsed = new URL(chosen);
+  const isLocalHttp =
+    parsed.protocol === 'http:' &&
+    isLocalDevelopmentHost(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !isLocalHttp) {
+    throw new CloudError('API URL must use HTTPS unless targeting localhost for local testing', { status: 400 });
+  }
+  if (!isLocalHttp) {
+    const blocked = blockedHostReason(parsed.hostname);
+    if (blocked) {
+      throw new CloudError('API URL cannot target private, loopback, link-local, or metadata hosts', { status: 400 });
+    }
+  }
   return parsed.toString().replace(/\/+$/, '');
+}
+
+async function assertApiUrlNetworkAllowed(apiUrl, options = {}) {
+  const parsed = new URL(apiUrl);
+  const isLocalHttp = parsed.protocol === 'http:' && isLocalDevelopmentHost(parsed.hostname);
+  if (isLocalHttp) return;
+
+  const blocked = await getBlockedRemoteUrlReason(apiUrl, { lookupFn: options.lookupFn });
+  if (blocked) {
+    throw new CloudError('API URL cannot resolve to private, loopback, link-local, or metadata hosts', { status: 400 });
+  }
+}
+
+async function requestWithTimeout(target, options) {
+  const {
+    method,
+    headers,
+    bodyText,
+    timeoutMs,
+    lookup
+  } = options;
+  const parsed = new URL(target);
+  const client = parsed.protocol === 'https:' ? https : http;
+  if (client !== https && client !== http) {
+    throw new Error(`Unsupported API URL protocol: ${parsed.protocol}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutError = new Error(`Cloud request timed out after ${timeoutMs}ms`);
+    timeoutError.name = 'AbortError';
+    const req = client.request(parsed, {
+      method,
+      headers,
+      lookup
+    }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        text += chunk;
+      });
+      res.on('end', () => {
+        const status = res.statusCode ?? 0;
+        resolve({
+          ok: status >= 200 && status < 300,
+          status,
+          text
+        });
+      });
+    });
+    const timer = setTimeout(() => {
+      req.destroy(timeoutError);
+    }, timeoutMs);
+    req.on('error', reject);
+    req.on('close', () => {
+      clearTimeout(timer);
+    });
+    if (bodyText !== undefined) {
+      req.write(bodyText);
+    }
+    req.end();
+  });
 }
 
 async function requestJson(options) {
@@ -29,36 +110,38 @@ async function requestJson(options) {
   } = options;
 
   const resolvedApiUrl = normalizeApiUrl(apiUrl);
+  await assertApiUrlNetworkAllowed(resolvedApiUrl, { lookupFn: options.lookupFn });
   const resolvedApiKey = resolveApiKey(apiKey);
   const target = new URL(pathName.replace(/^\//, ''), `${resolvedApiUrl}/`);
+  const parsedApiUrl = new URL(resolvedApiUrl);
+  const localHttp = parsedApiUrl.protocol === 'http:' && isLocalDevelopmentHost(parsedApiUrl.hostname);
+  const bodyText = body !== undefined ? JSON.stringify(body) : undefined;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = {
         accept: 'application/json'
       };
       if (body !== undefined) {
         headers['content-type'] = 'application/json';
+        headers['content-length'] = String(Buffer.byteLength(bodyText));
       }
       if (resolvedApiKey) {
         headers.authorization = `Bearer ${resolvedApiKey}`;
       }
 
-      const response = await fetch(target, {
+      const response = await requestWithTimeout(target, {
         method,
         headers,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-        signal: controller.signal
+        bodyText,
+        timeoutMs,
+        lookup: localHttp ? undefined : createPrivateNetworkBlockingLookup({ lookupFn: options.lookupFn })
       });
-      clearTimeout(timer);
 
-      const text = await response.text();
       let parsed = null;
-      if (text) {
+      if (response.text) {
         try {
-          parsed = JSON.parse(text);
+          parsed = JSON.parse(response.text);
         } catch {
           parsed = null;
         }
@@ -72,9 +155,8 @@ async function requestJson(options) {
       if (response.status >= 500 && attempt < retries) {
         continue;
       }
-      throw new CloudError(message, { status: response.status, details: parsed ?? text });
+      throw new CloudError(message, { status: response.status, details: parsed ?? response.text });
     } catch (error) {
-      clearTimeout(timer);
       if (error instanceof CloudError) {
         throw error;
       }
@@ -106,7 +188,8 @@ async function verifyApiKey(options = {}) {
       apiKey
     },
     timeoutMs: options.timeoutMs ?? 4000,
-    retries: options.retries ?? 0
+    retries: options.retries ?? 0,
+    lookupFn: options.lookupFn
   });
 }
 
@@ -118,7 +201,8 @@ async function requestAiDrift(options = {}) {
     apiKey: options.apiKey,
     body: options.payload,
     timeoutMs: options.timeoutMs ?? 8000,
-    retries: options.retries ?? 1
+    retries: options.retries ?? 1,
+    lookupFn: options.lookupFn
   });
 }
 
@@ -178,7 +262,8 @@ async function pushScoreReport(options = {}) {
     apiKey: options.apiKey,
     body: options.payload,
     timeoutMs: options.timeoutMs ?? 5000,
-    retries: options.retries ?? 1
+    retries: options.retries ?? 1,
+    lookupFn: options.lookupFn
   });
 
   if (!response || typeof response.id !== 'string' || response.id.trim().length === 0) {

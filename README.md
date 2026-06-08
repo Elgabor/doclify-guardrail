@@ -1,258 +1,357 @@
 # Doclify Guardrail
 
-**Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.**
+Doclify Guardrail is a quality gate for Markdown and MDX documentation.
 
-markdownlint tells you if your Markdown is well-formatted. **Doclify tells you if your documentation is healthy.**
-Style + content + links + freshness + score + CI/CD — one single tool.
+It checks structure, readability signals, links, freshness, inline images,
+safe formatting, documentation drift, CI artifacts, and a 0-100 health score.
+Use it locally before a commit, in CI on pull requests, or as a library inside
+your own tooling.
 
-Works everywhere Node.js 20+ runs.
+Works anywhere Node.js 20+ runs.
+
+## What It Does
+
+Doclify is useful when you want documentation to be publishable, not just valid
+Markdown.
+
+| Need | Doclify feature |
+|------|-----------------|
+| Find broken docs before release | `doclify docs/ --strict` |
+| Scan only changed docs | `doclify --diff` or `doclify --staged` |
+| Catch broken local and remote links | `--check-links` |
+| Catch stale pages | `--check-freshness` |
+| Keep a minimum quality score | `--min-score 80` |
+| Generate CI artifacts | `--junit`, `--sarif`, `--badge`, `--report` |
+| Fix safe formatting problems | `--fix` and `--dry-run` |
+| Suppress known false positives | Inline `doclify-disable` comments |
+| Track docs quality over time | `--track`, `--trend`, `--fail-on-regression` |
+| Check docs after code changes | `--ai-drift` or `doclify ai drift` |
+| Use it from JavaScript | `import { lint, fix, score }` |
 
 ## Why Doclify
 
-| | Doclify | markdownlint |
-|--|---------|-------------|
+Doclify overlaps with Markdown linters, but it is focused on documentation
+health and CI release gates.
+
+| Feature | Doclify | markdownlint |
+|---------|---------|--------------|
 | Built-in rules | 35 total | 59 |
-| Content checks | placeholders, headings, images | No |
-| Dead link checker | Built-in (`--check-links`) | No |
-| Doc freshness | Built-in (`--check-freshness`) | No |
-| Health score | 0-100 per file + average | No |
-| Auto-fix | 14 fixers (style + semantic) | 31 (style only) |
-| Git diff mode | Built-in (`--diff`, `--staged`) | No |
-| Watch mode | Built-in (`--watch`) | No |
-| Quality gate | `--min-score` + `--strict` | No |
-| Programmatic API | `import { lint, fix, score }` | No |
-| Score trending | Built-in (`--track`, `--trend`) | No |
-| Regression gate | Built-in (`--fail-on-regression`) | No |
-| GitHub Action | Built-in (`action/`) | Plugin |
-| SARIF / JUnit / Badge | Built-in | Plugins |
-| Dependencies | **Zero** | 50+ |
-| Inline suppressions | `disable-next-line`, `disable/enable`, `disable-file` | `disable/enable` |
+| Content checks | Headings, images, unfinished text, links | No |
+| Dead link checker | Built in with `--check-links` | No |
+| Freshness check | Built in with `--check-freshness` | No |
+| Health score | 0-100 per file and average | No |
+| Auto-fix | 14 safe fixers | 31 style fixers |
+| Git diff mode | `--diff`, `--staged` | No |
+| Watch mode | `--watch` | No |
+| CI quality gate | `--strict`, `--min-score`, reports | No |
+| Programmatic API | `lint`, `fix`, `score`, `RULE_CATALOG` | No |
+| Score trending | `--track`, `--trend` | No |
+| Regression gate | `--fail-on-regression` | No |
+| GitHub Action | Built in under `action/` | Plugin |
+| SARIF, JUnit, badge | Built in | Plugins |
+| Runtime dependencies | Zero in the npm package | 50+ |
+| Inline suppressions | Line, block, and file scope | Block scope |
 
 ## Quick Start
 
+Run a one-off scan:
+
 ```bash
-# Install globally
-npm install -g doclify-guardrail
-
-# Or use directly with npx
 npx doclify-guardrail README.md
+```
 
-# Scan an entire directory
+Install the CLI if you use it often:
+
+```bash
+npm install -g doclify-guardrail
 doclify docs/
+```
 
-# Strict mode (warnings = failure)
-doclify docs/ --strict
+Run a release-style check:
 
-# Check dead links + freshness
-doclify docs/ --check-links --check-freshness
+```bash
+doclify docs/ --strict --check-links --check-freshness --min-score 80
+```
 
-# Auto-fix all safe issues
-doclify docs/ --fix
+Preview safe fixes:
 
-# Preview fixes without writing
+```bash
 doclify docs/ --fix --dry-run
+```
 
-# CI pipeline: strict + JUnit + SARIF + badge
-doclify docs/ --strict --junit --sarif --badge
+Apply safe fixes:
 
-# Git diff mode: scan only changed files
-doclify --diff --staged --strict
+```bash
+doclify docs/ --fix
+```
 
-# Quality gate: fail if score below 80
-doclify docs/ --min-score 80
+Generate CI artifacts:
 
-# Push score to Doclify Cloud
-doclify docs/ --push --project-id my-project
+```bash
+doclify docs/ --strict --junit --sarif --badge --report --ascii
+```
 
-# Watch mode: re-scan on file changes
-doclify docs/ --watch
+Output JSON for another tool:
 
-# Compact output (one line per finding)
-doclify docs/ --format compact
-
-# Track score history
-doclify docs/ --track
-
-# Show score trend graph
-doclify --trend
-
-# Fail if score dropped
-doclify docs/ --fail-on-regression
-
-# Verify a Doclify Cloud API key
-doclify login --key doclify_live_xxx
-
-# Run Drift Guard offline on repo docs
-doclify ai drift docs/ --diff --json
-
-# Embed Drift Guard in the standard scan
-doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
-
-# JSON output for tooling
+```bash
 doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
 
-## Repository Examples
+## Common Workflows
 
-After cloning this repository, you can use the three public examples under `examples/`:
+### Scan a Project
 
-- [`examples/clean.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/clean.md) — a clean document with frontmatter
-- [`examples/with-warnings.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/with-warnings.md) — warning-heavy sample
-- [`examples/with-errors.md`](https://github.com/Elgabor/doclify-guardrail/blob/main/examples/with-errors.md) — failing sample
+Use a path to scan a file, directory, or glob target:
 
 ```bash
-# Clean example
+doclify README.md
+doclify docs/
+doclify "docs/**/*.mdx"
+```
+
+If no target is provided, Doclify scans the current directory.
+
+### Scan Only Changed Docs
+
+Use diff mode in pull requests or pre-commit hooks:
+
+```bash
+doclify --diff --base origin/main --strict
+doclify --staged --strict --ascii
+```
+
+When no Markdown or MDX files changed, diff mode exits successfully.
+
+### Fix Safe Issues
+
+Use `--dry-run` first when you want to see what would change:
+
+```bash
+doclify docs/ --fix --dry-run
+doclify docs/ --fix
+```
+
+Doclify skips code blocks and inline code for the format fixes that could
+change examples.
+
+### Check Links
+
+Enable link checks only when you want local and remote link validation:
+
+```bash
+doclify docs/ --check-links
+doclify docs/ --check-links --site-root .
+doclify docs/ --check-links --link-allow-list example.com,localhost
+```
+
+Remote link checks block private, loopback, link-local, and metadata network
+targets by default. Use `--allow-private-links` only in trusted local networks.
+
+Root-relative links such as `/docs/page.md` need `--site-root` or `siteRoot`.
+Without that root, Doclify reports `unverifiable-root-relative-link` instead of
+guessing and producing a false broken-link result.
+
+### Check Freshness and Frontmatter
+
+Freshness checks look for frontmatter dates such as `updated: YYYY-MM-DD`.
+
+```bash
+doclify docs/ --check-freshness
+doclify docs/ --check-freshness --freshness-max-days 90
+doclify docs/ --check-frontmatter
+```
+
+`--check-frontmatter` is opt-in because not every documentation set uses
+frontmatter.
+
+### Use a Quality Gate
+
+Use `--strict` to make warnings fail the command. Use `--min-score` to fail on
+low average health even if you do not want strict mode.
+
+```bash
+doclify docs/ --strict
+doclify docs/ --min-score 80
+doclify docs/ --strict --min-score 85
+```
+
+Exit code `1` means the gate failed.
+
+### Track Score History
+
+Use tracking when you want CI to catch score regressions:
+
+```bash
+doclify docs/ --track
+doclify --trend
+doclify docs/ --fail-on-regression
+```
+
+History is saved in `.doclify-history.json`.
+
+### Run Drift Guard
+
+Drift Guard compares changed code or configuration with candidate docs.
+
+```bash
+doclify ai drift docs/ --diff --json
+doclify docs/ --ai-drift --fail-on-drift high --fail-on-drift-scope unmodified
+```
+
+Use `--ai-mode offline` for local heuristic analysis. Use `--ai-mode cloud`
+only when you have configured Doclify Cloud credentials.
+
+### Push Scores to Doclify Cloud
+
+Cloud push is opt-in.
+
+```bash
+doclify login --key doclify_live_sample_key
+doclify whoami
+doclify docs/ --push --project-id my-project
+doclify logout
+```
+
+You can also provide `DOCLIFY_TOKEN`, `DOCLIFY_PROJECT_ID`, `--token`, and
+`--project-id` in CI. Debug output redacts secret-like values.
+
+## Repository Examples
+
+After cloning this repository, try the public examples:
+
+- `examples/clean.md`: a clean document with frontmatter.
+- `examples/with-warnings.md`: a warning-heavy sample.
+- `examples/with-errors.md`: a failing sample.
+
+```bash
 doclify examples/clean.md --strict --check-frontmatter
-
-# Warnings without failing the run
 doclify examples/with-warnings.md
-
-# Failing example in strict mode
 doclify examples/with-errors.md --strict
 ```
 
-## Usage
+## CLI Reference
+
+The canonical command is `doclify`. The compatibility binary
+`doclify-guardrail` runs the same CLI.
 
 ```bash
-doclify <file.md|file.mdx ...> [options]
+doclify [files...] [options]
 doclify --dir <path> [options]
+doclify login --key <apiKey>
+doclify whoami
+doclify ai drift [target] [options]
 ```
 
-If no files are specified, scans the current directory.
+### Scan Options
 
-### CLI Reference
+| Flag | Meaning |
+|------|---------|
+| `--dir <path>` | Scan `.md` and `.mdx` files recursively in a directory. |
+| `--diff` | Scan git-changed `.md` and `.mdx` files. Default base is `HEAD`. |
+| `--base <ref>` | Base git ref for `--diff`. |
+| `--staged` | Scan only staged `.md` and `.mdx` files. |
+| `--strict` | Treat warnings as failures. |
+| `--min-score <n>` | Fail if the average health score is below `n`. |
+| `--max-line-length <n>` | Set the line length rule. Default is `160`. |
+| `--config <path>` | Use a config file. Default is `.doclify-guardrail.json`. |
+| `--rules <path>` | Load custom regex rules from JSON. |
+| `--ignore-rules <list>` | Disable comma-separated rule ids. |
+| `--exclude <list>` | Exclude comma-separated files or patterns. |
 
-#### Scan
+### Check Options
 
-| Flag | Description |
-|------|-------------|
-| `--dir <path>` | Scan `.md` and `.mdx` files recursively in directory |
-| `--diff` | Only scan git-changed `.md` and `.mdx` files (vs HEAD) |
-| `--base <ref>` | Base git ref for `--diff` (default: HEAD) |
-| `--staged` | Only scan git-staged `.md` and `.mdx` files |
-| `--strict` | Treat warnings as errors |
-| `--min-score <n>` | Fail if health score is below n (0-100) |
-| `--max-line-length <n>` | Max line length (default: 160) |
-| `--config <path>` | Config file (default: `.doclify-guardrail.json`) |
-| `--rules <path>` | Custom regex rules from JSON file |
-| `--ignore-rules <list>` | Disable rules (comma-separated) |
-| `--exclude <list>` | Exclude files/patterns (comma-separated) |
+| Flag | Meaning |
+|------|---------|
+| `--check-links` | Validate HTTP links and local file links. |
+| `--allow-private-links` | Allow private, loopback, and link-local remote link checks. |
+| `--check-freshness` | Warn when docs are stale, missing a freshness date, or use invalid dates. |
+| `--freshness-max-days <n>` | Set the freshness age limit. Default is `180`. |
+| `--check-frontmatter` | Require a YAML frontmatter block. |
+| `--check-inline-html` | Enable the inline HTML warning rule. |
+| `--site-root <path>` | Resolve root-relative local links from this filesystem root. |
+| `--link-allow-list <list>` | Skip comma-separated URLs or domains during link checks. |
+| `--link-timeout-ms <n>` | Timeout per remote link check. Default is `8000`. |
+| `--link-concurrency <n>` | Remote link checks in parallel. Default is `5`. |
+| `--ai-drift` | Run Drift Guard during the normal scan. |
+| `--ai-mode <mode>` | Drift mode: `offline` or `cloud`. |
+| `--fail-on-drift <level>` | Fail when drift risk reaches `high` or `medium`. |
+| `--fail-on-drift-scope <scope>` | Gate `unmodified` docs or `all` docs. Default is `unmodified`. |
+| `--api-url <url>` | Override the Doclify Cloud API base URL. |
+| `--token <apiKey>` | Use a Doclify Cloud key for this run. |
+| `--push` | Push the score summary to Doclify Cloud. |
+| `--project-id <id>` | Set the Cloud project id for score push. |
 
-#### Checks
+### Fix Options
 
-| Flag | Description |
-|------|-------------|
-| `--check-links` | Validate HTTP and local links |
-| `--allow-private-links` | Allow private/loopback/link-local remote link checks (opt-in) |
-| `--check-freshness` | Warn on stale docs (>180 days) |
-| `--freshness-max-days <n>` | Max age threshold for freshness check (default: 180) |
-| `--check-frontmatter` | Require YAML frontmatter block |
-| `--check-inline-html` | Enable `no-inline-html` rule |
-| `--site-root <path>` | Resolve `/root-relative` local links from this filesystem root |
-| `--link-allow-list <list>` | Skip URLs/domains for link checks (comma-separated) |
-| `--link-timeout-ms <n>` | Timeout per remote link check (default: 8000) |
-| `--link-concurrency <n>` | Parallel remote link checks (default: 5) |
-| `--ai-drift` | Run Drift Guard against changed code/config files |
-| `--ai-mode <mode>` | Drift Guard mode: `offline`, `cloud` |
-| `--fail-on-drift <level>` | Fail if drift risk reaches `high` or `medium` |
-| `--fail-on-drift-scope <scope>` | Drift gate scope: `unmodified` (default) or `all` |
-| `--push` | Push score summary to Doclify Cloud (opt-in) |
-| `--project-id <id>` | Set cloud project id for score push |
-| `--api-url <url>` | Override Doclify Cloud API base URL |
-| `--token <apiKey>` | Override Doclify Cloud API key for this run |
+| Flag | Meaning |
+|------|---------|
+| `--fix` | Apply safe fixes in place. |
+| `--dry-run` | Preview fixes without writing. Requires `--fix`. |
 
-Remote link checks are SSRF-hardened by default:
-private, loopback, link-local and metadata destinations are blocked,
-including redirects to them.
-Use `--allow-private-links` only in trusted environments.
+### Output Options
 
-#### Fix
+| Flag | Meaning |
+|------|---------|
+| `--report [path]` | Write a Markdown report. Default is `doclify-report.md`. |
+| `--junit [path]` | Write a JUnit XML report. Default is `doclify-junit.xml`. |
+| `--sarif [path]` | Write a SARIF v2.1.0 report. Default is `doclify.sarif`. |
+| `--badge [path]` | Write an SVG health badge. Default is `doclify-badge.svg`. |
+| `--badge-label <text>` | Set the badge label. Default is `docs health`. |
+| `--json` | Print raw JSON to stdout. |
+| `--format <mode>` | Output mode: `default` or `compact`. |
 
-| Flag | Description |
-|------|-------------|
-| `--fix` | Auto-fix safe issues (see Auto-fix section) |
-| `--dry-run` | Preview fixes without writing (requires `--fix`) |
+### Setup Commands
 
-#### Output
+| Command | Meaning |
+|---------|---------|
+| `init` | Generate `.doclify-guardrail.json`. |
+| `init --force` | Replace an existing config file. |
+| `login --key <apiKey>` | Verify and persist a Doclify Cloud key. |
+| `whoami` | Show the stored Doclify Cloud identity. |
+| `logout` | Remove locally stored Doclify Cloud credentials. |
 
-| Flag | Description |
-|------|-------------|
-| `--report [path]` | Markdown report (default: `doclify-report.md`) |
-| `--junit [path]` | JUnit XML report (default: `doclify-junit.xml`) |
-| `--sarif [path]` | SARIF v2.1.0 report (default: `doclify.sarif`) |
-| `--badge [path]` | SVG health badge (default: `doclify-badge.svg`) |
-| `--badge-label <text>` | Badge label (default: `docs health`) |
-| `--json` | Output raw JSON to stdout |
-| `--format <mode>` | Output format: `default`, `compact` |
+### Other Options
 
-#### Setup
+| Flag | Meaning |
+|------|---------|
+| `--watch` | Watch for file changes and re-scan. |
+| `--track` | Save score history to `.doclify-history.json`. |
+| `--trend` | Show an ASCII score trend graph. |
+| `--fail-on-regression` | Fail if the score dropped from the last tracked run. |
+| `--list-rules` | List all 35 built-in rules. |
+| `--no-color` | Disable colored terminal output. |
+| `--ascii` | Use ASCII icons for CI logs without UTF-8 support. |
+| `--debug` | Show debug information with secrets redacted. |
+| `-h`, `--help` | Show CLI help. |
 
-| Flag | Description |
-|------|-------------|
-| `init` | Generate a `.doclify-guardrail.json` config |
-| `init --force` | Overwrite existing config |
-| `login --key <apiKey>` | Verify and persist a Doclify Cloud API key |
-| `whoami` | Show stored Doclify Cloud identity |
-| `logout` | Remove locally stored Doclify Cloud API key |
+### AI Commands
 
-#### Other
+| Command | Meaning |
+|---------|---------|
+| `ai drift [target]` | Run Drift Guard on candidate docs. |
+| `ai drift --mode cloud` | Send drift analysis to Doclify Cloud. |
+| `ai memory export` | Export the current local repo memory snapshot. |
 
-| Flag | Description |
-|------|-------------|
-| `--watch` | Watch for file changes and re-scan |
-| `--track` | Save score to `.doclify-history.json` |
-| `--trend` | Show ASCII score trend graph |
-| `--fail-on-regression` | Fail if score dropped vs last tracked run |
-| `--list-rules` | List all built-in rules |
-| `--no-color` | Disable colored output |
-| `--ascii` | Use ASCII icons for CI without UTF-8 |
-| `--debug` | Show debug info |
-| `-h, --help` | Show help |
-
-#### AI
-
-| Command | Description |
-|---------|-------------|
-| `ai drift [target]` | Run Drift Guard on candidate docs |
-| `ai drift --mode cloud` | Send drift analysis to Doclify Cloud |
-| `ai memory export` | Export the local repo memory snapshot |
-
-`ai fix`, `ai prioritize` and `ai coverage` are not available yet and return an explicit roadmap hint.
+`ai fix`, `ai prioritize`, and `ai coverage` are reserved roadmap commands.
+They currently return an explicit "not available yet" message.
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | PASS — all files clean |
-| `1` | FAIL — errors found, or warnings in strict mode |
-| `2` | Usage error / invalid input |
-
-## JSON Output v2
-
-`--json` now emits `schemaVersion: 2` with stable backward compatibility for:
-
-- `summary.healthScore`
-- `summary.avgHealthScore`
-- `files[]`
-
-New machine-readable fields:
-
-- `scanId`
-- `repo`
-- `timings`
-- `engine.mode`
-- `engine.features`
-- `ai`
+| `0` | Pass. |
+| `1` | Findings failed the gate, or warnings failed in strict mode. |
+| `2` | Usage error or invalid input. |
 
 ## Configuration
 
-Generate a config file:
+Generate the default config:
 
 ```bash
 doclify init
 ```
 
-This creates `.doclify-guardrail.json`:
+The generated `.doclify-guardrail.json` looks like this:
 
 ```json
 {
@@ -274,167 +373,142 @@ This creates `.doclify-guardrail.json`:
 }
 ```
 
-CLI flags override config file values. `DOCLIFY_PROJECT_ID` env var is supported as an alternative to `--project-id`.
-Arrays (`exclude`, `ignoreRules`, `linkAllowList`) are merged.
-Root-relative local links (`/docs/page.md`) require `siteRoot`
-to be verified; otherwise Doclify emits
-`unverifiable-root-relative-link`.
-If a root-relative route does not map cleanly to a source file under
-`siteRoot`, Doclify also keeps it as `unverifiable-root-relative-link`
-instead of reporting a false `dead-link`.
+CLI flags override scalar config values. Arrays such as `exclude`,
+`ignoreRules`, and `linkAllowList` are merged.
+
+You can place `.doclify-guardrail.json` files in subdirectories. Parent configs
+are loaded first, then child configs override or extend them.
+
+```text
+project/
+  .doclify-guardrail.json
+  docs/
+    .doclify-guardrail.json
+    api/
+      .doclify-guardrail.json
+```
+
+Root-relative local links, such as `/docs/page.md`, need `siteRoot`. Without
+it, Doclify reports `unverifiable-root-relative-link` instead of guessing.
 
 ## Built-in Rules (35)
 
-### Content Rules
+Rules marked "Opt-in" only run when the matching flag or config value is set.
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| `frontmatter` | warning | Require YAML frontmatter block (opt-in via `--check-frontmatter`) |
-| `single-h1` | error | Exactly one H1 heading per file |
-| `heading-hierarchy` | warning | No skipped heading levels (H2 then H4) |
-| `duplicate-heading` | warning | No duplicate headings at same level |
-| `line-length` | warning | Max line length (default: 160 chars) |
-| `placeholder` | warning | No unfinished-work placeholders left in published docs |
-| `insecure-link` | warning | No `http://` links (use `https://`) |
-| `empty-link` | warning | No empty link text or URL |
-| `img-alt` | warning | Images must have alt text |
-| `dead-link` | error | No broken links (requires `--check-links`) |
-| `unverifiable-root-relative-link` | warning | Root-relative local links need `siteRoot` to be verified |
-| `stale-doc` | warning | Warn on stale, invalid or future docs freshness metadata (requires `--check-freshness`) |
+| Rule | Severity | When it runs | Auto-fix | Meaning |
+|------|----------|--------------|----------|---------|
+| `frontmatter` | warning | Opt-in | No | Require YAML frontmatter. |
+| `single-h1` | error | Always | No | Exactly one H1 per file. |
+| `heading-hierarchy` | warning | Always | No | Do not skip heading levels. |
+| `duplicate-heading` | warning | Always | No | Avoid duplicate headings at the same level. |
+| `line-length` | warning | Always | No | Keep lines under the configured limit. |
+| `placeholder` | warning | Always | No | Remove unfinished-work markers before publishing. |
+| `insecure-link` | warning | Always | Yes | Prefer `https://` links. |
+| `empty-link` | warning | Always | No | Link text and URL must not be empty. |
+| `img-alt` | warning | Always | No | Images need alt text. |
+| `dead-link` | error | `--check-links` | No | Broken local or remote link. |
+| `unverifiable-root-relative-link` | warning | `--check-links` | No | Root-relative link needs `siteRoot`. |
+| `stale-doc` | warning | `--check-freshness` | No | Missing, invalid, future, or old freshness date. |
+| `no-trailing-spaces` | warning | Always | Yes | Remove trailing whitespace. |
+| `no-multiple-blanks` | warning | Always | Yes | Collapse repeated blank lines. |
+| `single-trailing-newline` | warning | Always | Yes | End files with one newline. |
+| `no-missing-space-atx` | warning | Always | Yes | Require a space after heading markers. |
+| `heading-start-left` | warning | Always | Yes | Do not indent headings. |
+| `no-trailing-punctuation-heading` | warning | Always | Yes | Remove punctuation at the end of headings. |
+| `blanks-around-headings` | warning | Always | Yes | Add blank lines around headings. |
+| `blanks-around-lists` | warning | Always | Yes | Add blank lines around lists. |
+| `blanks-around-fences` | warning | Always | Yes | Add blank lines around fenced code blocks. |
+| `fenced-code-language` | warning | Always | No | Fenced code blocks should name a language. |
+| `no-bare-urls` | warning | Always | Yes | Wrap bare URLs in angle brackets. |
+| `no-reversed-links` | warning | Always | Yes | Fix reversed Markdown link syntax. |
+| `no-space-in-emphasis` | warning | Always | Yes | Remove spaces inside emphasis markers. |
+| `no-space-in-links` | warning | Always | Yes | Remove spaces inside link brackets and URLs. |
+| `no-inline-html` | warning | Opt-in | No | Warn on inline HTML. |
+| `no-empty-sections` | warning | Always | No | Headings should have content. |
+| `heading-increment` | warning | Always | No | Heading levels should move one level at a time. |
+| `no-duplicate-links` | warning | Always | No | Avoid repeating the same link in one section. |
+| `list-marker-consistency` | warning | Always | No | Use consistent list markers. |
+| `link-title-style` | warning | Always | No | Use consistent quote style for link titles. |
+| `dangling-reference-link` | warning | Always | No | Reference links need matching definitions. |
+| `broken-local-anchor` | warning | Always | No | Local heading anchors must exist. |
+| `duplicate-section-intent` | warning | Always | No | Avoid near-duplicate section headings. |
 
-### Style Rules (new in v1.4)
+All semantic and style rules ignore fenced code blocks and inline code where
+changing or flagging examples would be misleading. The `line-length` rule checks
+raw lines.
 
-| Rule | Severity | Auto-fix |
-|------|----------|----------|
-| `no-trailing-spaces` | warning | Yes |
-| `no-multiple-blanks` | warning | Yes |
-| `single-trailing-newline` | warning | Yes |
-| `no-missing-space-atx` | warning | Yes |
-| `heading-start-left` | warning | Yes |
-| `no-trailing-punctuation-heading` | warning | Yes |
-| `blanks-around-headings` | warning | Yes |
-| `blanks-around-lists` | warning | Yes |
-| `blanks-around-fences` | warning | Yes |
-| `fenced-code-language` | warning | No |
-| `no-bare-urls` | warning | Yes (wraps in `<>`) |
-| `no-reversed-links` | warning | Yes |
-| `no-space-in-emphasis` | warning | Yes |
-| `no-space-in-links` | warning | Yes |
-| `no-inline-html` | warning | No (opt-in via `--check-inline-html`) |
-| `no-empty-sections` | warning | No |
-| `heading-increment` | warning | No |
-| `no-duplicate-links` | warning | No |
-| `list-marker-consistency` | warning | No |
-| `link-title-style` | warning | No |
-| `dangling-reference-link` | warning | No |
-| `broken-local-anchor` | warning | No |
-| `duplicate-section-intent` | warning | No |
+## Auto-fix Reference
 
-All semantic/style rules respect code block exclusion (fenced + inline code). `line-length` intentionally checks raw lines, including code blocks.
+`doclify --fix` applies 14 safe fixes:
 
-## Auto-fix
+| Fix | Result |
+|-----|--------|
+| Insecure links | Changes clear `http://` links to `https://`. |
+| Trailing spaces | Removes trailing whitespace. |
+| Multiple blank lines | Collapses repeated blank lines. |
+| Missing heading space | Changes `#Heading` to `# Heading`. |
+| Indented heading | Moves headings to the left edge. |
+| Heading punctuation | Removes trailing `.`, `:`, `;`, `!`, and `,`. |
+| Heading spacing | Adds blank lines around headings. |
+| List spacing | Adds blank lines around lists. |
+| Fence spacing | Adds blank lines around fenced code blocks. |
+| Bare URLs | Wraps URLs in `<url>`. |
+| Reversed links | Changes `(text)[url]` to `[text](url)`. |
+| Emphasis spacing | Changes `** bold **` to `**bold**`. |
+| Link spacing | Changes `[ text ]( url )` to `[text](url)`. |
+| Final newline | Keeps exactly one trailing newline. |
 
-`doclify --fix` applies 14 safe auto-fixes in a single pass:
+Ambiguous `http://` URLs, such as localhost or custom-port URLs, are not
+rewritten automatically.
 
-| Fix | What it does |
-|-----|-------------|
-| `http://` to `https://` | Upgrades insecure links (skips localhost/custom ports) |
-| Trailing spaces | Removes trailing whitespace |
-| Multiple blank lines | Collapses to a single blank line |
-| Missing space in heading | `#Heading` becomes `# Heading` |
-| Indented heading | Removes leading whitespace |
-| Trailing punctuation in heading | Removes `.` `:` `;` `!` `,` |
-| Blanks around headings | Ensures blank line before/after |
-| Blanks around lists | Ensures blank line before/after |
-| Blanks around fences | Ensures blank line before/after |
-| Bare URLs | Wraps in `<url>` |
-| Reversed links | `(text)[url]` becomes `[text](url)` |
-| Emphasis spacing | `** bold **` becomes `**bold**` |
-| Link spacing | `[ text ]( url )` becomes `[text](url)` |
-| Trailing newline | Ensures file ends with exactly one `\n` |
+## Suppressions
 
-```bash
-# Fix all files in place
-doclify docs/ --fix
-
-# Preview changes without writing
-doclify docs/ --fix --dry-run
-```
-
-## Inline Suppressions
-
-Suppress specific rules per-line, per-block, or per-file:
+Use suppressions when a finding is intentional.
 
 ```markdown
 <!-- doclify-disable-next-line placeholder -->
-This has a TODO that won't be flagged.
+This line can keep its marker.
 
 <!-- doclify-disable placeholder,line-length -->
-This section is suppressed.
+This block is ignored for the listed rules.
 <!-- doclify-enable placeholder,line-length -->
 
-<!-- doclify-disable-file placeholder -->
-This entire file ignores placeholder warnings.
+<!-- doclify-disable-file line-length -->
+The whole file ignores one rule.
 ```
 
-## Git Diff Mode
+When no rule id is provided, the suppression applies to all rules in that
+scope.
 
-Scan only files changed in git, perfect for pre-commit hooks and CI on pull requests:
+## JSON Output
+
+Use `--json` when another tool needs structured results.
 
 ```bash
-# Scan files changed vs HEAD
-doclify --diff
-
-# Scan files changed vs a specific branch
-doclify --diff --base main
-
-# Scan only staged files (pre-commit hook)
-doclify --staged --strict --ascii
+doclify docs/ --json 2>/dev/null | jq '.summary'
 ```
 
-## Watch Mode
+The JSON envelope uses schema version 2 and includes:
 
-Monitor files and re-scan automatically on save:
+- `schemaVersion`
+- `scanId`
+- `repo`
+- `summary`
+- `files`
+- `timings`
+- `engine`
+- `ai`, when Drift Guard is enabled
 
-```bash
-doclify docs/ --watch --strict
-```
+Important score fields:
 
-Watch mode re-runs the canonical scan pipeline on each relevant change with a 300ms debounce.
-That means `--watch` now honors the same fix, link, freshness and strict semantics as a normal scan.
-
-## Quality Gate
-
-Fail the scan if the health score drops below a threshold:
-
-```bash
-doclify docs/ --min-score 80 --strict
-```
-
-Exit code 1 if the average health score is below 80.
-
-## Score Trending
-
-Track your documentation quality over time:
-
-```bash
-# Save score after each run
-doclify docs/ --track
-
-# View ASCII trend graph
-doclify --trend
-
-# Fail CI if score dropped vs last tracked run
-doclify docs/ --fail-on-regression
-```
-
-Score history is saved to `.doclify-history.json` in the current directory.
-Each entry records date, commit hash, average score, errors, warnings,
-and files scanned.
+- `summary.healthScore`
+- `summary.avgHealthScore`
+- `files[].healthScore`
 
 ## GitHub Action
 
-Use the built-in GitHub Action for automated quality gates on pull requests:
+Use the bundled action when you want PR comments, outputs, and SARIF in one
+step.
 
 ```yaml
 name: Docs Quality Gate
@@ -449,17 +523,17 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
 
       - name: Run Doclify
         uses: Elgabor/doclify-guardrail/action@v1
         with:
           path: 'docs/'
-          strict: 'false'
-          min-score: '70'
-          push: 'true'
-          project-id: 'my-project'
-          doclify-token: ${{ secrets.DOCLIFY_TOKEN }}
+          strict: 'true'
+          min-score: '80'
+          check-links: 'true'
           sarif: 'true'
           pr-comment: 'true'
 
@@ -470,116 +544,80 @@ jobs:
           sarif_file: doclify.sarif
 ```
 
-The action automatically:
+The action runs on `node24`. The npm package still supports Node.js 20+.
 
-- Posts a quality report comment on the PR with file scores
-- Generates SARIF for GitHub Code Scanning
-- Sets outputs: `score`, `status`, `errors`, `warnings`
+### Action Inputs
 
-`path` accepts a single file, directory or glob target.
-Multiline lists are rejected explicitly to keep the contract deterministic.
+All action inputs are strings because GitHub passes action inputs as strings.
 
-The action contract lives in `action/action.yml`.
-GitHub executes the committed `action/dist/index.mjs`,
-which resolves the CLI from both source and bundled layouts through `action/entrypoint.mjs`
-and can upsert PR comments via `action/pr-comment.mjs`.
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `path` | `.` | File, directory, or glob to scan. Multiline lists are rejected. |
+| `strict` | `false` | Treat warnings as failures. |
+| `min-score` | empty | Fail below this average health score. |
+| `check-links` | `false` | Validate HTTP and local links. |
+| `check-freshness` | `false` | Check frontmatter freshness dates. |
+| `check-frontmatter` | `false` | Require frontmatter. |
+| `ai-drift` | `false` | Run Drift Guard with the scan. |
+| `ai-mode` | `offline` | Drift mode: `offline` or `cloud`. |
+| `fail-on-drift` | empty | Fail on `high` or `medium` drift risk. |
+| `fail-on-drift-scope` | `unmodified` | Gate `unmodified` docs or `all` docs. |
+| `api-url` | empty | Override Doclify Cloud API base URL. |
+| `doclify-token` | empty | Doclify Cloud API key. Masked by the action. |
+| `push` | `false` | Push score summary to Doclify Cloud. |
+| `project-id` | empty | Cloud project id used for score push. |
+| `format` | `compact` | CLI output format: `default` or `compact`. |
+| `sarif` | `true` | Generate SARIF. |
+| `sarif-file` | `doclify.sarif` | SARIF output path. |
+| `pr-comment` | `true` | Post or update a PR comment. |
+| `token` | `${{ github.token }}` | GitHub token for PR comments. |
 
-Tag policy for the action:
+### Action Outputs
 
-- Use `@v1` for the supported floating major tag
-- Use an immutable `@v1.x.y` tag when you want an exact release
-- Do not rely on undocumented minor tags such as `@v1.7`
+| Output | Meaning |
+|--------|---------|
+| `score` | Average health score. |
+| `status` | `PASS` or `FAIL`. |
+| `errors` | Total error count. |
+| `warnings` | Total warning count. |
 
-## Programmatic API
+### Action Tags
 
-Use doclify as a library in your own tools:
+- Use `@v1` for the supported floating major tag.
+- Use an immutable `@v1.x.y` tag when you want an exact release.
+- Do not rely on undocumented minor tags such as `@v1.7`.
 
-```javascript
-import { lint, fix, score, RULE_CATALOG } from 'doclify-guardrail/api';
+The action contract lives in `action/action.yml`. GitHub executes the committed
+`action/dist/index.mjs` bundle.
 
-const result = lint('# Hello\n\nWorld\n');
-// { errors: [], warnings: [], healthScore: 100, pass: true }
+## Manual CI Recipes
 
-const fixed = fix('##Bad heading\n\nContent.  \n');
-// { content: '## Bad heading\n\nContent.\n', modified: true, changes: [...] }
+### GitHub Workflow With Npx
 
-const s = score({ errors: 0, warnings: 3 });
-// 89
-```
-
-## Hierarchical Config
-
-Place `.doclify-guardrail.json` in subdirectories for local overrides. Child configs merge with parent configs:
-
-```text
-project/
-  .doclify-guardrail.json      (base config)
-  docs/
-    .doclify-guardrail.json    (overrides for docs/)
-    api/
-      .doclify-guardrail.json  (overrides for docs/api/)
-```
-
-Arrays (`ignoreRules`, `exclude`, `linkAllowList`) are merged. Scalar values are overridden.
-
-## Doc Health Score
-
-Each file gets a health score from 0 to 100. The formula uses diminishing returns for warnings:
-
-```text
-errorPenalty  = errors * 20
-warningPenalty = 5 * sqrt(warnings) + warnings * 2
-score = max(0, 100 - errorPenalty - warningPenalty)
-```
-
-Example: 0 errors + 13 warnings = 54/100.
-
-Access via JSON output: `summary.healthScore` per file, `summary.avgHealthScore` overall.
-CI-facing outputs (badge/report/action summary) reuse these canonical score fields instead of recomputing from aggregate totals.
-
-## Custom Rules
-
-Define regex-based rules in a JSON file:
-
-```json
-{
-  "rules": [
-    {
-      "id": "no-internal-urls",
-      "severity": "error",
-      "pattern": "https://internal\\.company\\.com",
-      "message": "Internal URL found — remove before publishing"
-    }
-  ]
-}
-```
-
-```bash
-doclify docs/ --rules my-rules.json
-```
-
-Custom rules are applied after built-in rules and respect code block exclusion.
-
-## CI Integration
-
-### GitHub Actions (recommended: use the built-in action)
-
-See the [GitHub Action](#github-action) section above for the recommended approach with PR comments and SARIF upload.
-
-For manual setup with `npx`:
+Use this when you do not need PR comments from the bundled action.
 
 ```yaml
-name: Docs Quality Gate
+name: Docs Check
 on: [push, pull_request]
+
 jobs:
   docs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5.0.0
         with:
           node-version: 20
+
       - run: npx doclify-guardrail docs/ --strict --junit --sarif --badge --ascii
+
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -601,92 +639,120 @@ docs-check:
 ### Pre-commit Hook
 
 ```bash
-# .husky/pre-commit or .git/hooks/pre-commit
 npx doclify-guardrail $(git diff --cached --name-only --diff-filter=AM -- '*.md' '*.mdx') --strict --ascii
 ```
 
-## Testing on Another Repository
+## Programmatic API
 
-You can test doclify-guardrail against any project with Markdown or MDX files:
+Import the API from `doclify-guardrail/api`.
 
-### Quick Test (npx)
+```javascript
+import { lint, fix, score, RULE_CATALOG } from 'doclify-guardrail/api';
 
-```bash
-# Clone a target repo
-git clone https://github.com/some-org/some-project.git /tmp/test-project
+const result = lint('# Hello\n\nWorld\n');
+const fixed = fix('##Bad heading\n\nContent.  \n');
+const currentScore = score({ errors: 0, warnings: 3 });
 
-# Run doclify against it
-npx doclify-guardrail /tmp/test-project/docs/ --strict --check-links
-
-# With full diagnostics
-npx doclify-guardrail /tmp/test-project/ --json 2>/dev/null | jq '.summary'
+console.log(result.pass, fixed.modified, currentScore, RULE_CATALOG.length);
 ```
 
-### Local Development Test
+### `lint(content, options)`
 
-```bash
-# 1. Clone this repo
-git clone https://github.com/Elgabor/doclify-guardrail.git
-cd doclify-guardrail
+Returns:
 
-# 2. Link globally
-npm link
-
-# 3. Run against any project
-cd /path/to/another-project
-doclify docs/ --strict --debug
-
-# 4. Test auto-fix (dry-run first!)
-doclify docs/ --fix --dry-run
-doclify docs/ --fix
-
-# 5. Generate full CI output
-doclify docs/ --strict --junit --sarif --badge --report
+```javascript
+{
+  errors: [],
+  warnings: [],
+  healthScore: 100,
+  pass: true
+}
 ```
 
-### Run the Test Suite
+Supported options include `maxLineLength`, `filePath`, `absoluteFilePath`,
+`checkFrontmatter`, `checkInlineHtml`, `customRules`, `ignoreRules`, and
+`strict`.
 
-```bash
-# Run all tests
-node --test test/guardrail.test.mjs
+### `fix(content)`
 
-# Run with verbose output
-node --test --test-reporter spec
+Returns fixed Markdown content plus a list of changes:
+
+```javascript
+{
+  content: '# Title\n\nContent.\n',
+  modified: true,
+  changes: []
+}
 ```
 
-### Verify All Rules Work
+### `score(counts)`
 
-```bash
-# List all 35 built-in rules
-doclify --list-rules
+Computes the same 0-100 health score used by the CLI.
 
-# Scan with all optional checks enabled
-doclify docs/ --strict --check-links --check-freshness --check-frontmatter --check-inline-html
+```javascript
+score({ errors: 0, warnings: 3 });
 ```
 
-### Reliability Gate
+### `RULE_CATALOG`
+
+Exports the built-in rule metadata used by the CLI and reports.
+
+## Health Score
+
+Each scanned file gets a 0-100 score. Errors are expensive. Warnings use a
+diminishing penalty so one noisy document does not dominate the whole repo.
+
+```text
+errorPenalty = errors * 20
+warningPenalty = 5 * sqrt(warnings) + warnings * 2
+score = max(0, 100 - errorPenalty - warningPenalty)
+```
+
+The average score appears in CLI output, JSON output, reports, badges, and
+GitHub Action outputs.
+
+## Custom Rules
+
+Custom rules are regex-based and loaded from JSON.
+
+```json
+{
+  "rules": [
+    {
+      "id": "no-internal-urls",
+      "severity": "error",
+      "pattern": "https://internal\\.company\\.com",
+      "message": "Internal URL found. Remove it before publishing."
+    }
+  ]
+}
+```
 
 ```bash
-# PR sample gate (fast)
+doclify docs/ --rules custom-rules.json
+```
+
+Custom rules run after built-in rules and respect fenced code block exclusion.
+
+## Development and Verification
+
+Use these commands when working on this repository:
+
+```bash
+npm test
+npm run docs:sync-check
 npm run reliability:pr
-
-# Nightly deterministic gate (full corpus: small+medium+large)
-npm run reliability:nightly:det
-
-# Nightly network gate (network sample subset)
-npm run reliability:nightly:net
-
-# Rebuild baseline files
-npm run reliability:bootstrap
+npm pack --dry-run --json
 ```
 
-Policy summary:
+Action bundle checks:
 
-- `reliability:pr` is the fast gate used on branch and PR changes
-- `reliability:nightly:det` is the full deterministic corpus run
-- `reliability:nightly:net` is the network sample run
-- Baselines live under `bench/baselines/`
-- Reports under `bench/out/` are generated artifacts and are not tracked
+```bash
+cd action
+npm ci --no-audit --no-fund --ignore-scripts
+npm run build
+npm audit --omit=dev
+```
 
 ## Project Architecture
 
@@ -694,48 +760,72 @@ Policy summary:
 .github/
   workflows/       Public CI workflows
 src/
-  index.mjs        CLI orchestrator, arg parsing, main flow
+  index.mjs        CLI parsing, commands, scan orchestration
   checker.mjs      35-rule lint engine + inline suppressions
-  config-resolver.mjs Hierarchical config chain + CLI precedence
-  scan-context.mjs Immutable per-file scan context
-  fences.mjs       Shared fenced-code parsing helpers (0-3 space indent)
-  fixer.mjs        14 auto-fix functions (insecure links + formatting)
-  diff.mjs         Git diff integration (--diff, --staged)
-  trend.mjs        Score history tracking + ASCII trend graph
-  cloud-client.mjs Cloud API client (score push, auth, AI drift)
+  config-resolver.mjs Hierarchical config chain and CLI precedence
+  scan-context.mjs Per-file scan context
+  fences.mjs       Shared fenced-code parsing helpers
+  fixer.mjs        14 auto-fix functions
+  diff.mjs         Git diff integration
+  trend.mjs        Score history tracking and ASCII trend graph
+  cloud-client.mjs Cloud API client for auth, score push, and AI drift
+  network-guard.mjs Private-network guard for remote requests
+  workspace-path.mjs Workspace-contained output path helper
   repo.mjs         Repo fingerprint, branch detection, scan ID
-  api.mjs          Programmatic API (lint, fix, score)
-  links.mjs        Dead link checker (HTTP + local file paths)
-  quality.mjs      Health score + freshness checker
-  colors.mjs       ANSI colors + ASCII mode + compact output
+  api.mjs          Programmatic API
+  links.mjs        HTTP and local link checker
+  quality.mjs      Health score and freshness checker
+  colors.mjs       Terminal colors, ASCII mode, compact output
   ci-output.mjs    JUnit XML, SARIF v2.1.0, SVG badge generators
   report.mjs       Markdown report generator
   glob.mjs         File discovery with glob patterns
   rules-loader.mjs Custom rules JSON loader
 action/
   action.yml       GitHub Action manifest
-  entrypoint.mjs   Action runner (Node.js)
-  pr-comment.mjs   PR comment builder + poster
+  entrypoint.mjs   Action runner
+  pr-comment.mjs   PR comment builder and poster
+  dist/index.mjs   Committed action bundle
 bench/
-  corpus.manifest.json        OSS corpus + profiles + pinned commits
-  reliability-thresholds.json Reliability hard limits
-  waivers.json                Temporary exceptions with expiry
+  corpus.manifest.json        Reliability corpus manifest
+  reliability-thresholds.json Reliability limits
+  waivers.json                Temporary reliability exceptions
 examples/
-  clean.md            Public clean example
-  with-errors.md      Public failing example
-  with-warnings.md    Public warning example
+  clean.md
+  with-errors.md
+  with-warnings.md
 scripts/
-  run-corpus.mjs       Corpus runner + deterministic fingerprinting
-  compare-baseline.mjs Baseline comparator + report generation
+  run-corpus.mjs       Corpus runner
+  compare-baseline.mjs Baseline comparator
 ```
+
+## Security Defaults
+
+- The npm package has zero runtime dependencies.
+- Remote link checks block private, loopback, link-local, and metadata targets unless `--allow-private-links` is used.
+- Cloud API overrides require HTTPS except localhost local testing.
+- Cloud requests and link checks validate connection-time DNS lookups.
+- Report, JUnit, SARIF, and badge output paths are contained inside the current workspace.
+- The GitHub Action masks `doclify-token` and forwards it through environment, not as a CLI argument.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---------|------------|
+| CI fails only on warnings | Remove `--strict`, fix warnings, or suppress intentional findings. |
+| Root-relative links cannot be verified | Set `siteRoot` in config or pass `--site-root .`. |
+| External link checks are flaky | Use `--link-allow-list`, raise `--link-timeout-ms`, or keep network checks advisory. |
+| A private internal link is blocked | Use `--allow-private-links` only in trusted local or CI networks. |
+| A finding is intentional | Add a line, block, or file suppression for the exact rule id. |
+| Cloud commands cannot authenticate | Run `doclify login --key <apiKey>` or set `DOCLIFY_TOKEN`. |
+| JSON output looks empty in a shell pipeline | Remember that human logs go to stderr; redirect stderr when using `jq`. |
 
 ## Public Repo Rules
 
-- The tracked public surface is limited to root metadata files, `.github/`, `action/`, `bench/`, `examples/`, `scripts/`, `src/`, and `test/`
-- Local planning stays under `docs/plans/` and is intentionally gitignored
-- Every public-facing file in the repo stays in English
-- Releases use immutable `v1.x.y` tags; the GitHub Action also maintains a floating `v1` tag
-- `doclify` is the canonical command in public docs; `doclify-guardrail` stays available for compatibility
+- Public docs stay in English.
+- `doclify` is the canonical command in documentation.
+- `doclify-guardrail` remains available as a compatibility binary.
+- Releases use immutable `v1.x.y` tags.
+- The GitHub Action also uses a floating `v1` tag for the supported major version.
 
 ## License
 

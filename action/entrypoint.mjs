@@ -21,10 +21,14 @@ function resolveCliPath() {
   throw new Error(`Unable to locate doclify CLI. Tried: ${candidates.join(', ')}`);
 }
 
-function runDoclifyProcess(cliArgs) {
+function runDoclifyProcess(cliArgs, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, cliArgs, {
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        ...(options.env || {})
+      }
     });
 
     let stdout = '';
@@ -74,6 +78,7 @@ async function run() {
 
     // Build CLI args
     const cliArgs = [CLI, scanPath, '--json', '--ascii'];
+    const childEnv = {};
     if (strict) cliArgs.push('--strict');
     if (minScore) cliArgs.push('--min-score', minScore);
     if (checkLinks) cliArgs.push('--check-links');
@@ -84,7 +89,10 @@ async function run() {
     if (failOnDrift) cliArgs.push('--fail-on-drift', failOnDrift);
     if (failOnDriftScope) cliArgs.push('--fail-on-drift-scope', failOnDriftScope);
     if (apiUrl) cliArgs.push('--api-url', apiUrl);
-    if (doclifyToken) cliArgs.push('--token', doclifyToken);
+    if (doclifyToken) {
+      core.setSecret(doclifyToken);
+      childEnv.DOCLIFY_TOKEN = doclifyToken;
+    }
     if (push) cliArgs.push('--push');
     if (projectId) cliArgs.push('--project-id', projectId);
     if (sarifEnabled) cliArgs.push('--sarif', sarifFile);
@@ -94,7 +102,7 @@ async function run() {
     let output = null;
     let exitCode = 0;
 
-    const proc = await runDoclifyProcess(cliArgs);
+    const proc = await runDoclifyProcess(cliArgs, { env: childEnv });
     exitCode = proc.exitCode;
     if (proc.stdout) {
       try {

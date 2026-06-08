@@ -1,5 +1,8 @@
 name: Reliability Gate
 
+permissions:
+  contents: read
+
 on:
   push:
     paths:
@@ -25,14 +28,16 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5.0.0
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
       - name: Cache corpus checkouts
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: .cache/corpus
           key: ${{ runner.os }}-corpus-pr-${{ hashFiles('bench/corpus.manifest.json') }}
@@ -40,7 +45,7 @@ jobs:
         run: npm run reliability:pr
       - name: Upload reliability artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: reliability-pr-sample
           path: bench/out/**
@@ -49,14 +54,16 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5.0.0
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
       - name: Cache corpus checkouts
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: .cache/corpus
           key: ${{ runner.os }}-corpus-nightly-det-${{ hashFiles('bench/corpus.manifest.json') }}
@@ -64,7 +71,7 @@ jobs:
         run: npm run reliability:nightly:det
       - name: Upload deterministic artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: reliability-nightly-deterministic
           path: bench/out/**
@@ -73,22 +80,25 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5.0.0
         with:
           node-version: '20'
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
       - name: Cache corpus checkouts
-        uses: actions/cache@v4
+        uses: actions/cache@v5.0.5
         with:
           path: .cache/corpus
           key: ${{ runner.os }}-corpus-nightly-net-${{ hashFiles('bench/corpus.manifest.json') }}
-      - name: Run nightly network gate
+      - name: Run nightly network gate (advisory)
+        continue-on-error: true
         run: npm run reliability:nightly:net
       - name: Upload network artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: reliability-nightly-network
           path: bench/out/**

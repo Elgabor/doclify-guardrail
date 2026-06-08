@@ -2,7 +2,27 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [1.7.4] - 2026-06-08
+
+### Security
+
+- reject JUnit, SARIF and badge output paths outside the current workspace
+- require HTTPS for Doclify Cloud API URLs, except localhost/loopback URLs used for local testing
+- block private, loopback, link-local and metadata Cloud API URL targets even when they use HTTPS
+- guard Doclify Cloud API requests at connection lookup time to reduce DNS-rebinding token exfiltration risk
+- guard remote link checks at connection lookup time to reduce DNS-rebinding SSRF risk
+- pass the GitHub Action `doclify-token` to the CLI through `DOCLIFY_TOKEN` instead of argv
+- redact token-like values from `--debug` output
+- escape badge labels before rendering SVG output
+- harden GitHub workflows with read-only token permissions, non-persisted checkout credentials and install-time `--ignore-scripts`
+
+### CI
+
+- move the GitHub Action runtime metadata to Node 24
+- update official workflow actions to Node-24-era major versions older than 14 days
+- update GitHub Action toolkit dependencies and bundled action output
+- align README GitHub Actions examples with the current workflow action majors
+- keep deterministic reliability blocking while making live-network reliability advisory because external link timeouts are not product regressions
 
 ## [1.7.3] - 2026-03-18
 

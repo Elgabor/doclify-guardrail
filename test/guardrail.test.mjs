@@ -16,6 +16,10 @@ import { getChangedFiles, getChangedMarkdownFiles } from '../src/diff.mjs';
 import { loadHistory, appendHistory, checkRegression, renderTrend } from '../src/trend.mjs';
 import { buildPrCommentBody, postPrComment } from '../action/pr-comment.mjs';
 import { checkDeadLinks, checkDeadLinksDetailed, extractLinks } from '../src/links.mjs';
+import {
+  createPrivateNetworkBlockingLookup,
+  getBlockedRemoteUrlReason
+} from '../src/network-guard.mjs';
 import { computeDocHealthScore, checkDocFreshness } from '../src/quality.mjs';
 import { clearAuthState, getAuthFilePath, loadAuthState, saveAuthState } from '../src/auth-store.mjs';
 import { analyzeDriftOffline } from '../src/drift.mjs';
@@ -38,7 +42,10 @@ import {
 } from '../scripts/compare-baseline.mjs';
 import {
   computeHealthScore,
+  generateBadgeSvg,
+  generateJUnitReport,
   generateJUnitXml,
+  generateSarifReport,
   generateSarifJson,
   generateBadge
 } from '../src/ci-output.mjs';
@@ -1177,9 +1184,8 @@ test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
   const content = '# Title\n[redir](https://public.example.com/start)\n';
   fs.writeFileSync(source, content, 'utf8');
 
-  const originalFetch = globalThis.fetch;
   const calls = [];
-  globalThis.fetch = async (url) => {
+  const requestFn = async (url) => {
     calls.push(String(url));
     return new Response(null, {
       status: 302,
@@ -1190,7 +1196,8 @@ test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
   try {
     const result = await checkDeadLinksDetailed(content, {
       sourceFile: source,
-      remoteCache: new Map()
+      remoteCache: new Map(),
+      requestFn
     });
 
     assert.equal(result.stats.remoteLinksChecked, 1);
@@ -1199,8 +1206,64 @@ test('checkDeadLinksDetailed: blocks redirects to private hosts', async () => {
     assert.equal(calls.length, 1, 'Should not fetch private redirect target');
     assert.ok(calls[0].includes('https://public.example.com/start'));
   } finally {
-    globalThis.fetch = originalFetch;
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('checkDeadLinksDetailed: blocks private IP returned at connection lookup time', async () => {
+  const content = '# Title\n[rebinding](http://rebinding.test/resource)\n';
+  let lookupCalls = 0;
+  const lookupFn = async (hostname, options = {}) => {
+    lookupCalls += 1;
+    const entry = { address: lookupCalls === 1 ? '93.184.216.34' : '127.0.0.1', family: 4 };
+    return options.all ? [entry] : entry;
+  };
+
+  const { findings } = await checkDeadLinksDetailed(content, {
+    sourceFile: 'doc.md',
+    allowPrivateLinks: false,
+    timeoutMs: 50,
+    lookupFn
+  });
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /127\.0\.0\.1/);
+  assert.ok(lookupCalls >= 2, 'connection lookup should be guarded separately from preflight DNS');
+});
+
+test('checkDeadLinksDetailed: blocks IPv4-mapped IPv6 loopback literals', async () => {
+  const content = '# Title\n[mapped](http://[::ffff:7f00:1]/private)\n';
+
+  const { findings, stats } = await checkDeadLinksDetailed(content, {
+    sourceFile: 'doc.md',
+    allowPrivateLinks: false,
+    timeoutMs: 50
+  });
+
+  assert.equal(stats.remoteLinksChecked, 0);
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /::ffff:7f00:1|127\.0\.0\.1/);
+});
+
+test('network guard: custom lookup rejects private resolved addresses', async () => {
+  const guardedLookup = createPrivateNetworkBlockingLookup({
+    lookupFn: async () => ({ address: '169.254.169.254', family: 4 })
+  });
+
+  await new Promise((resolve) => {
+    guardedLookup('example.com', {}, (error) => {
+      assert.ok(error);
+      assert.match(error.message, /169\.254\.169\.254/);
+      resolve();
+    });
+  });
+});
+
+test('network guard: URL preflight detects private resolved addresses', async () => {
+  const blocked = await getBlockedRemoteUrlReason('https://example.com/path', {
+    lookupFn: async () => ([{ address: '10.0.0.5', family: 4 }])
+  });
+  assert.match(blocked, /10\.0\.0\.5/);
 });
 
 test('checkDeadLinksDetailed: private SSRF block takes precedence over linkAllowList', async () => {
@@ -1506,6 +1569,24 @@ test('CLI: JSON output includes schemaVersion 2 metadata', () => {
   assert.equal(parsed.engine.mode, 'scan');
 });
 
+test('CLI: --debug redacts token values', () => {
+  const tmp = makeTempDir();
+  const mdPath = path.join(tmp, 'doc.md');
+  const token = 'doclify_live_supersecret';
+  fs.writeFileSync(mdPath, '# Title\n\nClean content.\n', 'utf8');
+
+  const run = spawnSync(process.execPath, [CLI_PATH, mdPath, '--token', token, '--debug'], {
+    cwd: tmp,
+    encoding: 'utf8'
+  });
+
+  assert.equal(run.status, 0);
+  assert.equal(run.stderr.includes(token), false, run.stderr);
+  assert.ok(run.stderr.includes('docl'), run.stderr);
+  assert.ok(run.stderr.includes('cret'), run.stderr);
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
 test('parseArgs: supports ai drift flags', () => {
   const args = parseArgs(['docs', '--ai-drift', '--ai-mode', 'cloud', '--fail-on-drift', 'medium', '--fail-on-drift-scope', 'all', '--api-url', 'https://example.com', '--token', 'secret']);
   assert.equal(args.aiDrift, true);
@@ -1657,12 +1738,12 @@ test('generateSarifJson: emits valid sarif structure', () => {
 
 test('CLI: --junit --sarif --badge writes artifacts', () => {
   const tmp = makeTempDir();
-  const mdPath = path.join(tmp, 'doc.md');
-  const junitPath = path.join(tmp, 'report.xml');
-  const sarifPath = path.join(tmp, 'report.sarif');
-  const badgePath = path.join(tmp, 'badge.svg');
+  const mdPath = 'doc.md';
+  const junitPath = 'report.xml';
+  const sarifPath = 'report.sarif';
+  const badgePath = 'badge.svg';
 
-  fs.writeFileSync(mdPath, '---\ntitle: Test\n---\n# Title\nAll good', 'utf8');
+  fs.writeFileSync(path.join(tmp, mdPath), '---\ntitle: Test\n---\n# Title\nAll good', 'utf8');
 
   const run = spawnSync(process.execPath, [
     CLI_PATH,
@@ -1672,20 +1753,87 @@ test('CLI: --junit --sarif --badge writes artifacts', () => {
     '--badge', badgePath,
     '--badge-label', 'docs health',
     '--json'
-  ], { encoding: 'utf8' });
+  ], { cwd: tmp, encoding: 'utf8' });
 
   assert.equal(run.status, 0);
-  assert.ok(fs.existsSync(junitPath));
-  assert.ok(fs.existsSync(sarifPath));
-  assert.ok(fs.existsSync(badgePath));
+  assert.ok(fs.existsSync(path.join(tmp, junitPath)));
+  assert.ok(fs.existsSync(path.join(tmp, sarifPath)));
+  assert.ok(fs.existsSync(path.join(tmp, badgePath)));
 
   const parsed = JSON.parse(run.stdout);
   assert.ok(typeof parsed.summary.healthScore === 'number');
 });
 
+test('CI output writers reject path traversal outside workspace', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+  const output = {
+    version: '1.0',
+    files: [],
+    fileErrors: [],
+    summary: {
+      healthScore: 100,
+      filesScanned: 0,
+      filesPassed: 0,
+      filesFailed: 0,
+      filesErrored: 0,
+      totalErrors: 0,
+      totalWarnings: 0,
+      status: 'PASS',
+      elapsed: 0.01
+    }
+  };
+
+  try {
+    process.chdir(tmp);
+    assert.throws(
+      () => generateJUnitReport(output, { junitPath: '../outside.xml' }),
+      /inside workspace/i
+    );
+    assert.throws(
+      () => generateSarifReport(output, { sarifPath: '../outside.sarif' }),
+      /inside workspace/i
+    );
+    assert.throws(
+      () => generateBadge(output, { badgePath: '../outside.svg' }),
+      /inside workspace/i
+    );
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: CI artifact paths reject traversal outside workspace', () => {
+  const tmp = makeTempDir();
+  const mdPath = 'doc.md';
+  fs.writeFileSync(path.join(tmp, mdPath), '# Title\n\nClean content.\n', 'utf8');
+
+  const cases = [
+    { flag: '--junit', target: '../outside-junit.xml', prefix: 'Failed to write JUnit report:' },
+    { flag: '--sarif', target: '../outside.sarif', prefix: 'Failed to write SARIF report:' },
+    { flag: '--badge', target: '../outside.svg', prefix: 'Failed to write badge:' }
+  ];
+
+  for (const item of cases) {
+    const absoluteOutside = path.resolve(tmp, item.target);
+    const run = spawnSync(process.execPath, [CLI_PATH, mdPath, item.flag, item.target], {
+      cwd: tmp,
+      encoding: 'utf8'
+    });
+    assert.equal(run.status, 2, `${item.flag} should fail`);
+    assert.ok(run.stderr.includes(item.prefix), run.stderr);
+    assert.ok(run.stderr.match(/inside workspace/i), run.stderr);
+    assert.equal(fs.existsSync(absoluteOutside), false, `${item.flag} must not create outside file`);
+  }
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
 test('generateBadge: writes SVG with custom label', () => {
   const tmp = makeTempDir();
-  const badgePath = path.join(tmp, 'health.svg');
+  const previousCwd = process.cwd();
+  const badgePath = 'health.svg';
   const output = {
     summary: {
       healthScore: 90,
@@ -1695,12 +1843,24 @@ test('generateBadge: writes SVG with custom label', () => {
     }
   };
 
-  const badge = generateBadge(output, { badgePath, label: 'quality' });
-  assert.ok(fs.existsSync(badge.badgePath));
-  assert.equal(badge.score, 90);
-  const svg = fs.readFileSync(badge.badgePath, 'utf8');
-  assert.ok(svg.includes('quality'));
-  assert.ok(svg.includes('90/100'));
+  try {
+    process.chdir(tmp);
+    const badge = generateBadge(output, { badgePath, label: 'quality' });
+    assert.ok(fs.existsSync(badge.badgePath));
+    assert.equal(badge.score, 90);
+    const svg = fs.readFileSync(badge.badgePath, 'utf8');
+    assert.ok(svg.includes('quality'));
+    assert.ok(svg.includes('90/100'));
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('generateBadgeSvg escapes label text and attributes', () => {
+  const svg = generateBadgeSvg(90, 'docs" onload="alert(1)<tag>');
+  assert.equal(svg.includes('docs" onload="alert(1)<tag>'), false);
+  assert.ok(svg.includes('docs&quot; onload=&quot;alert(1)&lt;tag&gt;'));
 });
 
 // === Regression tests for v1.2 behavior ===
@@ -2765,6 +2925,50 @@ test('score-api: buildScorePayload maps output fields to cloud payload', () => {
     gate: { minScore: 80, result: 'PASS' },
     meta: { ci: 'github-actions' }
   });
+});
+
+test('score-api: normalizeApiUrl rejects non-local plaintext URLs', () => {
+  assert.throws(
+    () => cloudClient.normalizeApiUrl('http://example.com'),
+    /HTTPS/
+  );
+  assert.throws(
+    () => cloudClient.normalizeApiUrl('https://127.0.0.1:1234'),
+    /private/
+  );
+  assert.throws(
+    () => cloudClient.normalizeApiUrl('https://169.254.169.254'),
+    /private/
+  );
+  assert.throws(
+    () => cloudClient.normalizeApiUrl('https://[::ffff:7f00:1]:1234'),
+    /private/
+  );
+  assert.equal(cloudClient.normalizeApiUrl('http://127.0.0.1:1234'), 'http://127.0.0.1:1234');
+  assert.equal(cloudClient.normalizeApiUrl('http://localhost:1234'), 'http://localhost:1234');
+  assert.equal(cloudClient.normalizeApiUrl('http://localhost.:1234'), 'http://localhost.:1234');
+});
+
+test('score-api: Cloud API requests block private IP returned at connection lookup time', async () => {
+  let lookupCalls = 0;
+  const lookupFn = async (hostname, options = {}) => {
+    lookupCalls += 1;
+    const entry = { address: lookupCalls === 1 ? '93.184.216.34' : '127.0.0.1', family: 4 };
+    return options.all ? [entry] : entry;
+  };
+
+  await assert.rejects(
+    () => cloudClient.pushScoreReport({
+      apiUrl: 'https://rebinding.test',
+      apiKey: 'doclify_live_test',
+      payload: { scanId: 'scan-1', score: 80 },
+      retries: 0,
+      timeoutMs: 100,
+      lookupFn
+    }),
+    (error) => error instanceof cloudClient.CloudError && /127\.0\.0\.1/.test(error.message)
+  );
+  assert.ok(lookupCalls >= 2, 'Cloud request should guard both preflight and connection lookup');
 });
 
 test('score-api: pushScoreReport posts payload and returns id with optional delta', async () => {

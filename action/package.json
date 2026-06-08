@@ -1,16 +1,16 @@
 {
   "name": "doclify-guardrail-action",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "ncc build entrypoint.mjs -o dist --license licenses.txt"
+    "build": "ncc build entrypoint.mjs -o dist --license licenses.txt && node scripts/trim-dist-whitespace.mjs"
   },
   "dependencies": {
-    "@actions/core": "^2.0.3",
-    "@actions/github": "^8.0.1"
+    "@actions/core": "^3.0.1",
+    "@actions/github": "^9.1.1"
   },
   "devDependencies": {
-    "@vercel/ncc": "^0.38.3"
+    "@vercel/ncc": "^0.38.4"
   }
 }

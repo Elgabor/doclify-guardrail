@@ -75,5 +75,5 @@ outputs:
     description: 'Total warning count'
 
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.mjs'
