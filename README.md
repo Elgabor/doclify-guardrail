@@ -612,7 +612,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5.0.0
+      - uses: actions/setup-node@v6.4.0
         with:
           node-version: 20
 

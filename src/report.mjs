@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { escapeMarkdownTableCell, escapeMarkdownText, markdownInlineCode } from './markdown-escape.mjs';
 import { resolveWorkspacePath } from './workspace-path.mjs';
 
 /**
@@ -35,7 +36,7 @@ function generateReport(output, options) {
 
   for (const f of output.files) {
     const icon = f.pass ? '\u2713 PASS' : '\u2717 FAIL';
-    lines.push(`| ${f.file} | ${icon} | ${f.summary.errors} | ${f.summary.warnings} |`);
+    lines.push(`| ${escapeMarkdownTableCell(f.file)} | ${icon} | ${f.summary.errors} | ${f.summary.warnings} |`);
   }
   lines.push('');
 
@@ -49,16 +50,16 @@ function generateReport(output, options) {
     lines.push('');
 
     for (const f of filesWithFindings) {
-      lines.push(`### ${f.file}`);
+      lines.push(`### ${markdownInlineCode(f.file)}`);
       lines.push('');
 
       for (const finding of f.findings.errors) {
         const lineRef = finding.line != null ? `line ${finding.line}` : '';
-        lines.push(`- **ERROR** ${lineRef}: ${finding.message}`);
+        lines.push(`- **ERROR** ${lineRef}: ${escapeMarkdownText(finding.message)}`);
       }
       for (const finding of f.findings.warnings) {
         const lineRef = finding.line != null ? `line ${finding.line}` : '';
-        lines.push(`- **WARNING** ${lineRef}: ${finding.message}`);
+        lines.push(`- **WARNING** ${lineRef}: ${escapeMarkdownText(finding.message)}`);
       }
       lines.push('');
     }
@@ -82,9 +83,9 @@ function generateReport(output, options) {
     } else {
       lines.push('');
       for (const alert of topHigh) {
-        lines.push(`- **${alert.doc}** (${alert.score}/100 · ${alert.risk.toUpperCase()} · ${alert.scope || 'unmodified'})`);
+        lines.push(`- **${escapeMarkdownText(alert.doc)}** (${alert.score}/100 · ${escapeMarkdownText(alert.risk).toUpperCase()} · ${escapeMarkdownText(alert.scope || 'unmodified')})`);
         if (alert.reasons?.length > 0) {
-          lines.push(`  - ${alert.reasons.slice(0, 2).join(' | ')}`);
+          lines.push(`  - ${escapeMarkdownText(alert.reasons.slice(0, 2).join(' | '))}`);
         }
       }
       lines.push('');
@@ -96,7 +97,7 @@ function generateReport(output, options) {
     lines.push('## Unreadable Files');
     lines.push('');
     for (const fe of output.fileErrors) {
-      lines.push(`- \`${fe.file}\`: ${fe.error}`);
+      lines.push(`- ${markdownInlineCode(fe.file)}: ${escapeMarkdownText(fe.error)}`);
     }
     lines.push('');
   }

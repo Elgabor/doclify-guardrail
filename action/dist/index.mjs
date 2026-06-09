@@ -36165,7 +36165,41 @@ const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 // EXTERNAL MODULE: external "node:url"
 var external_node_url_ = __nccwpck_require__(3136);
+;// CONCATENATED MODULE: ../src/markdown-escape.mjs
+function normalizeMarkdownValue(value) {
+  return String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function escapeMarkdownText(value) {
+  return normalizeMarkdownValue(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .replace(/\|/g, '\\|')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeMarkdownTableCell(value) {
+  return escapeMarkdownText(value);
+}
+
+function markdownInlineCode(value) {
+  const text = normalizeMarkdownValue(value)
+    .replace(/\|/g, '\\|')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const longestBacktickRun = Math.max(0, ...Array.from(text.matchAll(/`+/g), (match) => match[0].length));
+  const delimiter = '`'.repeat(longestBacktickRun + 1);
+  const needsPadding = text.startsWith('`') || text.endsWith('`');
+  const body = needsPadding ? ` ${text} ` : text;
+  return `${delimiter}${body}${delimiter}`;
+}
+
+
+
 ;// CONCATENATED MODULE: ./pr-comment.mjs
+
+
 const MARKER = '<!-- doclify-guardrail-comment -->';
 
 /**
@@ -36192,7 +36226,7 @@ function buildPrCommentBody(output, opts = {}) {
   for (const f of output.files) {
     const fileIcon = f.pass ? '\u2705' : '\u274C';
     const score = f.summary.healthScore != null ? `${f.summary.healthScore}/100` : 'N/A';
-    lines.push(`| \`${f.file}\` | ${score} | ${f.summary.errors} | ${f.summary.warnings} | ${fileIcon} |`);
+    lines.push(`| ${markdownInlineCode(f.file)} | ${score} | ${f.summary.errors} | ${f.summary.warnings} | ${fileIcon} |`);
   }
 
   lines.push('');
@@ -36222,9 +36256,9 @@ function buildPrCommentBody(output, opts = {}) {
       lines.push('**Top high alerts (gate scope)**');
       for (const alert of topHigh) {
         const reason = Array.isArray(alert.reasons) && alert.reasons.length > 0
-          ? ` - ${alert.reasons[0]}`
+          ? ` - ${escapeMarkdownText(alert.reasons[0])}`
           : '';
-        lines.push(`- \`${alert.doc}\` (${alert.score}/100, ${alert.scope || 'unmodified'})${reason}`);
+        lines.push(`- ${markdownInlineCode(alert.doc)} (${alert.score}/100, ${escapeMarkdownText(alert.scope || 'unmodified')})${reason}`);
       }
     }
   }

@@ -1,3 +1,5 @@
+import { escapeMarkdownText, markdownInlineCode } from '../src/markdown-escape.mjs';
+
 const MARKER = '<!-- doclify-guardrail-comment -->';
 
 /**
@@ -24,7 +26,7 @@ function buildPrCommentBody(output, opts = {}) {
   for (const f of output.files) {
     const fileIcon = f.pass ? '\u2705' : '\u274C';
     const score = f.summary.healthScore != null ? `${f.summary.healthScore}/100` : 'N/A';
-    lines.push(`| \`${f.file}\` | ${score} | ${f.summary.errors} | ${f.summary.warnings} | ${fileIcon} |`);
+    lines.push(`| ${markdownInlineCode(f.file)} | ${score} | ${f.summary.errors} | ${f.summary.warnings} | ${fileIcon} |`);
   }
 
   lines.push('');
@@ -54,9 +56,9 @@ function buildPrCommentBody(output, opts = {}) {
       lines.push('**Top high alerts (gate scope)**');
       for (const alert of topHigh) {
         const reason = Array.isArray(alert.reasons) && alert.reasons.length > 0
-          ? ` - ${alert.reasons[0]}`
+          ? ` - ${escapeMarkdownText(alert.reasons[0])}`
           : '';
-        lines.push(`- \`${alert.doc}\` (${alert.score}/100, ${alert.scope || 'unmodified'})${reason}`);
+        lines.push(`- ${markdownInlineCode(alert.doc)} (${alert.score}/100, ${escapeMarkdownText(alert.scope || 'unmodified')})${reason}`);
       }
     }
   }

@@ -2,10 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
-## [1.7.4] - 2026-06-08
+## [1.7.4] - 2026-06-09
 
 ### Security
 
+- escape Markdown table, code span, and HTML control characters in Markdown reports and GitHub PR comments to reduce report-spoofing risk
 - reject JUnit, SARIF and badge output paths outside the current workspace
 - require HTTPS for Doclify Cloud API URLs, except localhost/loopback URLs used for local testing
 - block private, loopback, link-local and metadata Cloud API URL targets even when they use HTTPS
@@ -20,6 +21,7 @@ All notable changes to this project are documented in this file.
 
 - move the GitHub Action runtime metadata to Node 24
 - update official workflow actions to Node-24-era major versions older than 14 days
+- update `actions/setup-node` to the latest stable release that satisfies the 14-day dependency freshness rule
 - update GitHub Action toolkit dependencies and bundled action output
 - align README GitHub Actions examples with the current workflow action majors
 - keep deterministic reliability blocking while making live-network reliability advisory because external link timeouts are not product regressions

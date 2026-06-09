@@ -2,7 +2,7 @@
 
 <!-- doclify-disable-file blanks-around-lists,line-length -->
 
-Updated: 2026-06-08
+Updated: 2026-06-09
 
 ## Operating Context
 
@@ -16,6 +16,9 @@ Updated: 2026-06-08
 - Approval update on 2026-06-08: Lorenzo approved committing and pushing the
   new version to `main`; tag creation, remote branch cleanup, and npm publish
   remain intentionally deferred.
+- Continuation update on 2026-06-09: pushed CI and scheduled reliability are
+  green on commit `89a4b1e`; npm latest is still `1.7.2`; local release
+  metadata remains `1.7.4`.
 
 ## Current Facts
 
@@ -36,8 +39,10 @@ Updated: 2026-06-08
 - Release tag should not be created yet: current latest tag is already
   `v1.7.3`; local release metadata is prepared as `1.7.4`, while public tag
   creation waits for push approval and green CI.
-- Remote CI: latest scheduled `Reliability Gate` on `main` failed on 2026-06-08 in `reliability-nightly-network`; deterministic job passed.
-- Remote CI failure cause: live network link checks timed out, not a crash.
+- Remote CI: push-triggered `Docs Check` and `Reliability Gate` passed on
+  2026-06-08 for commit `89a4b1e`; scheduled `Reliability Gate` also passed on
+  2026-06-09 for the same commit.
+- Historical remote CI failure cause: live network link checks timed out, not a crash.
   Downloaded artifact report shows timeout rate 50% for `spoon-knife` and
   31.0559% for `markdownlint` versus threshold 1%.
 - CI policy change in working tree: deterministic reliability remains blocking;
@@ -46,7 +51,7 @@ Updated: 2026-06-08
 - CI runtime hygiene in working tree: custom GitHub Action metadata moved from
   `node20` to `node24`; official workflow actions moved to stable
   Node-24-era major tags older than 14 days: `checkout@v5.0.1`,
-  `setup-node@v5.0.0`, `cache@v5.0.5`, and `upload-artifact@v7.0.1`.
+  `setup-node@v6.4.0`, `cache@v5.0.5`, and `upload-artifact@v7.0.1`.
   `checkout@v6.0.3` was intentionally not used because it was published on
   2026-06-02.
 - GitHub Action dependency hygiene in working tree: direct action dependencies
@@ -60,25 +65,26 @@ Updated: 2026-06-08
 
 ## Verification Log
 
-- `npm test`: passed, 267/267 tests after the security, CI and version-bump
+- `npm test`: passed, 269/269 tests after the security, CI and version-bump
   changes. New coverage includes connection-time private IP blocking for remote
   link checks, shared network guard behavior, and stricter Cloud API URL
   rejection, including IPv4-mapped IPv6 loopback literals and Cloud API
-  connection-time DNS-rebinding blocking.
+  connection-time DNS-rebinding blocking. The latest follow-up coverage also
+  verifies Markdown escaping in reports and PR comments.
 - `npm run docs:sync-check`: passed, 35 built-in rules in sync. The check now
   also guards hardened README/workflow invariants: current checkout/setup/cache
   and upload actions, `persist-credentials: false`, `--ignore-scripts`,
   least-privilege workflow permissions, advisory network gate, and `node24`
   action metadata.
 - `npm pack --dry-run`: passed; package is `doclify-guardrail@1.7.4` and
-  includes 28 files, about 63.6 kB packed / 245.1 kB unpacked after the README
-  simplification.
+  includes 29 files, about 63.9 kB packed / 246.4 kB unpacked after the README
+  simplification and Markdown escaping helper.
 - `npm pack --json --pack-destination /tmp/...` plus temp install smoke test:
   passed. Installed tarball `doclify-guardrail-1.7.4.tgz`, verified both
   `npx doclify --version` and `npx doclify-guardrail --version` report `1.7.4`,
   ran `npx doclify README.md --strict --no-color --ascii`, and imported
   `doclify-guardrail/api` with a valid `lint` export. Latest smoke tarball has
-  28 entries including `src/network-guard.mjs`.
+  29 entries including `src/network-guard.mjs` and `src/markdown-escape.mjs`.
 - `npm pack --dry-run --json`: passed; packed file list contains only
   `LICENSE`, `README.md`, `package.json`, and `src/**`. It does not include the
   stabilization ledger, action bundle, tests, benchmark output, or local
@@ -104,6 +110,17 @@ Updated: 2026-06-08
   workflows/action metadata, action bundle parity, tarball install smoke,
   `npm run docs:sync-check`, README strict scan, ledger strict scan, and
   `git diff --check`.
+- Follow-up release-readiness pass on 2026-06-09:
+  - documentation subagent found non-blocking README gaps; fixed by documenting
+    `DOCLIFY_API_URL`, `login --api-url`, `ai drift --staged`,
+    `ai drift --mode`, `--version`, and JSON `version`/`strict`/`fileErrors`/`fix`.
+  - security subagent found a low report-spoofing risk in Markdown report and
+    PR comment rendering; fixed with shared Markdown escaping and regression
+    tests for filenames, drift docs, reasons, and finding messages.
+  - dependency subagent found `@vercel/ncc@0.44.0` and
+    `actions/checkout@v6.0.3` too fresh for the 14-day rule; kept current safe
+    pins and updated `actions/setup-node` to safe latest `v6.4.0`.
+  - local `npm pack --dry-run --json` still confirms a clean 29-file tarball.
 - `node ./src/index.mjs PROJECT_STABILIZATION.md --strict --no-color --ascii`:
   passed; stabilization ledger score 100/100.
 - `git diff --check`: passed after adding a deterministic action bundle
@@ -117,12 +134,13 @@ Updated: 2026-06-08
   dependency and token-handling updates leaves `dist/index.mjs` and
   `dist/licenses.txt` hashes unchanged. Current hashes:
   `dist/index.mjs` =
-  `a309da48afd506ccfff726313448a05e5793393cffb7d8afde6d048542cc13d5`,
+  `5415079d98ac7bc43415f238b6ee737829255ffcf8043eb57521d79f51381527`,
   `dist/licenses.txt` =
-  `90ec6029be6c27fec9ad4f5d257c66c53e97115cd4f9de78f1e06ba760333f0c`.
+  `f4001794b80bd559f8e6cff318dfc13e40cea7ae01a7994715c618c17361fc28`.
 - `action/npm audit --omit=dev`: passed; 0 vulnerabilities.
-- `action/npm outdated --depth=0` after clean action install: passed with no
-  outdated direct dependencies.
+- `action/npm outdated --depth=0` after clean action install: only reports
+  `@vercel/ncc@0.44.0` as newer. It was published on 2026-06-09 and is
+  intentionally held by the 14-day dependency freshness rule.
 - `node --test --test-name-pattern "Action dist|score-api: Action dist"`:
   passed, 5/5 action dist smoke tests after toolkit dependency and token
   handling updates.
@@ -183,6 +201,9 @@ Updated: 2026-06-08
     a `--token` argv value.
   - Fixed in working tree: `--debug` redacts token/api-key/secret-like values.
   - Fixed in working tree: badge SVG label is XML-escaped.
+  - Fixed in working tree: Markdown report and GitHub PR comment content now
+    escapes table, code span, and HTML control characters for file paths,
+    drift alert docs/reasons, unreadable-file errors, and finding messages.
   - Fixed in working tree: workflows declare `permissions: contents: read`, use
     `persist-credentials: false`, and install with `--ignore-scripts`.
   - Fixed in working tree: direct GitHub Action toolkit dependencies were
@@ -269,13 +290,17 @@ Updated: 2026-06-08
 
 - Remote branches currently visible: `main` and `fase0/sicurezza-e-bugfix`.
 - Remote tags currently visible: `v1`, `v1.7.2`, `v1.7.3`.
+- Remote CI currently green on `main` commit `89a4b1e` for `Docs Check`,
+  push `Reliability Gate`, and the 2026-06-09 scheduled `Reliability Gate`.
 - Npm release readiness note from audit: local package version is `1.7.4`, while
   latest published npm version is reported as `1.7.2`. Publish will be a real
   version release and should wait for green CI and changelog confirmation.
 - `npm view doclify-guardrail version versions --json` confirmed latest published npm version is `1.7.2`; local package is ahead at `1.7.4`.
-- `npm outdated --all` in `action/` shows no outdated direct dependencies after
-  the toolkit bump. Some transitive dependencies remain below latest by their
-  parents' semver ranges, with `npm audit --omit=dev` still at 0 vulnerabilities.
+- `npm outdated --all` in `action/` shows one intentionally held direct
+  dependency: `@vercel/ncc`, whose latest `0.44.0` was published on
+  2026-06-09 and is held by the 14-day freshness rule. Some transitive
+  dependencies remain below latest by their parents' semver ranges, with
+  `npm audit --omit=dev` still at 0 vulnerabilities.
 - Since `v1.7.3` already exists as a git tag and the current working tree adds
   more security/CI changes, the local release metadata is now prepared as
   `1.7.4`; the public tag `v1.7.4` still must be created only after push and
@@ -303,14 +328,14 @@ Updated: 2026-06-08
   Evidence: duplicated workspace containment logic was centralized, unsafe
   artifact writes were hardened, generated action bundle whitespace is
   deterministic, and stale CI/action dependencies were updated.
-- Stable repo on `main`: local branch is `main`, but public stability is pending
-  external action. The stabilization diff has not been committed or pushed.
+- Stable repo on `main`: complete for the pushed stabilization commit
+  `89a4b1e`; latest push and scheduled CI are green.
 - Zero remote branches beyond `main`: pending external destructive approval.
   Current remote still has `fase0/sicurezza-e-bugfix`.
-- New version tag: pending external approval and green pushed CI. Local metadata
-  is `1.7.4`; remote tag `v1.7.4` does not exist yet. Major tag `v1` also
-  still points at the old release commit and should be updated only if Lorenzo
-  approves moving that public tag.
+- New version tag: pending external approval. Local metadata is `1.7.4`;
+  remote tag `v1.7.4` does not exist yet. Major tag `v1` also still points at
+  the old release commit and should be updated only if Lorenzo approves moving
+  that public tag.
 - Npm publish: intentionally pending until Lorenzo is ready; latest published
   npm version remains `1.7.2`.
 
@@ -318,36 +343,26 @@ Updated: 2026-06-08
 
 Run only after explicit approval from Lorenzo.
 
-- Staging checklist for the current stabilization diff:
+- Staging checklist for the current follow-up diff:
   - `.github/workflows/docs-check.yml`
   - `.github/workflows/reliability-gate.yml`
   - `CHANGELOG.md`
   - `README.md`
-  - `package.json`
   - `PROJECT_STABILIZATION.md`
   - `scripts/check-docs-sync.mjs`
-  - `src/workspace-path.mjs`
-  - `src/network-guard.mjs`
   - `src/report.mjs`
-  - `src/ci-output.mjs`
-  - `src/cloud-client.mjs`
-  - `src/links.mjs`
-  - `src/index.mjs`
+  - `src/markdown-escape.mjs`
   - `test/guardrail.test.mjs`
-  - `action/action.yml`
-  - `action/package.json`
-  - `action/package-lock.json`
-  - `action/scripts/trim-dist-whitespace.mjs`
+  - `action/pr-comment.mjs`
   - `action/dist/index.mjs`
+  - `action/dist/licenses.txt`
 - Suggested commit message:
-  - `chore: prepare doclify guardrail 1.7.4`
+  - `chore: polish release docs and report output`
 - Commit intent:
-  - security hardening for artifact paths, cloud URL handling, remote link
-    network checks, debug redaction, action token handling and badge escaping
-  - CI/action runtime and dependency modernization
-  - local `1.7.4` release metadata and changelog
-  - durable stabilization ledger and release runbook
-  - expanded regression coverage and docs-sync invariants
+  - simpler and complete release documentation for all public entrypoints
+  - Markdown escaping for report and PR comment output
+  - stable `setup-node@v6.4.0` workflow examples and docs-sync invariants
+  - updated action bundle and regression coverage
 - Final local pre-push check if the diff has changed:
   - `npm test`
   - `npm run docs:sync-check`
@@ -359,7 +374,7 @@ Run only after explicit approval from Lorenzo.
 - Commit and push:
   - review `git status --short`
   - `git add ...`
-  - `git commit -m "chore: prepare doclify guardrail 1.7.4"`
+  - `git commit -m "chore: polish release docs and report output"`
   - `git push origin main`
 - CI gate:
   - confirm pushed `Docs Check` is green
@@ -437,8 +452,9 @@ Status: local release metadata prepared and locally verified, tag not created.
   - run `npm pack --dry-run`
 - `package.json`, `action/package.json`, `action/package-lock.json`, and
   `CHANGELOG.md` are locally prepared for `1.7.4`.
-- Commit/push was approved by Lorenzo on 2026-06-08. Tags, npm publish, and
-  remote branch deletion still require separate explicit approval.
+- Commit/push was approved by Lorenzo on 2026-06-08 and completed on `main`.
+  Tags, npm publish, and remote branch deletion still require separate explicit
+  approval.
 
 ### Phase 2 - Repo Hygiene Before Npm
 

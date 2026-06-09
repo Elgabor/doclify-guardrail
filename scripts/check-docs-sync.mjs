@@ -65,7 +65,7 @@ const checks = [
       },
       {
         label: 'current setup-node action example',
-        pattern: /actions\/setup-node@v5\.0\.0/
+        pattern: /actions\/setup-node@v6\.4\.0/
       }
     ]
   },
@@ -86,7 +86,7 @@ const checks = [
       },
       {
         label: 'current setup-node action',
-        pattern: /uses: actions\/setup-node@v5\.0\.0/
+        pattern: /uses: actions\/setup-node@v6\.4\.0/
       },
       {
         label: 'examples trigger',
@@ -139,7 +139,7 @@ const checks = [
       },
       {
         label: 'current setup-node action',
-        pattern: /uses: actions\/setup-node@v5\.0\.0/
+        pattern: /uses: actions\/setup-node@v6\.4\.0/
       },
       {
         label: 'current cache action',

@@ -657,6 +657,44 @@ test('generateReport: produces valid markdown with findings', () => {
   }
 });
 
+test('generateReport: escapes markdown table and detail content', () => {
+  const tmp = makeTempDir();
+  const previousCwd = process.cwd();
+  const reportPath = 'report.md';
+
+  const output = {
+    version: '1.0',
+    strict: false,
+    files: [
+      {
+        file: 'docs/a|`b`.md',
+        pass: false,
+        findings: {
+          errors: [{ code: 'single-h1', severity: 'error', message: 'bad | <script>', line: 1 }],
+          warnings: []
+        },
+        summary: { errors: 1, warnings: 0, status: 'FAIL' }
+      }
+    ],
+    summary: {
+      filesScanned: 1, filesPassed: 0, filesFailed: 1, filesErrored: 0,
+      totalErrors: 1, totalWarnings: 0, status: 'FAIL', elapsed: 0.1
+    }
+  };
+
+  try {
+    process.chdir(tmp);
+    const result = generateReport(output, { reportPath });
+    const content = fs.readFileSync(result, 'utf8');
+    assert.ok(content.includes('docs/a\\|`b`.md'), 'table cell should escape pipes');
+    assert.ok(content.includes('``docs/a\\|`b`.md``'), 'heading should use a safe code span delimiter');
+    assert.ok(content.includes('bad \\| &lt;script&gt;'), 'finding message should escape markdown/html controls');
+  } finally {
+    process.chdir(previousCwd);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('generateReport: rejects report path outside workspace', () => {
   const tmp = makeTempDir();
   const previousCwd = process.cwd();
@@ -4015,6 +4053,56 @@ test('PR comment: buildPrCommentBody includes delta when baseScore provided', ()
   };
   const body = buildPrCommentBody(output, { baseScore: 80 });
   assert.ok(body.includes('+10 vs base'));
+});
+
+test('PR comment: escapes table filenames and drift alert text', () => {
+  const output = {
+    version: '1.7.4',
+    files: [
+      {
+        file: 'docs/a|`b`.md',
+        pass: false,
+        findings: { errors: [{}], warnings: [] },
+        summary: { errors: 1, warnings: 0, healthScore: 80, status: 'FAIL' }
+      }
+    ],
+    summary: {
+      filesScanned: 1,
+      filesPassed: 0,
+      filesFailed: 1,
+      totalErrors: 1,
+      totalWarnings: 0,
+      status: 'FAIL',
+      elapsed: '0.01',
+      avgHealthScore: 80
+    },
+    ai: {
+      drift: {
+        summary: {
+          alerts: 1,
+          high: 1,
+          medium: 0,
+          low: 0,
+          gatingScope: 'unmodified',
+          alertsByScope: { unmodified: 1, modified: 0 }
+        },
+        alerts: [
+          {
+            doc: 'docs/drift|`x`.md',
+            score: 91,
+            risk: 'high',
+            scope: 'unmodified',
+            reasons: ['shared | <script>']
+          }
+        ]
+      }
+    }
+  };
+
+  const body = buildPrCommentBody(output);
+  assert.ok(body.includes('``docs/a\\|`b`.md``'), 'table filename should use a safe code span delimiter');
+  assert.ok(body.includes('``docs/drift\\|`x`.md``'), 'drift doc should use a safe code span delimiter');
+  assert.ok(body.includes('shared \\| &lt;script&gt;'), 'drift reason should escape markdown/html controls');
 });
 
 test('PR comment: includes drift scope counts and top high alerts', () => {
