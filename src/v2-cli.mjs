@@ -182,6 +182,12 @@ function safeDiagnostic(error) {
   return `${terminalText(code)}: ${terminalText(message)}\n`;
 }
 
+function writeOperationalDiagnostics(result) {
+  for (const diagnostic of result.diagnostics) {
+    process.stderr.write(`${terminalText(diagnostic.path)}: error [${terminalText(diagnostic.code)}] ${terminalText(diagnostic.message)}\n`);
+  }
+}
+
 function assertOutputDoesNotOverwriteInput(outputPath, result, workspace) {
   const canonical = (candidate) => {
     try {
@@ -191,9 +197,24 @@ function assertOutputDoesNotOverwriteInput(outputPath, result, workspace) {
     }
   };
   const canonicalOutput = canonical(outputPath);
+  let outputIdentity = null;
+  try {
+    const outputStat = fs.statSync(outputPath, { bigint: true });
+    outputIdentity = `${outputStat.dev}:${outputStat.ino}`;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   for (const file of result.files) {
-    const inputPath = canonical(path.resolve(workspace, file.path));
-    if (canonicalOutput === inputPath) {
+    const inputPath = path.resolve(workspace, file.path);
+    const canonicalInput = canonical(inputPath);
+    let inputIdentity = null;
+    try {
+      const inputStat = fs.statSync(inputPath, { bigint: true });
+      inputIdentity = `${inputStat.dev}:${inputStat.ino}`;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (canonicalOutput === canonicalInput || (outputIdentity != null && outputIdentity === inputIdentity)) {
       throw new DoclifyUsageError('output-overwrites-input', 'Output path must not overwrite a scanned document.');
     }
   }
@@ -243,6 +264,7 @@ async function runV2Cli(argv) {
     } else {
       process.stdout.write(rendered);
     }
+    writeOperationalDiagnostics(result);
     return result.status === 'pass' ? 0 : 1;
   } catch (error) {
     process.stderr.write(safeDiagnostic(error));

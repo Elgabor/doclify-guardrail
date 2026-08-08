@@ -113,6 +113,14 @@ const checks = [
         pattern: /run: npm pack --dry-run/
       },
       {
+        label: 'performance baseline trigger',
+        pattern: /'bench\/baselines\/perf-300\.json'/
+      },
+      {
+        label: 'enforced performance profile',
+        pattern: /- name: Run 300-document performance profile\n\s+run: npm run test:performance/
+      },
+      {
         label: 'README-only docs gate',
         pattern: /run: node \.\/src\/index\.mjs README\.md --strict --report report\.md/
       },

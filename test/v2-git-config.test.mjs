@@ -157,6 +157,22 @@ test('v2 Git failure modes are stable while check works without Git', async (t) 
   assert.match(unknown.stderr, /^unknown-base-ref:/);
 });
 
+test('v2 changed disables repository-configured fsmonitor commands', (t) => {
+  const root = initRepository(t);
+  const marker = path.join(root, 'fsmonitor-ran');
+  const monitor = path.join(root, 'fsmonitor.mjs');
+  fs.writeFileSync(path.join(root, 'doc.md'), '# Original\n', 'utf8');
+  fs.writeFileSync(monitor, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, 'ran');\n`, 'utf8');
+  fs.chmodSync(monitor, 0o755);
+  commitAll(root);
+  assert.equal(git(root, 'config', 'core.fsmonitor', `${process.execPath} ${monitor}`).status, 0);
+  fs.writeFileSync(path.join(root, 'doc.md'), '# Changed\n', 'utf8');
+
+  const changed = runCli(['changed', '--base', 'HEAD', '--format', 'json'], root);
+  assert.equal(changed.status, 0, changed.stderr);
+  assert.equal(fs.existsSync(marker), false);
+});
+
 test('v2 automatic config is hierarchical, relative to each config, and consistent by cwd', async (t) => {
   const root = initRepository(t);
   const docs = path.join(root, 'docs');

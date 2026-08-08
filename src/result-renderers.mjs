@@ -61,7 +61,7 @@ function renderText(result, options = {}) {
     for (const diagnostic of fileDiagnostics) representedDiagnostics.add(diagnostic);
     const hasBlocking = findingsForPath(result.findings, file.path)
       .some((finding) => finding.severity === 'blocking');
-    const label = !file.scanned ? 'ERROR' : hasBlocking ? 'FAIL' : 'PASS';
+    const label = !file.scanned || fileDiagnostics.length > 0 ? 'ERROR' : hasBlocking ? 'FAIL' : 'PASS';
     lines.push(`${label} ${terminalText(file.path)}`);
     for (const finding of fileFindings) {
       const location = finding.line == null ? '' : `${finding.line}${finding.column == null ? '' : `:${finding.column}`}: `;
@@ -211,7 +211,7 @@ function renderJunit(result) {
     (diagnostic) => !result.files.some((file) => file.path === diagnostic.path)
   );
   const failures = result.files.filter((file) => findingsForPath(result.findings, file.path).some((finding) => finding.severity === 'blocking')).length;
-  const errors = result.files.filter((file) => !file.scanned).length + orphanDiagnostics.length;
+  const errors = result.files.filter((file) => !file.scanned || diagnosticsForPath(result, file.path).length > 0).length + orphanDiagnostics.length;
   const tests = result.files.length + orphanDiagnostics.length;
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -234,7 +234,7 @@ function renderJunit(result) {
     }
 
     lines.push(`  <testcase classname="doclify.guardrail" name="${xmlText(file.path)}">`);
-    if (!file.scanned) {
+    if (!file.scanned || fileDiagnostic) {
       const message = fileDiagnostic?.message || 'File was not scanned.';
       lines.push(`    <error message="${xmlText(message)}">${xmlText(message)}</error>`);
     } else if (blocking.length > 0) {

@@ -50,9 +50,6 @@ function isDescendantOrSame(candidatePath, basePath) {
 }
 
 function getReadContainment(candidatePath, basePath) {
-  const lexicalRelative = path.relative(path.resolve(basePath), path.resolve(candidatePath));
-  if (lexicalRelative.startsWith('..') || path.isAbsolute(lexicalRelative)) return 'outside';
-
   const resolvedCandidate = canonicalizeForBoundaryCheck(candidatePath);
   const resolvedBase = canonicalizeForBoundaryCheck(basePath);
   if (resolvedCandidate == null || resolvedBase == null) return 'indeterminate';

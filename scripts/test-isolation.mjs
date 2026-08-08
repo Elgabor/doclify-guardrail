@@ -63,6 +63,8 @@ function snapshotTree(root) {
 
 function captureGitStatus(root) {
   const result = spawnSync('git', [
+    '-c',
+    'core.fsmonitor=false',
     '-C',
     path.resolve(root),
     'status',

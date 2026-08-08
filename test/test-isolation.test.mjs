@@ -265,6 +265,21 @@ test('performance corpus is deterministic and comparison enforces rule hash and 
   const changedRules = structuredClone(observation);
   changedRules.ruleSet.hash = 'sha256:different';
   assert.equal(comparePerformance(changedRules, baseline).pass, false);
+
+  for (const mutate of [
+    (candidate) => { candidate.tolerance.absoluteFloorMs = 'not-a-number'; },
+    (candidate) => { candidate.environments.fixture.cold.p95Ms = Number.NaN; },
+    (candidate) => { candidate.environments.fixture.warm.p95Ms = -1; }
+  ]) {
+    const malformed = structuredClone(baseline);
+    mutate(malformed);
+    assert.deepEqual(comparePerformance(observation, malformed), {
+      pass: false,
+      status: 'fail',
+      failures: ['Performance baseline tolerance is invalid.'],
+      limits: null
+    });
+  }
 });
 
 test('performance profile rejects unknown options before creating a corpus', (t) => {

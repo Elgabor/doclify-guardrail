@@ -16,6 +16,7 @@ on:
       - 'scripts/**'
       - 'test/**'
       - 'action/**'
+      - 'bench/baselines/perf-300.json'
       - 'package.json'
   pull_request:
     paths:
@@ -29,6 +30,7 @@ on:
       - 'scripts/**'
       - 'test/**'
       - 'action/**'
+      - 'bench/baselines/perf-300.json'
       - 'package.json'
 
 jobs:
@@ -55,7 +57,6 @@ jobs:
       - name: Run isolated correctness profile
         run: npm run test:correctness
       - name: Run 300-document performance profile
-        continue-on-error: true
         run: npm run test:performance
       - name: Verify docs sync
         run: npm run docs:sync-check

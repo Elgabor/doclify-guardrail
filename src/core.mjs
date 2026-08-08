@@ -313,10 +313,12 @@ async function runCheck(options = {}) {
       timeoutMs: fileOptions.linkTimeoutMs || undefined,
       concurrency: fileOptions.linkConcurrency || undefined,
       remoteCache,
-      checkRemote: fileOptions.externalLinks === true
+      checkRemote: fileOptions.externalLinks === true,
+      readBoundary: discoveryRoot
     });
     const ignored = new Set(fileOptions.ignoreRules);
     for (const finding of linkResult.findings) {
+      if (finding.operational === true) continue;
       if (ignored.has(finding.code)) continue;
       adapted.findings.push({
         ruleId: String(finding.code),
@@ -327,6 +329,14 @@ async function runCheck(options = {}) {
         column: null,
         message: String(finding.message),
         evidence: null
+      });
+    }
+    for (const diagnostic of linkResult.diagnostics) {
+      diagnostics.push({
+        code: String(diagnostic.code),
+        severity: 'error',
+        path: filePath,
+        message: String(diagnostic.message)
       });
     }
     adapted.file.findings = adapted.findings.length;

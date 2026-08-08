@@ -207,7 +207,10 @@ function comparePerformance(observation, baseline) {
   const tolerance = baseline.tolerance || {};
   const percentage = observation.environment.ci ? tolerance.ciPct : tolerance.localPct;
   const floor = Number(tolerance.absoluteFloorMs || 0);
-  if (!Number.isFinite(percentage) || percentage < 0) {
+  const validP95 = (value) => Number.isFinite(value) && value >= 0;
+  if (!Number.isFinite(percentage) || percentage < 0 || !Number.isFinite(floor) || floor < 0
+    || !validP95(recorded.cold?.p95Ms) || !validP95(recorded.warm?.p95Ms)
+    || !validP95(observation.cold?.p95Ms) || !validP95(observation.warm?.p95Ms)) {
     failures.push('Performance baseline tolerance is invalid.');
     return { pass: false, status: 'fail', failures, limits: null };
   }

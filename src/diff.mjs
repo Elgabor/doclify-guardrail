@@ -19,12 +19,18 @@ function gitEnvironment() {
   return {
     ...process.env,
     LANG: 'C',
-    LC_ALL: 'C'
+    LC_ALL: 'C',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_PAGER: 'cat'
   };
 }
 
 function runGit(cwd, args) {
-  return spawnSync('git', ['-C', cwd, ...args], {
+  // Changed-file discovery runs in the selected repository. Disable the one
+  // index extension that can execute a repository-configured command before
+  // asking Git to inspect it.
+  return spawnSync('git', ['-c', 'core.fsmonitor=false', '-C', cwd, ...args], {
     encoding: 'utf8',
     env: gitEnvironment(),
     stdio: ['ignore', 'pipe', 'pipe']

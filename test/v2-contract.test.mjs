@@ -201,7 +201,7 @@ test('v2 partial scan returns a structured incomplete result and exit 1', async 
   assert.equal(apiResult.diagnostics[0].code, 'file-unreadable');
   assert.equal(apiResult.files.find((file) => file.path === 'missing.md').findings, null);
   assert.equal(cli.status, 1, cli.stderr);
-  assert.equal(cli.stderr, '');
+  assert.match(cli.stderr, /^missing\.md: error \[file-unreadable\]/);
   assert.deepEqual(JSON.parse(cli.stdout), apiResult);
 });
 
@@ -210,7 +210,7 @@ test('v2 unreadable targets stay structured while empty scans and invalid usage 
 
   const missing = runCli(['check', 'missing.md', '--format', 'json'], cwd);
   assert.equal(missing.status, 1, missing.stderr);
-  assert.equal(missing.stderr, '');
+  assert.match(missing.stderr, /^missing\.md: error \[file-unreadable\]/);
   const missingResult = JSON.parse(missing.stdout);
   assert.equal(missingResult.status, 'incomplete');
   assert.equal(missingResult.files[0].scanned, false);
@@ -287,7 +287,7 @@ test('v2 suppression metadata follows checker fence and rule-list semantics', as
 test('v2 local link checks remain offline unless external links are explicit', async (t) => {
   const cwd = makeTempDir(t);
   const sourceFile = path.join(cwd, 'doc.md');
-  const { findings, stats } = await checkDeadLinksDetailed(
+  const { diagnostics, findings, stats } = await checkDeadLinksDetailed(
     '[missing](missing.md) [remote](https://example.com)',
     {
       sourceFile,
@@ -298,9 +298,28 @@ test('v2 local link checks remain offline unless external links are explicit', a
     }
   );
 
+  assert.equal(diagnostics.some((diagnostic) => diagnostic.code === 'dead-link'), true);
   assert.equal(findings.some((finding) => finding.code === 'dead-link'), true);
   assert.equal(findings.some((finding) => finding.message.includes('example.com')), false);
   assert.equal(stats.remoteLinksChecked, 0);
+});
+
+test('v2 local links never inspect outside the selected workspace', async (t) => {
+  const outer = makeTempDir(t);
+  const cwd = path.join(outer, 'workspace');
+  fs.mkdirSync(cwd);
+  const outside = path.join(outer, 'outside.md');
+  fs.writeFileSync(outside, '# Outside\n', 'utf8');
+  fs.writeFileSync(path.join(cwd, 'doc.md'), '# Doc\n\n[outside](../outside.md)\n[missing](missing.md)\n', 'utf8');
+
+  const result = await check({ cwd, paths: ['doc.md'] });
+  const cli = runCli(['check', 'doc.md', '--format', 'json'], cwd);
+  assert.equal(result.status, 'incomplete');
+  assert.deepEqual(result.diagnostics.map((diagnostic) => diagnostic.code), ['dead-link', 'link-outside-workspace']);
+  assert.equal(cli.status, 1);
+  assert.deepEqual(JSON.parse(cli.stdout), result);
+  assert.match(cli.stderr, /doc\.md: error \[dead-link\]/);
+  assert.match(cli.stderr, /doc\.md: error \[link-outside-workspace\]/);
 });
 
 test('v2 directory selection is deterministically sorted', async (t) => {
@@ -371,6 +390,19 @@ test('v2 --output cannot overwrite a scanned file through a symlink', (t) => {
   const documentPath = path.join(cwd, 'doc.md');
   fs.writeFileSync(documentPath, '# Clean\n', 'utf8');
   fs.symlinkSync(documentPath, path.join(cwd, 'result.json'));
+
+  const run = runCli(['check', 'doc.md', '--format', 'json', '--output', 'result.json'], cwd);
+  assert.equal(run.status, 2);
+  assert.equal(run.stdout, '');
+  assert.match(run.stderr, /^output-overwrites-input:/);
+  assert.equal(fs.readFileSync(documentPath, 'utf8'), '# Clean\n');
+});
+
+test('v2 --output cannot overwrite a scanned file through a hard link', (t) => {
+  const cwd = makeTempDir(t);
+  const documentPath = path.join(cwd, 'doc.md');
+  fs.writeFileSync(documentPath, '# Clean\n', 'utf8');
+  fs.linkSync(documentPath, path.join(cwd, 'result.json'));
 
   const run = runCli(['check', 'doc.md', '--format', 'json', '--output', 'result.json'], cwd);
   assert.equal(run.status, 2);
