@@ -52,8 +52,11 @@ jobs:
       - name: Audit action dependency chain
         working-directory: action
         run: npm audit --omit=dev
-      - name: Run test suite
-        run: npm test
+      - name: Run isolated correctness profile
+        run: npm run test:correctness
+      - name: Run 300-document performance profile
+        continue-on-error: true
+        run: npm run test:performance
       - name: Verify docs sync
         run: npm run docs:sync-check
       - name: Verify npm package contents

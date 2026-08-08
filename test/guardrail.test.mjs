@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions, findParentConfigs } from '../src/index.mjs';
 import { stripCodeBlocks } from '../src/checker.mjs';
 import { resolveFileList, findMarkdownFiles } from '../src/glob.mjs';
@@ -50,9 +51,10 @@ import {
   generateBadge
 } from '../src/ci-output.mjs';
 
-const CLI_PATH = path.resolve('src/index.mjs');
-const ACTION_DIST_PATH = path.resolve('action/dist/index.mjs');
-const PKG_VERSION = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')).version;
+const REPOSITORY_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const CLI_PATH = path.join(REPOSITORY_ROOT, 'src', 'index.mjs');
+const ACTION_DIST_PATH = path.join(REPOSITORY_ROOT, 'action', 'dist', 'index.mjs');
+const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(REPOSITORY_ROOT, 'package.json'), 'utf8')).version;
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-guardrail-'));
@@ -2548,7 +2550,10 @@ test('CLI: --format compact produces single-line output', () => {
 
 // --diff (tests in a git repo context)
 test('CLI: --diff flag is accepted without error', () => {
-  const r = spawnSync('node', [CLI_PATH, '--diff', '--ascii'], { encoding: 'utf8' });
+  const r = spawnSync('node', [CLI_PATH, '--diff', '--ascii'], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8'
+  });
   // Should not return exit code 2 (usage error)
   assert.notEqual(r.status, 2);
 });
@@ -2622,7 +2627,7 @@ test('API: score() computes health score', () => {
 // getChangedMarkdownFiles
 test('diff: getChangedMarkdownFiles returns array', () => {
   // This test runs in a git repo, so it should work
-  const files = getChangedMarkdownFiles({ base: 'HEAD' });
+  const files = getChangedMarkdownFiles({ base: 'HEAD', cwd: REPOSITORY_ROOT });
   assert.ok(Array.isArray(files));
 });
 

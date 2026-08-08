@@ -33,6 +33,9 @@ function runCli(args, cwd, env = {}) {
       LC_ALL: 'C',
       NO_COLOR: '1',
       PATH: process.env.PATH || '',
+      TMPDIR: process.env.TMPDIR || '',
+      TMP: process.env.TMP || '',
+      TEMP: process.env.TEMP || '',
       ...env
     }
   });

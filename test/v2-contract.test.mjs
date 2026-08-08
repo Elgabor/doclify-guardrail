@@ -27,8 +27,12 @@ function runCli(args, cwd) {
     encoding: 'utf8',
     env: {
       LANG: 'C',
+      LC_ALL: 'C',
       NO_COLOR: '1',
-      PATH: process.env.PATH || ''
+      PATH: process.env.PATH || '',
+      TMPDIR: process.env.TMPDIR || '',
+      TMP: process.env.TMP || '',
+      TEMP: process.env.TEMP || ''
     }
   });
 }

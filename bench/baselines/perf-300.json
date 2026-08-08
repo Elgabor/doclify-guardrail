@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "corpus": {
+    "generator": "doclify-perf-corpus-v1",
+    "seed": 1,
+    "documents": 300,
+    "contentHash": "sha256:2c83f51794c53bbe35b289387bec1fc60c022a8dd7cf8f57acf41cfb221ad0c9"
+  },
+  "ruleSet": {
+    "count": 35,
+    "hash": "sha256:dbfeb20f1fb509679b5490349af407586217d0f6dc0423aeb3abc92ef4dc5ff7"
+  },
+  "environments": {
+    "darwin-arm64-node22-fs26": {
+      "environment": {
+        "class": "darwin-arm64-node22-fs26",
+        "node": "v22.22.3",
+        "platform": "darwin",
+        "arch": "arm64",
+        "filesystemType": "26",
+        "cpuModel": "Apple M4",
+        "cpuCount": 10,
+        "totalMemoryMb": 16384,
+        "ci": false
+      },
+      "cold": {
+        "runs": 3,
+        "samplesMs": [88.629, 86.099, 85.028],
+        "p50Ms": 86.099,
+        "p95Ms": 88.376
+      },
+      "warm": {
+        "runs": 10,
+        "samplesMs": [40.229, 38.02, 37.639, 37.672, 37.204, 36.633, 37.386, 36.513, 36.085, 37.19],
+        "p50Ms": 37.295,
+        "p95Ms": 39.235
+      },
+      "deterministic": true
+    }
+  },
+  "tolerance": {
+    "localPct": 50,
+    "ciPct": 150,
+    "absoluteFloorMs": 50
+  }
+}
