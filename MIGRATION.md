@@ -1,11 +1,12 @@
 # Doclify Guardrail v2 Migration Contract
 
-Status: approved product decision; not implemented or released
+Status: approved product decision; implementation in progress; not released
 
 The current stable release is `doclify-guardrail@1.7.4`. This document records
 the public-surface decisions for v2 so implementation can proceed without
-hidden compatibility branches. It does not claim that the v2 commands below
-exist today, and it does not announce an npm package or GitHub Action release.
+hidden compatibility branches. It does not claim that every v2 command below
+is implemented, and it does not announce an npm package or GitHub Action
+release.
 
 ## Naming Decision
 
@@ -125,9 +126,9 @@ changed by this decision-only task.
 | `--json` | Migrate | `--format json` |
 | `--format default` | Migrate | `--format text` |
 | `--format compact` | Maintain | `--format compact` |
-| no output limit flag | Add | Text and compact output are bounded by default; `--all` shows every finding. |
+| no output limit flag | Add | Text and compact finding details are capped by default; `--all` shows every finding. Machine formats remain complete. |
 | no common output path | Add | `--output <path>` is the only explicit report-file write. |
-| `--no-color` | Maintain | Applies to human-readable output. |
+| `--no-color` | Maintain | Accepted for compatibility; v2 human-readable output is always color-free. |
 | `--ascii` | Remove | V2 human output uses portable text without a separate ASCII mode. |
 | `--debug` | Remove | Operational errors remain structured; no unbounded debug stream is part of the public contract. |
 | `-h`, `--help` | Maintain | Help for the selected command. |
@@ -172,6 +173,59 @@ changed by this decision-only task.
 | operational diagnostics on stderr | Maintain | Stderr never carries a second machine result and does not alter the structured stdout document. |
 | `--output <path>` | Add | Write the selected result format to that explicit path; operational diagnostics remain on stderr. |
 
+## V2 Result Contract
+
+The explicit `check` and `changed` command paths use one deterministic result
+model. The legacy no-command v1 path continues to emit `schemaVersion: 2` until
+its separately documented removal; consumers must not treat the two envelopes
+as interchangeable.
+
+The v2 envelope contains:
+
+- `schemaVersion: 3` and the exact tool name and package version;
+- `command`, `complete`, and `status`;
+- stable summary counts for selected, scanned, and skipped files, blocking and
+  advisory findings, operational diagnostics, and files with suppressions;
+- a sorted `files` list that distinguishes scanned files, skipped files, and
+  files containing suppression directives;
+- one sorted, flat `findings` list with rule id, severity, confidence, path,
+  position, message, and evidence;
+- a separate sorted `diagnostics` list for operational failures.
+
+`status` is `fail` when blocking findings exist, `incomplete` when no blocking
+finding exists but any selected target could not be scanned, and `pass` only
+when the scan is complete with no blocking finding. A skipped file reports
+`findings: null`, never zero. V1 checker findings are exposed only as
+`advisory`, with `confidence: unverified` and `evidence: null`, until a later
+rule task supplies the precision and proof required for blocking severity.
+
+The result arrays and every machine format are complete. Text and compact cap
+finding details at 50 by default, report how many findings were omitted, and
+accept `--all` to show every finding. Operational diagnostics are never
+truncated. Volatile ids, timestamps, and timings are not part of the result;
+JUnit has no generated timestamp.
+
+Directory recursion does not follow symbolic links. Markdown file links are
+scanned when their resolved target remains inside the selected workspace;
+broken links and links outside that boundary are operational diagnostics.
+
+The programmatic entry point is asynchronous and returns exactly the result
+serialized by the CLI for the same paths and options:
+
+```js
+import { check } from 'doclify-guardrail/api';
+
+const result = await check({
+  paths: ['README.md'],
+  cwd: process.cwd()
+});
+```
+
+Partial scans, including scans where every selected file is unreadable, resolve
+with an incomplete result. Invalid usage or configuration and failures with no
+usable target or diagnostic reject with an error carrying a stable `code`; no
+second public error-class export is required.
+
 ## Programmatic API Migration
 
 The v2 package has no package-root import. The only public programmatic entry
@@ -214,7 +268,7 @@ through the package `bin` field.
 | `doclify-disable-next-line`, `doclify-disable`/`doclify-enable`, and `doclify-disable-file` comments | Maintain | The prefix and scopes remain; removed or renamed rule ids require migration and unknown ids are rejected. |
 | `DOCLIFY_TOKEN`, `DOCLIFY_API_URL`, and `DOCLIFY_PROJECT_ID` | Remove | No Cloud credentials or project binding in v2. |
 | `DOCLIFY_HOME` and `DOCLIFY_REPO_ID` | Remove | No repository memory or hidden per-user state in the v2 core. |
-| `NO_COLOR` | Maintain | Standard color opt-out for human-readable output. |
+| `NO_COLOR` | Maintain | Accepted for compatibility; v2 human-readable output is always color-free. |
 | `.doclify-history.json` | Remove | No score history. |
 | `doclify-report.md` | Remove | No implicit Markdown report. |
 | `doclify-junit.xml` | Migrate | Written only through `--format junit --output <path>`. |

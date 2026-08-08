@@ -324,6 +324,7 @@ async function checkDeadLinksDetailed(content, {
   concurrency,
   remoteCache,
   allowPrivateLinks,
+  checkRemote = true,
   lookupFn,
   requestFn
 } = {}) {
@@ -350,6 +351,7 @@ async function checkDeadLinksDetailed(content, {
     seen.add(dedupeKey);
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (!checkRemote) continue;
       if (remoteChecks.has(url)) continue;
       if (!allowPrivate) {
         const blocked = await getBlockedRemoteUrlReason(url, { dnsCache, lookupFn });

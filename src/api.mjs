@@ -1,7 +1,12 @@
 /**
  * Doclify Guardrail — Programmatic API
  *
- * Usage:
+ * V2 contract (implemented for explicit check/changed consumers):
+ *   import { check } from 'doclify-guardrail/api';
+ *
+ *   const result = await check({ paths: ['README.md'] });
+ *
+ * Legacy v1 contract (retained until its documented removal task):
  *   import { lint, fix, score } from 'doclify-guardrail/api';
  *
  *   const result = lint('# Hello\n\nWorld\n');
@@ -12,6 +17,7 @@
 import { checkMarkdown, RULE_CATALOG } from './checker.mjs';
 import { autoFixInsecureLinks, autoFixFormatting } from './fixer.mjs';
 import { computeDocHealthScore } from './quality.mjs';
+import { check } from './core.mjs';
 
 /**
  * Lint a Markdown string and return findings.
@@ -99,4 +105,4 @@ function score(counts) {
   return computeDocHealthScore(counts);
 }
 
-export { lint, fix, score, RULE_CATALOG };
+export { check, lint, fix, score, RULE_CATALOG };
