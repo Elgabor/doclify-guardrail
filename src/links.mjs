@@ -415,6 +415,11 @@ async function checkDeadLinksDetailed(content, {
       if (cache.has(cacheKey)) {
         error = cache.get(cacheKey);
         stats.remoteCacheHits += 1;
+      } else if (timeoutMs == null && cache.has(url)) {
+        // Keep the original URL-only cache contract for callers that use the
+        // default timeout; explicit policies must never share an outcome.
+        error = cache.get(url);
+        stats.remoteCacheHits += 1;
       } else {
         stats.remoteCacheMisses += 1;
         error = await checkRemoteUrl(url, {
