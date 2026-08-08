@@ -49,6 +49,19 @@ function isDescendantOrSame(candidatePath, basePath) {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+function getReadContainment(candidatePath, basePath) {
+  const lexicalRelative = path.relative(path.resolve(basePath), path.resolve(candidatePath));
+  if (lexicalRelative.startsWith('..') || path.isAbsolute(lexicalRelative)) return 'outside';
+
+  const resolvedCandidate = canonicalizeForBoundaryCheck(candidatePath);
+  const resolvedBase = canonicalizeForBoundaryCheck(basePath);
+  if (resolvedCandidate == null || resolvedBase == null) return 'indeterminate';
+  const canonicalRelative = path.relative(resolvedBase, resolvedCandidate);
+  return canonicalRelative === '' || (!canonicalRelative.startsWith('..') && !path.isAbsolute(canonicalRelative))
+    ? 'inside'
+    : 'outside';
+}
+
 function resolveWorkspacePath(targetPath, options = {}) {
   const workspace = path.resolve(options.workspace || process.cwd());
   const label = options.label || 'Output path';
@@ -60,6 +73,7 @@ function resolveWorkspacePath(targetPath, options = {}) {
 }
 
 export {
+  getReadContainment,
   isDescendantOrSame,
   resolveWorkspacePath
 };

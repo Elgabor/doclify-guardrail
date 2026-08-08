@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { check, DoclifyUsageError } from './core.mjs';
-import { getChangedMarkdownFiles } from './diff.mjs';
+import { DoclifyUsageError, runCheck } from './core.mjs';
 import { renderResult, terminalText } from './result-renderers.mjs';
 import { resolveWorkspacePath } from './workspace-path.mjs';
 
@@ -43,8 +42,9 @@ function parseV2Args(argv) {
     help: false,
     ignoreRules: [],
     exclude: [],
+    config: null,
     siteRoot: null,
-    externalLinks: false,
+    externalLinks: undefined,
     links: { allowList: [] },
     base: null,
     staged: false
@@ -89,6 +89,11 @@ function parseV2Args(argv) {
     }
     if (token === '--site-root') {
       parsed.siteRoot = takeValue(argv, index, token);
+      index += 1;
+      continue;
+    }
+    if (token === '--config') {
+      parsed.config = takeValue(argv, index, token);
       index += 1;
       continue;
     }
@@ -144,9 +149,6 @@ function parseV2Args(argv) {
       throw new DoclifyUsageError('invalid-changed-selector', 'changed requires exactly one of --base or --staged.');
     }
   }
-  if (!parsed.externalLinks && (parsed.links.allowList.length > 0 || parsed.links.timeoutMs != null || parsed.links.concurrency != null)) {
-    throw new DoclifyUsageError('invalid-link-options', 'Remote link options require --external-links.');
-  }
   if (command === 'check' && parsed.paths.length === 0) parsed.paths.push('.');
   return parsed;
 }
@@ -158,6 +160,7 @@ function renderV2Help(command) {
     '  --all                              Show every finding in text/compact output',
     '  --ignore-rules <id,...>',
     '  --exclude <path,...>',
+    '  --config <path>',
     '  --site-root <path>',
     '  --external-links',
     '  --link-allow-list <url,...>',
@@ -205,41 +208,36 @@ async function runV2Cli(argv) {
       return 0;
     }
 
-    let paths = parsed.paths;
-    if (parsed.command === 'changed') {
-      try {
-        paths = getChangedMarkdownFiles({
-          base: parsed.base || 'HEAD',
-          staged: parsed.staged
-        });
-      } catch {
-        throw new DoclifyUsageError('git-failed', 'Changed-file discovery failed.');
-      }
-    }
-
-    const result = await check({
+    const checkOptions = {
       command: parsed.command,
       cwd: process.cwd(),
-      paths,
       ignoreRules: parsed.ignoreRules,
       exclude: parsed.exclude,
-      siteRoot: parsed.siteRoot,
-      externalLinks: parsed.externalLinks,
       links: parsed.links
-    });
+    };
+    if (parsed.command === 'changed') {
+      checkOptions.changed = parsed.staged ? { staged: true } : { base: parsed.base };
+    } else {
+      checkOptions.paths = parsed.paths;
+    }
+    if (parsed.config != null) checkOptions.config = parsed.config;
+    if (parsed.siteRoot != null) checkOptions.siteRoot = parsed.siteRoot;
+    if (parsed.externalLinks === true) checkOptions.externalLinks = true;
+
+    const { result, workspace } = await runCheck(checkOptions);
     const rendered = renderResult(result, { format: parsed.format, all: parsed.all });
 
     if (parsed.output) {
       let outputPath;
       try {
-        outputPath = resolveWorkspacePath(parsed.output, {
-          workspace: process.cwd(),
+        outputPath = resolveWorkspacePath(path.resolve(process.cwd(), parsed.output), {
+          workspace,
           label: 'Output path'
         });
       } catch {
         throw new DoclifyUsageError('output-outside-workspace', 'Output path must stay inside the workspace.');
       }
-      assertOutputDoesNotOverwriteInput(outputPath, result, process.cwd());
+      assertOutputDoesNotOverwriteInput(outputPath, result, workspace);
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       fs.writeFileSync(outputPath, rendered, 'utf8');
     } else {

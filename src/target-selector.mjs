@@ -4,7 +4,7 @@ import path from 'node:path';
 import { miniGlob } from './glob.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
-import { isDescendantOrSame } from './workspace-path.mjs';
+import { getReadContainment, isDescendantOrSame } from './workspace-path.mjs';
 
 const IGNORED_DIRECTORIES = new Set([
   'node_modules',
@@ -43,26 +43,6 @@ function relativePath(filePath, workspace) {
   return toPortablePath(relative || '.');
 }
 
-function wildcardPattern(pattern) {
-  const escaped = toPortablePath(pattern)
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '\u0000')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\u0000/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}
-
-function isExcluded(relative, patterns) {
-  const portable = toPortablePath(relative);
-  const segments = portable.split('/');
-  return patterns.some((rawPattern) => {
-    const pattern = toPortablePath(rawPattern).replace(/^\.\//, '').replace(/\/$/, '');
-    if (!pattern) return false;
-    if (pattern.includes('*')) return wildcardPattern(pattern).test(portable);
-    return portable === pattern || portable.startsWith(`${pattern}/`) || segments.includes(pattern);
-  });
-}
-
 function selectionDiagnostic(code, target, message) {
   return {
     code,
@@ -72,7 +52,7 @@ function selectionDiagnostic(code, target, message) {
   };
 }
 
-function walkDirectory(dirPath, workspace, exclude, paths, diagnostics) {
+function walkDirectory(dirPath, workspace, shouldExclude, paths, diagnostics) {
   let entries;
   try {
     entries = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -89,12 +69,13 @@ function walkDirectory(dirPath, workspace, exclude, paths, diagnostics) {
   for (const entry of entries) {
     const absolute = path.join(dirPath, entry.name);
     const relative = relativePath(absolute, workspace);
-    if (isExcluded(relative, exclude)) continue;
     if (IGNORED_DIRECTORIES.has(entry.name)) continue;
     if (entry.isDirectory()) {
-      walkDirectory(absolute, workspace, exclude, paths, diagnostics);
+      if (shouldExclude(absolute, { directory: true })) continue;
+      walkDirectory(absolute, workspace, shouldExclude, paths, diagnostics);
       continue;
     }
+    if (shouldExclude(absolute)) continue;
     if (entry.isFile() && isMarkdownPath(entry.name)) {
       paths.push(absolute);
       continue;
@@ -133,7 +114,7 @@ function walkDirectory(dirPath, workspace, exclude, paths, diagnostics) {
 }
 
 function assertContained(candidate, workspace) {
-  if (!isDescendantOrSame(candidate, workspace)) {
+  if (getReadContainment(candidate, workspace) === 'outside') {
     throw new TargetSelectionError(
       'target-outside-workspace',
       'Selected paths must stay inside the workspace.'
@@ -144,7 +125,9 @@ function assertContained(candidate, workspace) {
 function selectTargets(options = {}) {
   const workspace = path.resolve(options.cwd || process.cwd());
   const targets = Array.isArray(options.paths) ? options.paths : ['.'];
-  const exclude = [...(options.exclude || [])];
+  const shouldExclude = typeof options.isExcluded === 'function'
+    ? options.isExcluded
+    : () => false;
   const selected = [];
   const diagnostics = [];
 
@@ -166,10 +149,9 @@ function selectTargets(options = {}) {
         ));
         continue;
       }
-      const contained = matches.filter((candidate) => isDescendantOrSame(candidate, workspace));
+      const contained = matches.filter((candidate) => getReadContainment(candidate, workspace) !== 'outside');
       const usable = contained.filter((candidate) => {
-        const relative = relativePath(candidate, workspace);
-        return isMarkdownPath(candidate) && !isExcluded(relative, exclude);
+        return isMarkdownPath(candidate) && !shouldExclude(candidate);
       });
       if (usable.length === 0) {
         diagnostics.push(selectionDiagnostic(
@@ -190,7 +172,7 @@ function selectTargets(options = {}) {
       stat = fs.statSync(absolute);
     } catch {
       if (isMarkdownPath(absolute)) {
-        selected.push(absolute);
+        if (!shouldExclude(absolute)) selected.push(absolute);
       } else {
         diagnostics.push(selectionDiagnostic(
           'target-unreadable',
@@ -202,10 +184,11 @@ function selectTargets(options = {}) {
     }
 
     if (stat.isDirectory()) {
-      walkDirectory(absolute, workspace, exclude, selected, diagnostics);
+      if (!shouldExclude(absolute, { directory: true })) {
+        walkDirectory(absolute, workspace, shouldExclude, selected, diagnostics);
+      }
     } else if (stat.isFile() && isMarkdownPath(absolute)) {
-      const relative = relativePath(absolute, workspace);
-      if (!isExcluded(relative, exclude)) selected.push(absolute);
+      if (!shouldExclude(absolute)) selected.push(absolute);
     } else {
       diagnostics.push(selectionDiagnostic(
         'target-unsupported',

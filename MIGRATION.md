@@ -90,6 +90,20 @@ changed by this decision-only task.
 | stdin unsupported | Add | `check - --stdin-name <name>`; the name is required. |
 | no rule explanation command | Add | `doclify-guardrail explain <rule-id>` |
 
+`changed` discovers the Git root once from the invocation directory and runs
+the selected diff there. Result paths are relative to that Git root, so the
+same invocation produces the same machine result from the repository root or
+one of its subdirectories, including linked worktrees. `check` paths remain
+relative to its selected `cwd` workspace.
+
+Both changed selectors include tracked added, copied, modified, and renamed
+Markdown files. Rename results use only the current path. Deleted, untracked,
+and ignored files are not scanned. Filename parsing is zero-delimited, so
+spaces, non-ASCII text, tabs, and newlines do not change selection. Missing Git,
+a non-repository directory, an unknown base ref, and other Git failures use the
+stable `git-unavailable`, `not-a-git-repository`, `unknown-base-ref`, and
+`git-failed` usage-error codes.
+
 ### Scan policy and configuration flags
 
 | v1 flag | Decision | v2 destination |
@@ -219,6 +233,12 @@ const result = await check({
   paths: ['README.md'],
   cwd: process.cwd()
 });
+
+const changedResult = await check({
+  command: 'changed',
+  changed: { base: 'origin/main' },
+  cwd: process.cwd()
+});
 ```
 
 Partial scans, including scans where every selected file is unreadable, resolve
@@ -255,14 +275,14 @@ through the package `bin` field.
 
 | v1 surface | Decision | v2 destination |
 | --- | --- | --- |
-| `.doclify-guardrail.json` | Maintain | Same configuration filename and hierarchical lookup, with deterministic workspace-contained resolution. |
+| `.doclify-guardrail.json` | Maintain | Same configuration filename and hierarchical lookup, with deterministic repository-contained resolution. |
 | `ignoreRules` | Maintain | Same suppression mechanism; removed or renamed rule ids require migration and unknown ids are rejected. |
 | `exclude` | Maintain | Same purpose, contained within the selected workspace. |
-| `siteRoot` | Maintain | Same purpose, contained within the selected workspace. |
+| `siteRoot` | Maintain | Same purpose, contained within the Git root when available and otherwise within the selected workspace. |
 | `linkAllowList` | Maintain | Same purpose for explicit external-link checks. |
 | `linkTimeoutMs` | Maintain | Same purpose for explicit external-link checks. |
 | `linkConcurrency` | Maintain | Same purpose for explicit external-link checks. |
-| `checkLinks` | Migrate | `externalLinks`; local integrity checks do not require network opt-in. |
+| `checkLinks` | Remove | No configuration file can enable network access; use the explicit CLI `--external-links` flag or API `externalLinks: true`. |
 | `strict`, `maxLineLength`, `checkFreshness`, `freshnessMaxDays`, `checkFrontmatter`, and `checkInlineHtml` | Remove | No v2 core replacement. |
 | `push` and `projectId` | Remove | No Cloud configuration in v2. |
 | `doclify-disable-next-line`, `doclify-disable`/`doclify-enable`, and `doclify-disable-file` comments | Maintain | The prefix and scopes remain; removed or renamed rule ids require migration and unknown ids are rejected. |
@@ -275,6 +295,36 @@ through the package `bin` field.
 | `doclify.sarif` | Migrate | Written only through `--format sarif --output <path>`. |
 | `doclify-badge.svg` | Remove | No score badge. |
 | local auth state under `.doclify/` | Remove | No Cloud credential store. |
+
+Automatic configuration lookup starts at the Git root and applies files from
+that root through the scanned file's directory. Without Git, lookup starts at
+the selected workspace and never reads a parent directory, including a user
+home. Each configuration file is read at most once per scan and no Git process
+is created per file.
+
+Scalars use the closest configuration value. `ignoreRules`, `exclude`, and
+`linkAllowList` are additive and deduplicated. Relative `siteRoot` and `exclude`
+values use the directory containing the configuration that declares them;
+nested exclusions apply only below that directory and prune traversal before
+an excluded subtree is read. Explicit CLI and API options apply last. Selected
+documents remain contained within the selected workspace. `siteRoot` remains
+inside the Git root when one is available and otherwise inside the selected
+workspace, so repository-root link resolution is stable when `check` runs from
+a subdirectory.
+
+`--config <path>` and API `config` select exactly one required file, resolved
+from the invocation directory, inside the Git root when available and otherwise
+inside the workspace, and disable automatic hierarchy. Removed v1 keys fail with
+`config-removed-key`; unknown keys fail with `config-unknown-key`; missing,
+malformed, and out-of-bound explicit configuration use `config-not-found`,
+`config-invalid`, and `config-outside-workspace`. V1 configuration is not
+silently accepted by the explicit v2 commands.
+
+Configuration is untrusted input and cannot opt into external requests.
+`externalLinks` is therefore not a configuration key; only the explicit CLI
+flag or API option enables remote checks. Configuration may tune
+`linkAllowList`, `linkTimeoutMs`, and `linkConcurrency`, but those values remain
+inert while external checks are disabled.
 
 ## GitHub Action Migration
 

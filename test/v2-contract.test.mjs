@@ -224,12 +224,12 @@ test('v2 unreadable targets stay structured while empty scans and invalid usage 
 
   await assert.rejects(
     check({ cwd, paths: ['.'], config: '.doclify-guardrail.json' }),
-    (error) => error?.name === 'DoclifyUsageError' && error?.code === 'unknown-option'
+    (error) => error?.name === 'DoclifyUsageError' && error?.code === 'config-not-found'
   );
   const config = runCli(['check', '.', '--config', '.doclify-guardrail.json'], cwd);
   assert.equal(config.status, 2);
   assert.equal(config.stdout, '');
-  assert.match(config.stderr, /^unknown-option:/);
+  assert.match(config.stderr, /^config-not-found:/);
 });
 
 test('v2 unmatched targets cannot be hidden by a clean target', async (t) => {
