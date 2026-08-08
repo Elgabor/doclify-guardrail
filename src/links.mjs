@@ -410,9 +410,10 @@ async function checkDeadLinksDetailed(content, {
     const entries = Array.from(remoteChecks.entries());
     const tasks = entries.map(([url, link]) => async () => {
       let error;
+      const cacheKey = `${timeoutMs || DEFAULT_LINK_TIMEOUT_MS}\0${url}`;
       stats.remoteLinksChecked += 1;
-      if (cache.has(url)) {
-        error = cache.get(url);
+      if (cache.has(cacheKey)) {
+        error = cache.get(cacheKey);
         stats.remoteCacheHits += 1;
       } else {
         stats.remoteCacheMisses += 1;
@@ -423,7 +424,7 @@ async function checkDeadLinksDetailed(content, {
           lookupFn,
           requestFn
         });
-        cache.set(url, error);
+        cache.set(cacheKey, error);
       }
       if (typeof error === 'string' && error.startsWith('Timeout')) {
         stats.remoteTimeouts += 1;

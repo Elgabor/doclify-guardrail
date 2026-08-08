@@ -172,6 +172,26 @@ test('v2 human output is bounded while machine formats stay complete', () => {
   assert.match(renderResult(result, { format: 'junit' }), /Placeholder 55\./);
 });
 
+test('v2 text and JUnit render diagnostics for a scanned file as errors', () => {
+  const result = createResult({
+    toolVersion: '2.0.0-test',
+    command: 'check',
+    files: [{ path: 'doc.md', scanned: true, findings: 0, suppressions: [] }],
+    findings: [],
+    diagnostics: [{
+      code: 'dead-link',
+      severity: 'error',
+      path: 'doc.md',
+      message: 'Dead link: missing.md (Target not found)'
+    }]
+  });
+
+  assert.match(renderResult(result, { format: 'text' }), /^ERROR doc\.md/m);
+  const junit = renderResult(result, { format: 'junit' });
+  assert.match(junit, /tests="1" failures="0" errors="1"/);
+  assert.match(junit, /<error message="Dead link: missing\.md \(Target not found\)">/);
+});
+
 test('v2 CLI and API return the same schemaVersion 3 result', async (t) => {
   const cwd = makeTempDir(t);
   fs.writeFileSync(path.join(cwd, 'doc.md'), 'Body without a heading.\n', 'utf8');
@@ -302,6 +322,26 @@ test('v2 local link checks remain offline unless external links are explicit', a
   assert.equal(findings.some((finding) => finding.code === 'dead-link'), true);
   assert.equal(findings.some((finding) => finding.message.includes('example.com')), false);
   assert.equal(stats.remoteLinksChecked, 0);
+});
+
+test('v2 remote cache keeps results separate for different timeout policies', async () => {
+  const cache = new Map();
+  const timeouts = [];
+  const requestFn = (_url, _options, timeoutMs) => {
+    timeouts.push(timeoutMs);
+    return { status: 200, headers: { get: () => null } };
+  };
+  const options = {
+    sourceFile: '/workspace/doc.md',
+    checkRemote: true,
+    remoteCache: cache,
+    lookupFn: async () => [{ address: '93.184.216.34', family: 4 }],
+    requestFn
+  };
+
+  await checkDeadLinksDetailed('[example](https://example.com)', { ...options, timeoutMs: 25 });
+  await checkDeadLinksDetailed('[example](https://example.com)', { ...options, timeoutMs: 50 });
+  assert.deepEqual(timeouts, [25, 50]);
 });
 
 test('v2 local links never inspect outside the selected workspace', async (t) => {

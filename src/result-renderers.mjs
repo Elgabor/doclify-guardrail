@@ -228,7 +228,7 @@ function renderJunit(result) {
       ...file.suppressions.map((suppression) => `[SUPPRESSION] ${suppressionDescription(suppression)}`)
     ];
 
-    if (file.scanned && blocking.length === 0 && notes.length === 0) {
+    if (file.scanned && !fileDiagnostic && blocking.length === 0 && notes.length === 0) {
       lines.push(`  <testcase classname="doclify.guardrail" name="${xmlText(file.path)}"/>`);
       continue;
     }
