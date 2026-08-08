@@ -1,8 +1,8 @@
 {
   "name": "doclify-guardrail",
-  "version": "1.7.4",
+  "version": "2.0.0-beta.1",
   "type": "module",
-  "description": "Quality gate for your Markdown docs. Zero dependencies, catches errors in seconds.",
+  "description": "Deterministic, local, read-only documentation integrity checks for Markdown repositories.",
   "homepage": "https://github.com/Elgabor/doclify-guardrail#readme",
   "repository": {
     "type": "git",
@@ -25,7 +25,9 @@
   },
   "scripts": {
     "start": "node ./src/index.mjs",
-    "test": "node --test test/guardrail.test.mjs",
+    "test": "npm run test:correctness",
+    "test:correctness": "node ./scripts/check-test-isolation.mjs",
+    "test:performance": "node ./scripts/perf-corpus.mjs",
     "docs:sync-check": "node ./scripts/check-docs-sync.mjs",
     "reliability:pr": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag pr-sample --repeat 2 --out bench/out/pr-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/pr-deterministic.json --baseline bench/baselines/pr-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/pr-deterministic-report.md",
     "reliability:nightly:det": "node scripts/run-corpus.mjs --manifest bench/corpus.manifest.json --profile deterministic --tag nightly-det-full --repeat 3 --out bench/out/nightly-deterministic.json && node scripts/compare-baseline.mjs --current bench/out/nightly-deterministic.json --baseline bench/baselines/nightly-deterministic.json --thresholds bench/reliability-thresholds.json --waivers bench/waivers.json --report bench/out/nightly-deterministic-report.md",

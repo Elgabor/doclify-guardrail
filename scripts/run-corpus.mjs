@@ -6,6 +6,8 @@ import { isMarkdownPath } from '../src/markdown-files.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+const THIS_FILE = fileURLToPath(import.meta.url);
+const REPOSITORY_ROOT = path.resolve(path.dirname(THIS_FILE), '..');
 const DEFAULT_MANIFEST = 'bench/corpus.manifest.json';
 const DEFAULT_REPEAT = 1;
 const DEFAULT_CACHE_ROOT = path.join('.cache', 'corpus');
@@ -409,7 +411,7 @@ async function runCorpus(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const manifestPath = path.resolve(args.manifest);
   const outPath = path.resolve(args.out);
-  const cliPath = path.resolve('src/index.mjs');
+  const cliPath = path.join(REPOSITORY_ROOT, 'src', 'index.mjs');
 
   if (!fs.existsSync(cliPath)) {
     throw new Error(`Cannot find doclify CLI entrypoint: ${cliPath}`);
@@ -512,7 +514,6 @@ async function runCorpus(argv = process.argv.slice(2)) {
   return hasCrashes ? 1 : 0;
 }
 
-const THIS_FILE = fileURLToPath(import.meta.url);
 if (process.argv[1] && path.resolve(process.argv[1]) === THIS_FILE) {
   runCorpus().then(
     (code) => process.exit(code),

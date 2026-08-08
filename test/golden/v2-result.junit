@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="doclify-guardrail" tests="4" failures="1" errors="1">
+  <testcase classname="doclify.guardrail" name="a-broken.md">
+    <failure message="1 blocking finding">[BLOCKING] single-h1:1 Missing H1 heading.</failure>
+  </testcase>
+  <testcase classname="doclify.guardrail" name="b-suppressed.md">
+    <system-out>[ADVISORY] placeholder:4 Placeholder found.
+[SUPPRESSION] file at line 1 (all rules)</system-out>
+  </testcase>
+  <testcase classname="doclify.guardrail" name="locked.md">
+    <error message="Unable to read file (EACCES).">Unable to read file (EACCES).</error>
+  </testcase>
+  <testcase classname="doclify.guardrail" name="z-clean.md"/>
+</testsuite>

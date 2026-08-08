@@ -26,6 +26,7 @@ import {
   generateSarifReport,
   generateBadge
 } from './ci-output.mjs';
+import { isV2Command, runV2Cli } from './v2-cli.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1555,6 +1556,9 @@ async function runScan(args, resolved, filePaths, customRules, opts = {}) {
 
 async function runCli(argv = process.argv.slice(2)) {
   const topLevel = argv[0];
+  if (isV2Command(argv)) {
+    return runV2Cli(argv);
+  }
   try {
     if (topLevel === 'login') {
       initColors(false);
@@ -2031,7 +2035,7 @@ async function runCli(argv = process.argv.slice(2)) {
 const __filename = fileURLToPath(import.meta.url);
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === __filename) {
   const code = await runCli();
-  process.exit(code);
+  process.exitCode = code;
 }
 
 export { checkMarkdown, parseArgs, resolveOptions, resolveFileOptions, findParentConfigs, runCli, buildFileResult, buildOutput };

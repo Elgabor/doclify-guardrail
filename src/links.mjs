@@ -8,6 +8,7 @@ import {
   createPrivateNetworkBlockingLookup,
   getBlockedRemoteUrlReason
 } from './network-guard.mjs';
+import { getReadContainment } from './workspace-path.mjs';
 
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
@@ -272,6 +273,21 @@ function checkLocalUrl(url, opts = {}) {
   if (resolved.message) return resolved;
 
   const candidatePaths = resolved.candidatePaths || [resolved.targetPath];
+  if (opts.readBoundary) {
+    for (const candidate of candidatePaths) {
+      const containment = getReadContainment(candidate, opts.readBoundary);
+      if (containment !== 'inside') {
+        return {
+          code: containment === 'outside' ? 'link-outside-workspace' : 'link-unreadable',
+          severity: 'error',
+          operational: true,
+          message: containment === 'outside'
+            ? `Local link is outside the workspace: ${url}`
+            : `Local link cannot be safely resolved: ${url}`
+        };
+      }
+    }
+  }
   if (candidatePaths.some(candidate => fs.existsSync(candidate))) {
     return null;
   }
@@ -287,6 +303,7 @@ function checkLocalUrl(url, opts = {}) {
   return {
     code: 'dead-link',
     severity: 'error',
+    operational: true,
     message: `Dead link: ${url} (Target not found)`
   };
 }
@@ -323,12 +340,15 @@ async function checkDeadLinksDetailed(content, {
   timeoutMs,
   concurrency,
   remoteCache,
+  readBoundary,
   allowPrivateLinks,
+  checkRemote = true,
   lookupFn,
   requestFn
 } = {}) {
   const links = extractLinks(content);
   const findings = [];
+  const diagnostics = [];
   const seen = new Set();
   const cache = remoteCache instanceof Map ? remoteCache : new Map();
   const dnsCache = new Map();
@@ -350,6 +370,7 @@ async function checkDeadLinksDetailed(content, {
     seen.add(dedupeKey);
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (!checkRemote) continue;
       if (remoteChecks.has(url)) continue;
       if (!allowPrivate) {
         const blocked = await getBlockedRemoteUrlReason(url, { dnsCache, lookupFn });
@@ -369,15 +390,18 @@ async function checkDeadLinksDetailed(content, {
       continue;
     }
 
-    const localFinding = checkLocalUrl(url, { sourceFile, siteRoot });
+    const localFinding = checkLocalUrl(url, { sourceFile, siteRoot, readBoundary });
     if (localFinding) {
-      findings.push({
+      const result = {
         code: localFinding.code,
         severity: localFinding.severity,
+        operational: localFinding.operational === true,
         line: link.line,
         message: localFinding.message,
         source: sourceFile
-      });
+      };
+      findings.push(result);
+      if (localFinding.operational) diagnostics.push(result);
     }
   }
 
@@ -386,8 +410,14 @@ async function checkDeadLinksDetailed(content, {
     const entries = Array.from(remoteChecks.entries());
     const tasks = entries.map(([url, link]) => async () => {
       let error;
+      const cacheKey = `${timeoutMs || DEFAULT_LINK_TIMEOUT_MS}\0${url}`;
       stats.remoteLinksChecked += 1;
-      if (cache.has(url)) {
+      if (cache.has(cacheKey)) {
+        error = cache.get(cacheKey);
+        stats.remoteCacheHits += 1;
+      } else if (timeoutMs == null && cache.has(url)) {
+        // Keep the original URL-only cache contract for callers that use the
+        // default timeout; explicit policies must never share an outcome.
         error = cache.get(url);
         stats.remoteCacheHits += 1;
       } else {
@@ -399,7 +429,7 @@ async function checkDeadLinksDetailed(content, {
           lookupFn,
           requestFn
         });
-        cache.set(url, error);
+        cache.set(cacheKey, error);
       }
       if (typeof error === 'string' && error.startsWith('Timeout')) {
         stats.remoteTimeouts += 1;
@@ -421,7 +451,7 @@ async function checkDeadLinksDetailed(content, {
     }
   }
 
-  return { findings, stats };
+  return { findings, diagnostics, stats };
 }
 
 async function checkDeadLinks(content, opts = {}) {

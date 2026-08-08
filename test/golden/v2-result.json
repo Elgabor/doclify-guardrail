@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 3,
+  "tool": {
+    "name": "doclify-guardrail",
+    "version": "2.0.0-test"
+  },
+  "command": "check",
+  "complete": false,
+  "status": "fail",
+  "summary": {
+    "filesSelected": 4,
+    "filesScanned": 3,
+    "filesSkipped": 1,
+    "blocking": 1,
+    "advisory": 1,
+    "diagnostics": 1,
+    "filesWithSuppressions": 1
+  },
+  "files": [
+    {
+      "path": "a-broken.md",
+      "scanned": true,
+      "findings": 1,
+      "suppressions": []
+    },
+    {
+      "path": "b-suppressed.md",
+      "scanned": true,
+      "findings": 1,
+      "suppressions": [
+        {
+          "scope": "file",
+          "rules": null,
+          "line": 1
+        }
+      ]
+    },
+    {
+      "path": "locked.md",
+      "scanned": false,
+      "findings": null,
+      "suppressions": []
+    },
+    {
+      "path": "z-clean.md",
+      "scanned": true,
+      "findings": 0,
+      "suppressions": []
+    }
+  ],
+  "findings": [
+    {
+      "ruleId": "single-h1",
+      "severity": "blocking",
+      "confidence": "high",
+      "path": "a-broken.md",
+      "line": 1,
+      "column": null,
+      "message": "Missing H1 heading.",
+      "evidence": {
+        "fact": "No H1 heading was found.",
+        "source": "a-broken.md:1"
+      }
+    },
+    {
+      "ruleId": "placeholder",
+      "severity": "advisory",
+      "confidence": "unverified",
+      "path": "b-suppressed.md",
+      "line": 4,
+      "column": null,
+      "message": "Placeholder found.",
+      "evidence": null
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "file-unreadable",
+      "severity": "error",
+      "path": "locked.md",
+      "message": "Unable to read file (EACCES)."
+    }
+  ]
+}

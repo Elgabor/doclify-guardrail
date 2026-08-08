@@ -1,30 +1,62 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-function canonicalizeForBoundaryCheck(targetPath) {
+function canonicalizeForBoundaryCheck(targetPath, seenLinks = new Set()) {
   const resolved = path.resolve(targetPath);
-  if (fs.existsSync(resolved)) {
-    try {
-      return fs.realpathSync(resolved);
-    } catch {
-      return resolved;
-    }
-  }
 
-  const parentDir = path.dirname(resolved);
-  try {
-    const canonicalParent = fs.realpathSync(parentDir);
-    return path.join(canonicalParent, path.basename(resolved));
-  } catch {
-    return resolved;
+  let current = resolved;
+  const remainder = [];
+  while (true) {
+    let stat;
+    try {
+      stat = fs.lstatSync(current);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return null;
+      const parent = path.dirname(current);
+      if (parent === current) return null;
+      remainder.unshift(path.basename(current));
+      current = parent;
+      continue;
+    }
+
+    if (stat.isSymbolicLink()) {
+      if (seenLinks.has(current)) return null;
+      const nextSeenLinks = new Set(seenLinks);
+      nextSeenLinks.add(current);
+      let linkTarget;
+      try {
+        linkTarget = fs.readlinkSync(current);
+      } catch {
+        return null;
+      }
+      const resolvedTarget = path.resolve(path.dirname(current), linkTarget);
+      return canonicalizeForBoundaryCheck(path.join(resolvedTarget, ...remainder), nextSeenLinks);
+    }
+
+    try {
+      return path.join(fs.realpathSync(current), ...remainder);
+    } catch {
+      return null;
+    }
   }
 }
 
 function isDescendantOrSame(candidatePath, basePath) {
   const resolvedCandidate = canonicalizeForBoundaryCheck(candidatePath);
   const resolvedBase = canonicalizeForBoundaryCheck(basePath);
+  if (resolvedCandidate == null || resolvedBase == null) return false;
   const rel = path.relative(resolvedBase, resolvedCandidate);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function getReadContainment(candidatePath, basePath) {
+  const resolvedCandidate = canonicalizeForBoundaryCheck(candidatePath);
+  const resolvedBase = canonicalizeForBoundaryCheck(basePath);
+  if (resolvedCandidate == null || resolvedBase == null) return 'indeterminate';
+  const canonicalRelative = path.relative(resolvedBase, resolvedCandidate);
+  return canonicalRelative === '' || (!canonicalRelative.startsWith('..') && !path.isAbsolute(canonicalRelative))
+    ? 'inside'
+    : 'outside';
 }
 
 function resolveWorkspacePath(targetPath, options = {}) {
@@ -38,6 +70,7 @@ function resolveWorkspacePath(targetPath, options = {}) {
 }
 
 export {
+  getReadContainment,
   isDescendantOrSame,
   resolveWorkspacePath
 };
