@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { RULE_CATALOG } from '../src/checker.mjs';
+import { DEFAULT_RULE_CATALOG } from '../src/rule-catalog.mjs';
 import { check } from '../src/api.mjs';
 import {
   captureRepositoryState,
@@ -66,7 +66,7 @@ function generateCorpus(root, options = {}) {
 }
 
 function ruleSetMetadata() {
-  const rules = RULE_CATALOG.map(({ id, severity, description }) => ({ id, severity, description }));
+  const rules = DEFAULT_RULE_CATALOG.map(({ id, severity, description }) => ({ id, severity, description }));
   return {
     count: rules.length,
     hash: digest(JSON.stringify(rules))

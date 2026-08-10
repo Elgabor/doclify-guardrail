@@ -1,0 +1,3 @@
+{
+  "exclude": ["examples/evidence-demo/fixtures", "PROJECT_STABILIZATION.md"]
+}

@@ -2,12 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RULE_CATALOG } from './checker.mjs';
+import { RULE_CATALOG } from './rule-catalog.mjs';
 import { ConfigV2Error, createV2ConfigResolver } from './config-v2.mjs';
 import { discoverGitRoot, getChangedFilesFromRoot, GitSelectionError } from './diff.mjs';
-import { checkWithLegacyEngine } from './legacy-adapter.mjs';
 import { checkDeadLinksDetailed } from './links.mjs';
 import { createResult } from './result.mjs';
+import { allowsRepositoryClaims, resolveDocumentPurpose } from './document-purpose.mjs';
+import { createSuppressionMatcher } from './suppressions.mjs';
+import { buildRepositoryIndex } from './repository-index.mjs';
+import { checkRepositoryClaims, hasRepositoryClaim } from './claim-checker.mjs';
+import { isMarkdownPath } from './markdown-files.mjs';
 import { TargetSelectionError, relativePath, selectTargets } from './target-selector.mjs';
 import { getReadContainment, isDescendantOrSame } from './workspace-path.mjs';
 
@@ -45,6 +49,8 @@ function validateOptions(options) {
     'siteRoot',
     'externalLinks',
     'links',
+    'purpose',
+    'stdin',
     'signal'
   ]);
   const unknownOption = Object.keys(options).find((key) => !knownOptions.has(key));
@@ -89,6 +95,13 @@ function validateOptions(options) {
   }
   if (options.externalLinks != null && typeof options.externalLinks !== 'boolean') {
     throw new DoclifyUsageError('invalid-external-links', 'externalLinks must be a boolean.');
+  }
+  if (options.purpose != null && typeof options.purpose !== 'string') {
+    throw new DoclifyUsageError('invalid-purpose', 'purpose must be a string.');
+  }
+  if (options.stdin != null && (!options.stdin || typeof options.stdin !== 'object' || Array.isArray(options.stdin)
+    || typeof options.stdin.content !== 'string' || typeof options.stdin.name !== 'string' || options.stdin.name === '')) {
+    throw new DoclifyUsageError('invalid-stdin', 'stdin must contain string content and a non-empty name.');
   }
   if (options.links != null && (typeof options.links !== 'object' || Array.isArray(options.links))) {
     throw new DoclifyUsageError('invalid-links', 'links must be an object.');
@@ -155,6 +168,7 @@ function configOverrides(options) {
   };
   if (Object.hasOwn(options, 'siteRoot')) overrides.siteRoot = options.siteRoot;
   if (Object.hasOwn(options, 'externalLinks')) overrides.externalLinks = options.externalLinks;
+  if (Object.hasOwn(options, 'purpose')) overrides.purpose = options.purpose;
   return overrides;
 }
 
@@ -199,6 +213,9 @@ async function check(options = {}) {
 async function runCheck(options = {}) {
   validateOptions(options);
   const command = options.command === 'changed' ? 'changed' : 'check';
+  if (options.stdin && command !== 'check') {
+    throw new DoclifyUsageError('invalid-stdin', 'stdin is supported only by check.');
+  }
   const selector = changedSelector({ ...options, command });
   const invocationCwd = path.resolve(options.cwd || process.cwd());
   let cwdStat;
@@ -251,23 +268,44 @@ async function runCheck(options = {}) {
   }
 
   let selection;
-  try {
-    selection = selectTargets({
-      cwd: workspace,
-      paths: selectedPaths,
-      isExcluded: configResolver.isExcluded
-    });
-  } catch (error) {
-    if (error instanceof TargetSelectionError) {
-      throw new DoclifyUsageError(error.code, error.message);
+  if (options.stdin) {
+    const stdinPath = path.resolve(workspace, options.stdin.name);
+    if (getReadContainment(stdinPath, workspace) !== 'inside') {
+      throw new DoclifyUsageError('stdin-name-outside-workspace', 'stdin-name must stay inside the selected workspace.');
     }
-    throw asUsageError(error);
+    if (!isMarkdownPath(stdinPath)) {
+      throw new DoclifyUsageError('invalid-stdin', 'stdin-name must name a Markdown or MDX document.');
+    }
+    if (configResolver.isExcluded(stdinPath)) {
+      throw new DoclifyUsageError('invalid-stdin', 'stdin-name is excluded by the active configuration.');
+    }
+    selection = { workspace, paths: [stdinPath], diagnostics: [] };
+  } else {
+    try {
+      selection = selectTargets({
+        cwd: workspace,
+        paths: selectedPaths,
+        isExcluded: configResolver.isExcluded
+      });
+    } catch (error) {
+      if (error instanceof TargetSelectionError) {
+        throw new DoclifyUsageError(error.code, error.message);
+      }
+      throw asUsageError(error);
+    }
   }
 
   const files = [];
   const findings = [];
   const diagnostics = [...selection.diagnostics];
   const remoteCache = new Map();
+  let repositoryIndex = null;
+  const getRepositoryIndex = () => {
+    if (!repositoryIndex) {
+      repositoryIndex = buildRepositoryIndex(discoveryRoot, { isExcluded: configResolver.isExcluded });
+    }
+    return repositoryIndex;
+  };
 
   for (const absolutePath of selection.paths) {
     if (options.signal?.aborted) {
@@ -275,7 +313,7 @@ async function runCheck(options = {}) {
     }
     const filePath = relativePath(absolutePath, selection.workspace);
     if (getReadContainment(absolutePath, workspace) === 'outside') {
-      files.push({ path: filePath, scanned: false, findings: null, suppressions: [] });
+      files.push({ path: filePath, purpose: null, scanned: false, findings: null, suppressions: [] });
       diagnostics.push({
         code: 'target-outside-workspace',
         severity: 'error',
@@ -293,18 +331,24 @@ async function runCheck(options = {}) {
     }
     let content;
     try {
-      content = fs.readFileSync(absolutePath, 'utf8');
+      content = options.stdin && absolutePath === selection.paths[0]
+        ? options.stdin.content
+        : fs.readFileSync(absolutePath, 'utf8');
     } catch (error) {
-      files.push({ path: filePath, scanned: false, findings: null, suppressions: [] });
+      files.push({ path: filePath, purpose: null, scanned: false, findings: null, suppressions: [] });
       diagnostics.push(stableReadDiagnostic(absolutePath, selection.workspace, error));
       continue;
     }
 
-    const adapted = checkWithLegacyEngine(content, {
-      path: filePath,
-      absolutePath,
-      ignoreRules: fileOptions.ignoreRules
-    });
+    const suppressionMatcher = createSuppressionMatcher(content);
+    const suppressions = suppressionMatcher.suppressions;
+    const purpose = resolveDocumentPurpose(filePath, content, fileOptions.purpose);
+    const ignored = new Set(fileOptions.ignoreRules);
+    const indexPath = relativePath(absolutePath, discoveryRoot);
+    const fileFindings = (allowsRepositoryClaims(purpose) && hasRepositoryClaim(content)
+      ? checkRepositoryClaims(content, getRepositoryIndex(), indexPath) : [])
+      .filter((finding) => !ignored.has(finding.ruleId) && !suppressionMatcher.isSuppressed(finding.ruleId, finding.line))
+      .map((finding) => ({ ...finding, path: filePath }));
 
     const linkResult = await checkDeadLinksDetailed(content, {
       sourceFile: absolutePath,
@@ -316,33 +360,66 @@ async function runCheck(options = {}) {
       checkRemote: fileOptions.externalLinks === true,
       readBoundary: discoveryRoot
     });
-    const ignored = new Set(fileOptions.ignoreRules);
     for (const finding of linkResult.findings) {
-      if (finding.operational === true) continue;
-      if (ignored.has(finding.code)) continue;
-      adapted.findings.push({
-        ruleId: String(finding.code),
-        severity: 'advisory',
-        confidence: 'unverified',
+      if (finding.scope === 'local' && finding.code === 'unverifiable-root-relative-link') {
+        const ruleId = 'local-link';
+        if (!ignored.has(ruleId) && !suppressionMatcher.isSuppressed(ruleId, finding.line)) {
+          fileFindings.push({
+            ruleId,
+            severity: 'advisory',
+            confidence: 'unverified',
+            path: filePath,
+            line: Number.isInteger(finding.line) ? finding.line : null,
+            column: null,
+            message: String(finding.message),
+            evidence: null
+          });
+        }
+        continue;
+      }
+      if (finding.scope === 'remote') {
+        const ruleId = 'external-link';
+        if (!ignored.has(ruleId) && !suppressionMatcher.isSuppressed(ruleId, finding.line)) {
+          fileFindings.push({
+            ruleId,
+            severity: 'advisory',
+            confidence: 'unverified',
+            path: filePath,
+            line: Number.isInteger(finding.line) ? finding.line : null,
+            column: null,
+            message: String(finding.message),
+            evidence: null
+          });
+        }
+        continue;
+      }
+      if (finding.scope !== 'local' || finding.code !== 'dead-link') {
+        diagnostics.push({
+          code: String(finding.code),
+          severity: 'error',
+          path: filePath,
+          message: String(finding.message)
+        });
+        continue;
+      }
+      const ruleId = 'local-link';
+      if (ignored.has(ruleId) || suppressionMatcher.isSuppressed(ruleId, finding.line)) continue;
+      fileFindings.push({
+        ruleId,
+        severity: 'blocking',
+        confidence: 'verified',
         path: filePath,
         line: Number.isInteger(finding.line) ? finding.line : null,
         column: null,
         message: String(finding.message),
-        evidence: null
+        evidence: {
+          fact: String(finding.message),
+          source: `${filePath}:${Number.isInteger(finding.line) ? finding.line : 1}`
+        }
       });
     }
-    for (const diagnostic of linkResult.diagnostics) {
-      diagnostics.push({
-        code: String(diagnostic.code),
-        severity: 'error',
-        path: filePath,
-        message: String(diagnostic.message)
-      });
-    }
-    adapted.file.findings = adapted.findings.length;
-
-    files.push(adapted.file);
-    findings.push(...adapted.findings);
+    files.push({ path: filePath, purpose, scanned: true, findings: fileFindings.length, suppressions });
+    findings.push(...fileFindings);
   }
 
   if (command === 'check' && selection.paths.length === 0 && diagnostics.length === 0) {

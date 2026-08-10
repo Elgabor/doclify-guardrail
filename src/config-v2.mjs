@@ -10,7 +10,8 @@ const ALLOWED_KEYS = new Set([
   'siteRoot',
   'linkAllowList',
   'linkTimeoutMs',
-  'linkConcurrency'
+  'linkConcurrency',
+  'purpose'
 ]);
 const REMOVED_KEYS = new Set([
   'strict',
@@ -24,6 +25,7 @@ const REMOVED_KEYS = new Set([
   'projectId'
 ]);
 const OPTIONAL_CONFIG_UNAVAILABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOTDIR']);
+const PURPOSES = new Set(['published', 'instructions', 'fragment', 'plan', 'changelog', 'generated']);
 
 class ConfigV2Error extends Error {
   constructor(code, message) {
@@ -117,6 +119,9 @@ function readConfig(configPath, boundary, required) {
   }
   if (Object.hasOwn(parsed, 'linkTimeoutMs')) assertPositiveInteger(parsed.linkTimeoutMs, 'linkTimeoutMs', configPath);
   if (Object.hasOwn(parsed, 'linkConcurrency')) assertPositiveInteger(parsed.linkConcurrency, 'linkConcurrency', configPath);
+  if (Object.hasOwn(parsed, 'purpose') && !PURPOSES.has(parsed.purpose)) {
+    throw new ConfigV2Error('config-invalid', `purpose in ${configPath} must be one of: ${[...PURPOSES].join(', ')}.`);
+  }
 
   return parsed;
 }
@@ -141,7 +146,8 @@ function emptyConfig() {
     externalLinks: false,
     linkAllowList: [],
     linkTimeoutMs: null,
-    linkConcurrency: null
+    linkConcurrency: null,
+    purpose: null
   };
 }
 
@@ -164,6 +170,7 @@ function mergeLayer(current, layer, configPath, boundary) {
   }
   if (Object.hasOwn(layer, 'linkTimeoutMs')) next.linkTimeoutMs = layer.linkTimeoutMs;
   if (Object.hasOwn(layer, 'linkConcurrency')) next.linkConcurrency = layer.linkConcurrency;
+  if (Object.hasOwn(layer, 'purpose')) next.purpose = layer.purpose;
   return next;
 }
 
@@ -183,6 +190,7 @@ function mergeOverrides(current, overrides, workspace) {
   if (Object.hasOwn(overrides, 'externalLinks')) next.externalLinks = overrides.externalLinks;
   if (overrides.links?.timeoutMs != null) next.linkTimeoutMs = overrides.links.timeoutMs;
   if (overrides.links?.concurrency != null) next.linkConcurrency = overrides.links.concurrency;
+  if (Object.hasOwn(overrides, 'purpose')) next.purpose = overrides.purpose;
   next.exclusions = unique(next.exclusions.map(({ baseDir, pattern }) => `${baseDir}\0${pattern}`))
     .map((value) => {
       const separator = value.indexOf('\0');

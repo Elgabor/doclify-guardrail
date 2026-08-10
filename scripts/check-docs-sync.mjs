@@ -1,71 +1,29 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { RULE_CATALOG } from '../src/checker.mjs';
+import { DEFAULT_RULE_CATALOG } from '../src/rule-catalog.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ruleCount = RULE_CATALOG.length;
+const ruleCount = DEFAULT_RULE_CATALOG.length;
 
 const checks = [
   {
     file: 'README.md',
     expectations: [
       {
-        label: 'built-in rules heading',
-        pattern: new RegExp(`## Built-in Rules \\(${ruleCount}\\)`)
+        label: 'integrity rules heading',
+        pattern: new RegExp(`## Integrity Rules \\(${ruleCount}\\)`)
       },
       {
-        label: 'comparison table rule count',
-        pattern: new RegExp(`\\| Built-in rules \\| ${ruleCount} total \\| 59 \\|`)
+        label: 'explain command',
+        pattern: /doclify-guardrail explain local-link/
       },
       {
-        label: 'list-rules example count',
-        pattern: new RegExp(`List all ${ruleCount} built-in rules`)
-      },
-      {
-        label: 'architecture rule count',
-        pattern: new RegExp(`checker\\.mjs\\s+${ruleCount}-rule lint engine`)
-      },
-      {
-        label: 'action bundle reference',
-        pattern: /action\/dist\/index\.mjs/
-      },
-      {
-        label: 'public examples section',
-        pattern: /## Repository Examples/
-      },
-      {
-        label: 'clean example reference',
-        pattern: /examples\/clean\.md/
-      },
-      {
-        label: 'warning example reference',
-        pattern: /examples\/with-warnings\.md/
-      },
-      {
-        label: 'error example reference',
-        pattern: /examples\/with-errors\.md/
-      },
-      {
-        label: 'action subpath tag reference',
-        pattern: /Elgabor\/doclify-guardrail\/action@v1/
-      },
-      {
-        label: 'action tag policy',
-        pattern: /Use `@v1` for the supported floating major tag/
-      },
-      {
-        label: 'hardened checkout example',
-        pattern: /persist-credentials: false/
-      },
-      {
-        label: 'current checkout action example',
-        pattern: /actions\/checkout@v5\.0\.1/
-      },
-      {
-        label: 'current setup-node action example',
-        pattern: /actions\/setup-node@v6\.4\.0/
+        label: 'stdin command',
+        pattern: /check - --stdin-name README\.md/
       }
     ]
   },
@@ -122,48 +80,11 @@ const checks = [
       },
       {
         label: 'README-only docs gate',
-        pattern: /run: node \.\/src\/index\.mjs README\.md --strict --report report\.md/
+        pattern: /run: node \.\/src\/index\.mjs check README\.md --format compact/
       },
       {
         label: 'current upload-artifact action',
         pattern: /uses: actions\/upload-artifact@v7\.0\.1/
-      }
-    ]
-  },
-  {
-    file: '.github/workflows/reliability-gate.yml',
-    expectations: [
-      {
-        label: 'least-privilege permissions',
-        pattern: /permissions:\s*\n\s+contents: read/
-      },
-      {
-        label: 'current checkout action',
-        pattern: /uses: actions\/checkout@v5\.0\.1/
-      },
-      {
-        label: 'non-persisted checkout credentials',
-        pattern: /persist-credentials: false/
-      },
-      {
-        label: 'current setup-node action',
-        pattern: /uses: actions\/setup-node@v6\.4\.0/
-      },
-      {
-        label: 'current cache action',
-        pattern: /uses: actions\/cache@v5\.0\.5/
-      },
-      {
-        label: 'current upload-artifact action',
-        pattern: /uses: actions\/upload-artifact@v7\.0\.1/
-      },
-      {
-        label: 'install ignores package scripts',
-        pattern: /npm install --no-audit --no-fund --ignore-scripts/
-      },
-      {
-        label: 'network gate advisory',
-        pattern: /continue-on-error: true/
       }
     ]
   },
@@ -179,22 +100,21 @@ const checks = [
 ];
 
 const requiredFiles = [
-  'examples/clean.md',
-  'examples/with-errors.md',
-  'examples/with-warnings.md',
   'action/action.yml'
 ];
 
-const forbiddenRefs = [
-  'docs/reliability-gate.md',
-  'docs/panoramica.md',
-  'docs/documentazione-tecnica.md',
-  'docs/examples/',
-  'Elgabor/doclify-guardrail@v1.7',
-  'scripts/demo.sh'
-];
+const forbiddenRefs = [];
 
 const failures = [];
+
+function runPublicCommand(args, options = {}) {
+  return spawnSync(process.execPath, [path.join(rootDir, 'src', 'index.mjs'), ...args], {
+    cwd: options.cwd || rootDir,
+    input: options.input,
+    encoding: 'utf8',
+    env: { LANG: 'C', LC_ALL: 'C', NO_COLOR: '1', PATH: process.env.PATH || '' }
+  });
+}
 
 for (const file of requiredFiles) {
   if (!fs.existsSync(path.join(rootDir, file))) {
@@ -222,6 +142,25 @@ for (const forbiddenRef of forbiddenRefs) {
   if (readmeContent.includes(forbiddenRef)) {
     failures.push(`README.md: forbidden reference still present (${forbiddenRef})`);
   }
+}
+
+const initDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-docs-sync-'));
+try {
+  const commands = [
+    { label: '--help', args: ['--help'], status: 0 },
+    { label: 'clean demo', args: ['check', 'examples/evidence-demo/README.md', '--format', 'compact'], status: 0 },
+    { label: 'broken demo', args: ['check', 'examples/evidence-demo/fixtures/README.broken.md', '--config', 'examples/evidence-demo/.doclify-guardrail.json', '--format', 'json'], status: 1 },
+    { label: 'explain', args: ['explain', 'local-link'], status: 0 },
+    { label: 'init --print', args: ['init', '--print'], status: 0 },
+    { label: 'init --write', args: ['init', '--write'], status: 0, cwd: initDirectory },
+    { label: 'stdin', args: ['check', '-', '--stdin-name', 'README.md', '--format', 'json'], input: '# Notes\n', status: 0, cwd: initDirectory }
+  ];
+  for (const command of commands) {
+    const run = runPublicCommand(command.args, command);
+    if (run.status !== command.status) failures.push(`public command failed: ${command.label} (${run.stderr || run.stdout})`);
+  }
+} finally {
+  fs.rmSync(initDirectory, { recursive: true, force: true });
 }
 
 if (failures.length > 0) {

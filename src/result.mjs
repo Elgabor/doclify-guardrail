@@ -29,6 +29,7 @@ function compareSuppressions(left, right) {
 function normalizeFile(file) {
   return {
     path: String(file.path),
+    purpose: file.scanned ? String(file.purpose || 'fragment') : null,
     scanned: Boolean(file.scanned),
     findings: file.scanned ? Number(file.findings || 0) : null,
     suppressions: [...(file.suppressions || [])]

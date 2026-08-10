@@ -36484,7 +36484,7 @@ const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 // EXTERNAL MODULE: external "node:url"
 var external_node_url_ = __nccwpck_require__(3136);
-;// CONCATENATED MODULE: ../src/markdown-escape.mjs
+;// CONCATENATED MODULE: ./markdown-escape.mjs
 function normalizeMarkdownValue(value) {
   return String(value ?? '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
 }

@@ -181,11 +181,11 @@ test('v2 automatic config is hierarchical, relative to each config, and consiste
   fs.mkdirSync(drafts, { recursive: true });
   fs.mkdirSync(publicDir);
   fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({
-    ignoreRules: ['placeholder'],
+    ignoreRules: ['local-link'],
     linkAllowList: ['https://root.example']
   }), 'utf8');
   fs.writeFileSync(path.join(docs, '.doclify-guardrail.json'), JSON.stringify({
-    ignoreRules: ['img-alt'],
+    ignoreRules: ['package-script'],
     exclude: ['drafts'],
     siteRoot: 'public',
     linkAllowList: ['https://docs.example']
@@ -210,14 +210,14 @@ test('v2 automatic config is hierarchical, relative to each config, and consiste
 test('v2 CLI and API overrides apply after hierarchical configuration', async (t) => {
   const root = initRepository(t);
   fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({
-    ignoreRules: ['placeholder']
+    ignoreRules: ['local-link']
   }), 'utf8');
   fs.writeFileSync(path.join(root, 'doc.md'), '# Guide\n\nTODO\n\n![](image.png)\n', 'utf8');
   fs.writeFileSync(path.join(root, 'image.png'), '', 'utf8');
   commitAll(root);
 
-  const api = await check({ cwd: root, paths: ['doc.md'], ignoreRules: ['img-alt'] });
-  const cli = runCli(['check', 'doc.md', '--ignore-rules', 'img-alt', '--format', 'json'], root);
+  const api = await check({ cwd: root, paths: ['doc.md'], ignoreRules: ['local-link'] });
+  const cli = runCli(['check', 'doc.md', '--ignore-rules', 'local-link', '--format', 'json'], root);
   assert.equal(cli.status, 0, cli.stderr);
   assert.deepEqual(JSON.parse(cli.stdout), api);
   assert.deepEqual(api.findings, []);
@@ -227,7 +227,7 @@ test('v2 explicit config is one contained file and disables implicit hierarchy',
   const root = initRepository(t);
   const docs = path.join(root, 'docs');
   fs.mkdirSync(docs);
-  fs.writeFileSync(path.join(root, 'explicit.json'), JSON.stringify({ ignoreRules: ['placeholder'] }), 'utf8');
+  fs.writeFileSync(path.join(root, 'explicit.json'), JSON.stringify({ ignoreRules: ['local-link'] }), 'utf8');
   fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({ unknownRootKey: true }), 'utf8');
   fs.writeFileSync(path.join(docs, '.doclify-guardrail.json'), JSON.stringify({ unknownNestedKey: true }), 'utf8');
   fs.writeFileSync(path.join(docs, 'doc.md'), '# Guide\n\nTODO\n', 'utf8');

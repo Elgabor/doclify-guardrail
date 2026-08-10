@@ -1,4 +1,4 @@
-import { escapeMarkdownText, markdownInlineCode } from '../src/markdown-escape.mjs';
+import { escapeMarkdownText, markdownInlineCode } from './markdown-escape.mjs';
 
 const MARKER = '<!-- doclify-guardrail-comment -->';
 
