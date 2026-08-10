@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
-import { stripCodeBlocks, stripInlineCode } from './checker.mjs';
+import { stripCodeBlocks, stripInlineCode } from './markdown-content.mjs';
 import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
 import {
   createPrivateNetworkBlockingLookup,
@@ -303,7 +303,6 @@ function checkLocalUrl(url, opts = {}) {
   return {
     code: 'dead-link',
     severity: 'error',
-    operational: true,
     message: `Dead link: ${url} (Target not found)`
   };
 }
@@ -377,6 +376,7 @@ async function checkDeadLinksDetailed(content, {
         if (blocked) {
           findings.push({
             code: 'dead-link',
+            scope: 'remote',
             severity: 'error',
             line: link.line,
             message: `Dead link: ${url} (${blocked})`,
@@ -394,6 +394,7 @@ async function checkDeadLinksDetailed(content, {
     if (localFinding) {
       const result = {
         code: localFinding.code,
+        scope: 'local',
         severity: localFinding.severity,
         operational: localFinding.operational === true,
         line: link.line,
@@ -442,6 +443,7 @@ async function checkDeadLinksDetailed(content, {
       if (error) {
         findings.push({
           code: 'dead-link',
+          scope: 'remote',
           severity: 'error',
           line: link.line,
           message: `Dead link: ${url} (${error})`,

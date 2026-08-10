@@ -62,8 +62,8 @@ jobs:
         run: npm run docs:sync-check
       - name: Verify npm package contents
         run: npm pack --dry-run
-      - name: Docs quality gate
-        run: node ./src/index.mjs README.md --strict --report report.md
+      - name: Docs integrity gate
+        run: node ./src/index.mjs check README.md --format compact
       - uses: actions/upload-artifact@v7.0.1
         if: failure()
         with:

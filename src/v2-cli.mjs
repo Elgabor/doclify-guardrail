@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { DoclifyUsageError, runCheck } from './core.mjs';
+import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 import { renderResult, terminalText } from './result-renderers.mjs';
 import { resolveWorkspacePath } from './workspace-path.mjs';
 
 const COMMANDS = new Set(['check', 'changed']);
 const FORMATS = new Set(['text', 'compact', 'json', 'sarif', 'junit']);
+const MAX_STDIN_BYTES = 4 * 1024 * 1024;
 
 function takeValue(argv, index, flag) {
   const value = argv[index + 1];
@@ -47,7 +49,9 @@ function parseV2Args(argv) {
     externalLinks: undefined,
     links: { allowList: [] },
     base: null,
-    staged: false
+    staged: false,
+    stdinName: null,
+    purpose: null
   };
 
   for (let index = 1; index < argv.length; index += 1) {
@@ -97,6 +101,17 @@ function parseV2Args(argv) {
       index += 1;
       continue;
     }
+    if (token === '--purpose') {
+      parsed.purpose = takeValue(argv, index, token);
+      index += 1;
+      continue;
+    }
+    if (token === '--stdin-name') {
+      if (command !== 'check') throw new DoclifyUsageError('invalid-option', '--stdin-name is only valid with check.');
+      parsed.stdinName = takeValue(argv, index, token);
+      index += 1;
+      continue;
+    }
     if (token === '--external-links') {
       parsed.externalLinks = true;
       continue;
@@ -134,7 +149,10 @@ function parseV2Args(argv) {
     if (token === '--json') {
       throw new DoclifyUsageError('legacy-option', 'Use --format json with the v2 command grammar.');
     }
-    if (token.startsWith('-')) {
+    if (isLegacyToken(token)) {
+      throw new DoclifyUsageError('legacy-option', migrationMessage(token));
+    }
+    if (token !== '-' && token.startsWith('-')) {
       throw new DoclifyUsageError('unknown-option', `Unknown option: ${token}.`);
     }
     if (command === 'changed') {
@@ -149,6 +167,13 @@ function parseV2Args(argv) {
       throw new DoclifyUsageError('invalid-changed-selector', 'changed requires exactly one of --base or --staged.');
     }
   }
+  if (command === 'check' && parsed.paths.includes('-')) {
+    if (parsed.paths.length !== 1 || !parsed.stdinName) {
+      throw new DoclifyUsageError('invalid-stdin', 'check - requires --stdin-name <workspace-relative name>.');
+    }
+  } else if (parsed.stdinName) {
+    throw new DoclifyUsageError('invalid-stdin', '--stdin-name requires check - as its only target.');
+  }
   if (command === 'check' && parsed.paths.length === 0) parsed.paths.push('.');
   return parsed;
 }
@@ -161,11 +186,13 @@ function renderV2Help(command) {
     '  --ignore-rules <id,...>',
     '  --exclude <path,...>',
     '  --config <path>',
+    '  --purpose <published|instructions|fragment|plan|changelog|generated>',
     '  --site-root <path>',
     '  --external-links',
     '  --link-allow-list <url,...>',
     '  --link-timeout-ms <n>',
     '  --link-concurrency <n>',
+    '  --stdin-name <name>                 Required with check -',
     '  --no-color                         Accepted; human output is always color-free'
   ];
   const usage = command === 'changed'
@@ -242,8 +269,22 @@ async function runV2Cli(argv) {
       checkOptions.paths = parsed.paths;
     }
     if (parsed.config != null) checkOptions.config = parsed.config;
+    if (parsed.purpose != null) checkOptions.purpose = parsed.purpose;
     if (parsed.siteRoot != null) checkOptions.siteRoot = parsed.siteRoot;
     if (parsed.externalLinks === true) checkOptions.externalLinks = true;
+    if (parsed.stdinName != null) {
+      const chunks = [];
+      let size = 0;
+      for await (const chunk of process.stdin) {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += buffer.length;
+        if (size > MAX_STDIN_BYTES) {
+          throw new DoclifyUsageError('stdin-too-large', `stdin exceeds the ${MAX_STDIN_BYTES}-byte limit.`);
+        }
+        chunks.push(buffer);
+      }
+      checkOptions.stdin = { content: Buffer.concat(chunks).toString('utf8'), name: parsed.stdinName };
+    }
 
     const { result, workspace } = await runCheck(checkOptions);
     const rendered = renderResult(result, { format: parsed.format, all: parsed.all });

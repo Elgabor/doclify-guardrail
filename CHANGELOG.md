@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.0-beta.2] - 2026-08-10
+
+### Changed
+
+- replaced the v1 style-lint, fixer, score, trend, Cloud, AI, Drift, and watch surfaces with the v2 local integrity core
+- classify documents by purpose and report that purpose in the deterministic result model
+- added evidence-backed checks for local references, npm scripts, workspace packages, Make targets, and the static Doclify CLI contract
+- added `check - --stdin-name`, `explain <rule-id>`, and explicit `init --print` / `init --write` workflows
+- removed the short `doclify` executable and package-root API export; `doclify-guardrail/api` exports `check`
+
+### Notes
+
+- blocking findings now carry reproducible evidence while schema version remains `3` during the prerelease line
+- Action v1 is unchanged; a v2 Action is deferred to beta.3
+- refreshed the 300-document performance baseline after the intentional five-rule catalog replacement and the lazy, exclusion-aware repository index
+- retired the v1 external-corpus reliability workflow and its v1-only output baselines; beta.2 uses the local deterministic gate plus the recorded read-only QA matrix instead
+
 ## [1.7.4] - 2026-06-09
 
 ### Security

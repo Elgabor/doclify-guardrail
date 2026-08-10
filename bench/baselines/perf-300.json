@@ -7,8 +7,8 @@
     "contentHash": "sha256:2c83f51794c53bbe35b289387bec1fc60c022a8dd7cf8f57acf41cfb221ad0c9"
   },
   "ruleSet": {
-    "count": 35,
-    "hash": "sha256:dbfeb20f1fb509679b5490349af407586217d0f6dc0423aeb3abc92ef4dc5ff7"
+    "count": 5,
+    "hash": "sha256:924ef6606f7dccf1648e8bc6c7b251171494dd54891c828a75321915d5f8207f"
   },
   "environments": {
     "darwin-arm64-node22-fs26": {
@@ -25,15 +25,15 @@
       },
       "cold": {
         "runs": 3,
-        "samplesMs": [88.629, 86.099, 85.028],
-        "p50Ms": 86.099,
-        "p95Ms": 88.376
+        "samplesMs": [83.849, 83.272, 82.731],
+        "p50Ms": 83.272,
+        "p95Ms": 83.791
       },
       "warm": {
         "runs": 10,
-        "samplesMs": [40.229, 38.02, 37.639, 37.672, 37.204, 36.633, 37.386, 36.513, 36.085, 37.19],
-        "p50Ms": 37.295,
-        "p95Ms": 39.235
+        "samplesMs": [41.265, 40.202, 39.259, 39.606, 39.286, 38.657, 38.914, 39.192, 38.948, 39.013],
+        "p50Ms": 39.225,
+        "p95Ms": 40.787
       },
       "deterministic": true
     }
