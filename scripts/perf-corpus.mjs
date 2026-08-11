@@ -66,7 +66,13 @@ function generateCorpus(root, options = {}) {
 }
 
 function ruleSetMetadata() {
-  const rules = DEFAULT_RULE_CATALOG.map(({ id, severity, description }) => ({ id, severity, description }));
+  const rules = DEFAULT_RULE_CATALOG.map(({ id, severity, purpose, evidence, remediation }) => ({
+    id,
+    severity,
+    purpose,
+    evidence,
+    remediation
+  }));
   return {
     count: rules.length,
     hash: digest(JSON.stringify(rules))

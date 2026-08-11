@@ -8,7 +8,7 @@
   },
   "ruleSet": {
     "count": 5,
-    "hash": "sha256:924ef6606f7dccf1648e8bc6c7b251171494dd54891c828a75321915d5f8207f"
+    "hash": "sha256:309acd10be9c3b7186361e92d1f28e0d8d080b8d139b16888c776bac61c85500"
   },
   "environments": {
     "darwin-arm64-node22-fs26": {

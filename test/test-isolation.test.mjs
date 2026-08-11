@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { runTestProfile } from '../scripts/check-test-isolation.mjs';
 import { comparePerformance, generateCorpus, ruleSetMetadata } from '../scripts/perf-corpus.mjs';
+import { DEFAULT_RULE_CATALOG } from '../src/rule-catalog.mjs';
 import {
   captureRepositoryState,
   cleanupStaleSandboxes,
@@ -220,6 +222,16 @@ test('performance corpus is deterministic and comparison enforces rule hash and 
   );
 
   const ruleSet = ruleSetMetadata();
+  const ruleMetadata = DEFAULT_RULE_CATALOG.map((rule) => ({
+    id: rule.id,
+    severity: rule.severity,
+    purpose: rule.purpose,
+    evidence: rule.evidence,
+    remediation: rule.remediation
+  }));
+  const expectedRuleHash = `sha256:${crypto.createHash('sha256')
+    .update(JSON.stringify(ruleMetadata)).digest('hex')}`;
+  assert.deepEqual(ruleSet, { count: ruleMetadata.length, hash: expectedRuleHash });
   const observation = {
     corpus: first,
     ruleSet,
