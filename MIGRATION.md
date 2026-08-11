@@ -1,7 +1,7 @@
 # Migrating to Doclify Guardrail v2
 
-`2.0.0-beta.3` is an opt-in prerelease for npm's `next` tag. `latest` remains
-on the v1 line. The v2 core is local and read-only by default.
+`2.0.0-beta.3` is published on npm's `next` tag. `latest` remains on the v1
+line. The v2 core is local and read-only by default.
 
 ## Command changes
 
@@ -77,7 +77,7 @@ silently accepted.
 | API `fix`, `score`, `RULE_CATALOG`, package-root import | Removed. |
 | config keys `strict`, `maxLineLength`, `checkLinks`, `checkFreshness`, `freshnessMaxDays`, `checkFrontmatter`, `checkInlineHtml`, `push`, `projectId` | Removed keys fail with `config-removed-key`. |
 | `.doclify-history.json`, `doclify-report.md`, `doclify-badge.svg`, `.doclify/` auth state | No v2 equivalent; remove them only after validating they are no longer used by your own workflow. |
-| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or migrate to the beta.3 contract below after an immutable v2 reference is published. |
+| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or test the beta.3 contract with the full release commit below. |
 
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
@@ -91,8 +91,9 @@ claims. This is classification, not a style preset.
 `Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. This beta
 does not change, rebuild, or retag that Action.
 
-This source release contains the beta.3 Action adapter for local and
-immutable-checkout validation. It maps `mode`, `path`, `base`, `staged`,
+The beta.3 Action adapter is published under the signed tag
+`v2.0.0-beta.3` at commit `3e0f9970319c75ea1760f09e57b203d156144d26`.
+It maps `mode`, `path`, `base`, `staged`,
 `config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
 settings directly to the v2 CLI. `mode: changed` requires exactly one of `base`
 or `staged`; base comparisons also require that revision in the checkout. It
@@ -102,7 +103,14 @@ calculate a score, or run Cloud and AI features. Its outputs are `status`,
 If the scan cannot start because the invocation or configuration is invalid,
 the step fails before those result outputs exist.
 
+```yaml
+- uses: Elgabor/doclify-guardrail/action@3e0f9970319c75ea1760f09e57b203d156144d26
+  with:
+    path: README.md
+```
+
 The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
 remains available from the CLI with `--format sarif --output <path>`. Do not
-replace `@v1` with a floating `@v2` reference until the separate v2 line has
-been published and smoke-tested; pin its immutable commit when available.
+replace `@v1` with a floating `@v2` reference. Test beta.3 with the full release
+commit above; its signed tag is
+`Elgabor/doclify-guardrail/action@v2.0.0-beta.3`.

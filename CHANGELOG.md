@@ -25,7 +25,7 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 
-- this is an opt-in prerelease; `latest` remains on the stable v1 line
+- `2.0.0-beta.3` is published on npm's `next` tag with a signed GitHub prerelease; `latest` remains on the stable v1 line
 - the performance tolerance catches macroscopic regressions; it is not evidence of a tight performance target
 - private-beta task A4 still awaits qualifying real-user sessions
 

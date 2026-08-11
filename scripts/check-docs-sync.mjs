@@ -30,16 +30,16 @@ const checks = [
         pattern: /output inside\s+Git metadata is refused/
       },
       {
-        label: 'local Action v2 prerelease example',
-        pattern: /uses: \.\/action/
+        label: 'immutable Action v2 prerelease example',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@3e0f9970319c75ea1760f09e57b203d156144d26/
       },
       {
         label: 'Action v2 offline default',
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'beta.3 source release',
-        pattern: /This source release is `2\.0\.0-beta\.3`/
+        label: 'beta.3 published release',
+        pattern: /Version `2\.0\.0-beta\.3` is published on npm's `next` tag/
       }
     ]
   },
@@ -48,7 +48,7 @@ const checks = [
     expectations: [
       {
         label: 'beta.3 migration boundary',
-        pattern: /`2\.0\.0-beta\.3` is an opt-in prerelease for npm's `next` tag/
+        pattern: /`2\.0\.0-beta\.3` is published on npm's `next` tag/
       }
     ]
   },
@@ -100,8 +100,8 @@ const checks = [
         pattern: /DOCLIFY_STATUS[\s\S]*?DOCLIFY_COMPLETE[\s\S]*?DOCLIFY_BLOCKING/
       },
       {
-        label: 'immutable Action candidate pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@8b0ba3eda0462f9b1306a0b3eaf221337606a079/
+        label: 'immutable Action release pin',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@3e0f9970319c75ea1760f09e57b203d156144d26/
       },
       {
         label: 'immutable Action caller-workspace proof',
@@ -138,6 +138,23 @@ const checks = [
     ]
   },
   {
+    file: 'evidence/portfolio-beta3-draft.md',
+    expectations: [
+      {
+        label: 'beta.3 registry evidence',
+        pattern: /npm serves `1\.7\.4` on `latest` and\s+`2\.0\.0-beta\.3` on `next`/
+      },
+      {
+        label: 'portfolio publication boundary',
+        pattern: /Publication remains blocked until the private beta evidence exists/
+      },
+      {
+        label: 'beta.3 release commit evidence',
+        pattern: /3e0f9970319c75ea1760f09e57b203d156144d26/
+      }
+    ]
+  },
+  {
     file: 'CHANGELOG.md',
     expectations: [
       {
@@ -146,7 +163,7 @@ const checks = [
       },
       {
         label: 'prerelease channel boundary',
-        pattern: /this is an opt-in prerelease; `latest` remains on the stable v1 line/
+        pattern: /`2\.0\.0-beta\.3` is published on npm's `next` tag with a signed GitHub prerelease; `latest` remains on the stable v1 line/
       },
       {
         label: 'open private-beta gate',
