@@ -59,6 +59,10 @@ const checks = [
         pattern: /'examples\/\*\*'/
       },
       {
+        label: 'evidence trigger',
+        pattern: /'evidence\/\*\*'/
+      },
+      {
         label: 'action npm ci step',
         pattern: /run: npm ci --no-audit --no-fund --ignore-scripts/
       },
@@ -77,6 +81,14 @@ const checks = [
       {
         label: 'Action smoke output assertions',
         pattern: /DOCLIFY_STATUS[\s\S]*?DOCLIFY_COMPLETE[\s\S]*?DOCLIFY_BLOCKING/
+      },
+      {
+        label: 'immutable Action candidate pin',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@6026ef1999e2bb11fd6b7532113d4ff64ea07894/
+      },
+      {
+        label: 'immutable Action caller-workspace proof',
+        pattern: /path: evidence\/private-beta-protocol\.md[\s\S]*?DOCLIFY_FILES/
       },
       {
         label: 'docs sync step',

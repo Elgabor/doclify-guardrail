@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - 'examples/**'
+      - 'evidence/**'
       - '*.md'
       - '*.mdx'
       - '.editorconfig'
@@ -21,6 +22,7 @@ on:
   pull_request:
     paths:
       - 'examples/**'
+      - 'evidence/**'
       - '*.md'
       - '*.mdx'
       - '.editorconfig'
@@ -62,6 +64,20 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-smoke.outputs.complete }}
           DOCLIFY_BLOCKING: ${{ steps.action-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_BLOCKING" = 0
+      # This full-SHA pin proves public installation of the frozen candidate;
+      # the local ./action smoke above remains the coverage for current HEAD.
+      - name: Smoke frozen Action v2 candidate from an immutable reference
+        id: action-sha-smoke
+        uses: Elgabor/doclify-guardrail/action@6026ef1999e2bb11fd6b7532113d4ff64ea07894
+        with:
+          path: evidence/private-beta-protocol.md
+      - name: Verify immutable Action reads the caller workspace
+        env:
+          DOCLIFY_STATUS: ${{ steps.action-sha-smoke.outputs.status }}
+          DOCLIFY_COMPLETE: ${{ steps.action-sha-smoke.outputs.complete }}
+          DOCLIFY_FILES: ${{ steps.action-sha-smoke.outputs.files }}
+          DOCLIFY_BLOCKING: ${{ steps.action-sha-smoke.outputs.blocking }}
+        run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_FILES" = 1 && test "$DOCLIFY_BLOCKING" = 0
       - name: Audit action dependency chain
         working-directory: action
         run: npm audit --omit=dev
