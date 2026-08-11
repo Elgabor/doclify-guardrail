@@ -87,7 +87,8 @@ jobs:
         run: npm run test:labeled
       - name: Test controlled local network behavior
         run: npm run test:network
-      - name: Run 300-document performance profile
+      # The reviewed tolerance is deliberately broad: this catches only macroscopic regressions.
+      - name: Reject catastrophic performance regressions
         run: npm run test:performance
       - name: Verify docs sync
         run: npm run docs:sync-check

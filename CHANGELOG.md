@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased] — 2.0.0-beta.3 candidate
+
+### Added
+
+- added a v2 GitHub Action adapter that delegates to the same local CLI core, needs no token, and stays offline unless remote-link checks are explicitly enabled
+- added separate CI jobs for labeled correctness, controlled local-network behavior, and reviewed performance baselines
+- added a private-beta evidence protocol and portfolio copy draft without claiming adoption or publishing the draft
+
+### Changed
+
+- separated pure command parsing and help text from CLI runtime effects
+- made installed npm binary symlinks invoke the CLI entrypoint reliably
+- replaced the rule-noise fingerprint with 26 labeled cases and deterministic property coverage for paths, links, Markdown variants, and repository boundaries
+- reduced the Action dependency graph by removing the GitHub API and PR-comment path
+
+### Security
+
+- refuse report output that aliases scanned documents or resolves inside Git metadata
+- write repeatable non-Markdown reports through a temporary file and atomic rename without following an existing output symlink
+- block CGNAT and IPv4-compatible IPv6 private targets, and fail closed after 40 symbolic-link resolutions
+
+### Notes
+
+- the package remains `2.0.0-beta.2` until Lorenzo explicitly performs the npm publication step; this entry describes source merged to `main`, not a published release
+- the performance tolerance catches macroscopic regressions; it is not evidence of a tight performance target
+- private-beta task A4 still awaits qualifying real-user sessions
+
 ## [2.0.0-beta.2] - 2026-08-10
 
 ### Changed

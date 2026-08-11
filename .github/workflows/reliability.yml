@@ -62,5 +62,6 @@ jobs:
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: '20'
-      - name: Enforce reviewed performance baseline
+      # The reviewed tolerance is deliberately broad: this catches only macroscopic regressions.
+      - name: Reject catastrophic performance regressions
         run: npm run test:performance
