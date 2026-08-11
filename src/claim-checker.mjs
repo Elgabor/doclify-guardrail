@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { analyzeFences, getFenceOpen } from './fences.mjs';
+import { decodeLocalPath } from './local-url.mjs';
 import { anchorFor } from './repository-index.mjs';
 
 const SHELL_FENCE_LANGUAGES = new Set(['sh', 'bash', 'shell', 'console', 'zsh', 'fish']);
@@ -80,7 +81,7 @@ function checkRepositoryClaims(analysis, index, filePath) {
       if (!url.includes('#') || /^(?:https?:|mailto:|tel:|data:|javascript:|\/)/i.test(url)) continue;
       const [target, fragment] = url.split('#', 2);
       const targetPath = target
-        ? path.posix.normalize(path.posix.join(path.posix.dirname(filePath), target.split('?')[0]))
+        ? path.posix.normalize(path.posix.join(path.posix.dirname(filePath), decodeLocalPath(target)))
         : filePath;
       if (!index.files.has(targetPath)) continue;
       const anchors = index.anchors.get(targetPath);

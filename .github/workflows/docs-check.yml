@@ -56,6 +56,10 @@ jobs:
         run: npm audit --omit=dev
       - name: Run isolated correctness profile
         run: npm run test:correctness
+      - name: Gate labeled rule correctness
+        run: npm run test:labeled
+      - name: Test controlled local network behavior
+        run: npm run test:network
       - name: Run 300-document performance profile
         run: npm run test:performance
       - name: Verify docs sync
@@ -64,8 +68,3 @@ jobs:
         run: npm pack --dry-run
       - name: Docs integrity gate
         run: node ./src/index.mjs check README.md --format compact
-      - uses: actions/upload-artifact@v7.0.1
-        if: failure()
-        with:
-          name: guardrail-report
-          path: report.md

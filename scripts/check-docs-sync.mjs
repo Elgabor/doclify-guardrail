@@ -87,12 +87,16 @@ const checks = [
         pattern: /- name: Run 300-document performance profile\n\s+run: npm run test:performance/
       },
       {
-        label: 'README-only docs gate',
-        pattern: /run: node \.\/src\/index\.mjs check README\.md --format compact/
+        label: 'labeled correctness transition gate',
+        pattern: /run: npm run test:labeled/
       },
       {
-        label: 'current upload-artifact action',
-        pattern: /uses: actions\/upload-artifact@v7\.0\.1/
+        label: 'local network transition gate',
+        pattern: /run: npm run test:network/
+      },
+      {
+        label: 'README-only docs gate',
+        pattern: /run: node \.\/src\/index\.mjs check README\.md --format compact/
       }
     ]
   },
@@ -120,11 +124,37 @@ const checks = [
         pattern: /outputs:\s*[\s\S]*?status:/
       }
     ]
+  },
+  {
+    file: '.github/workflows/reliability.yml',
+    expectations: [
+      {
+        label: 'separate correctness job',
+        pattern: /\n  correctness:\n/
+      },
+      {
+        label: 'separate network job',
+        pattern: /\n  network:\n/
+      },
+      {
+        label: 'explicit performance observation job',
+        pattern: /\n  performance-observation:\n[\s\S]*?-- --measure/
+      },
+      {
+        label: 'reviewable performance artifact',
+        pattern: /uses: actions\/upload-artifact@v7\.0\.1[\s\S]*?name: performance-observation/
+      },
+      {
+        label: 'labeled correctness gate',
+        pattern: /run: npm run test:labeled/
+      }
+    ]
   }
 ];
 
 const requiredFiles = [
-  'action/action.yml'
+  'action/action.yml',
+  '.github/workflows/reliability.yml'
 ];
 
 const forbiddenRefs = [];

@@ -130,6 +130,13 @@ test('Action v2 annotates blocking findings and preserves result counts', (t) =>
   assert.equal(run.outputs.diagnostics, '0');
 });
 
+test('Action v2 escapes annotation command data from Markdown', (t) => {
+  const run = runAction(t, '# Readme\n\n[spoof](missing%0A::error::.md)\n');
+  assert.equal(run.status, 1);
+  assert.match(run.stdout, /missing%250A::error::\.md/);
+  assert.doesNotMatch(run.stdout, /missing\n::error::/);
+});
+
 test('Action v2 makes remote checks explicit and reports annotation truncation', (t) => {
   const remote = runAction(t, '# Readme\n\n[private](http://127.0.0.1/private)\n', {
     'external-links': 'true'

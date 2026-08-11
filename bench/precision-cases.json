@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "gate": {
+    "minimumCaseAccuracy": 1,
+    "maximumBlockingFalsePositives": 0
+  },
+  "cases": [
+    { "id": "known-root-script", "text": "`npm run test`", "expected": [] },
+    { "id": "missing-root-script", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "ordinary-prose-and-advisory-link", "text": "Run npm run missing after deployment. [site](/missing)", "expected": [] },
+    { "id": "known-workspace", "text": "`npm --workspace @fixture/app run build`", "expected": [] },
+    { "id": "missing-workspace", "text": "`npm --workspace @fixture/missing run build`", "expected": ["workspace-package"] },
+    { "id": "missing-workspace-script", "text": "`npm --workspace @fixture/app run missing`", "expected": ["package-script"] },
+    { "id": "known-make-target", "text": "`make check`", "expected": [] },
+    { "id": "missing-make-target", "text": "`make deploy`", "expected": ["make-target"] },
+    { "id": "unknown-cli-command", "text": "`doclify-guardrail review`", "expected": ["cli-contract"] },
+    { "id": "unknown-cli-flag", "text": "`doclify-guardrail check --bogus`", "expected": ["cli-contract"] },
+    { "id": "known-cli-contract", "text": "`doclify-guardrail check --format json`", "expected": [] },
+    { "id": "known-local-anchor", "text": "[guide](guide.md#my_section)", "expected": [] },
+    { "id": "missing-local-anchor", "text": "[guide](guide.md#missing)", "expected": ["local-link"] },
+    { "id": "missing-local-file", "text": "[guide](missing.md)", "expected": ["local-link"] },
+    { "id": "javascript-fence-is-not-a-command-claim", "text": "```js\nconst command = \"npm run missing\";\n```", "expected": [] },
+    { "id": "untagged-fence-is-not-a-command-claim", "text": "```\nnpm run missing\n```", "expected": [] },
+    { "id": "shell-fence-is-a-command-claim", "text": "```sh\nnpm run missing\n```", "expected": ["package-script"] },
+    { "id": "fenced-link-is-not-a-claim", "text": "```md\n[guide](guide.md#missing)\n```", "expected": [] },
+    { "id": "no-package-evidence", "text": "`npm run missing`", "expected": [], "withoutPackage": true },
+    { "id": "no-make-evidence", "text": "`make missing`", "expected": [], "withoutMakefile": true },
+    { "id": "generated-command-is-not-a-claim", "file": "notes.generated.md", "text": "`npm run missing`", "expected": [] },
+    { "id": "guide-purpose-claim", "file": "docs/guide.md", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "plan-purpose-claim", "file": "plan/ROADMAP.md", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "changelog-purpose-claim", "file": "CHANGELOG.md", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "fragment-purpose-claim", "file": "note.md", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "instructions-purpose-claim", "file": "AGENTS.md", "text": "`npm run missing`", "expected": ["package-script"] }
+  ]
+}
