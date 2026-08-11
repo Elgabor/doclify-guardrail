@@ -269,6 +269,14 @@ test('performance corpus is deterministic and comparison enforces rule hash and 
     failures: [],
     limits: null
   });
+  const unrecordedCi = structuredClone(unrecorded);
+  unrecordedCi.environment.ci = true;
+  assert.deepEqual(comparePerformance(unrecordedCi, baseline), {
+    pass: false,
+    status: 'fail',
+    failures: ['No reviewed performance baseline for CI environment: unrecorded-environment.'],
+    limits: null
+  });
 
   const slow = structuredClone(observation);
   slow.warm.p95Ms = 200;

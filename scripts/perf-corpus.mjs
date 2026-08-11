@@ -203,6 +203,14 @@ function comparePerformance(observation, baseline) {
   const recorded = baseline?.environments?.[observation.environment?.class];
   if (!recorded) {
     if (failures.length > 0) return { pass: false, status: 'fail', failures, limits: null };
+    if (observation.environment?.ci) {
+      return {
+        pass: false,
+        status: 'fail',
+        failures: [`No reviewed performance baseline for CI environment: ${observation.environment.class}.`],
+        limits: null
+      };
+    }
     return {
       pass: true,
       status: 'unrecorded',

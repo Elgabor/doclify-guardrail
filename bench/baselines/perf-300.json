@@ -36,6 +36,32 @@
         "p95Ms": 40.787
       },
       "deterministic": true
+    },
+    "linux-x64-node20-fs61267": {
+      "environment": {
+        "class": "linux-x64-node20-fs61267",
+        "node": "v20.20.2",
+        "platform": "linux",
+        "arch": "x64",
+        "filesystemType": "61267",
+        "cpuModel": "AMD EPYC 7763 64-Core Processor",
+        "cpuCount": 4,
+        "totalMemoryMb": 15990,
+        "ci": true
+      },
+      "cold": {
+        "runs": 3,
+        "samplesMs": [165.813, 161.025, 167.818],
+        "p50Ms": 165.813,
+        "p95Ms": 167.617
+      },
+      "warm": {
+        "runs": 10,
+        "samplesMs": [76.951, 62.628, 65.925, 67.343, 59.092, 59.661, 56.687, 57.4, 57.508, 57.177],
+        "p50Ms": 59.376,
+        "p95Ms": 72.627
+      },
+      "deterministic": true
     }
   },
   "tolerance": {

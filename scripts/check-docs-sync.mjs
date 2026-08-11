@@ -137,12 +137,8 @@ const checks = [
         pattern: /\n  network:\n/
       },
       {
-        label: 'explicit performance observation job',
-        pattern: /\n  performance-observation:\n[\s\S]*?-- --measure/
-      },
-      {
-        label: 'reviewable performance artifact',
-        pattern: /uses: actions\/upload-artifact@v7\.0\.1[\s\S]*?name: performance-observation/
+        label: 'separate enforced performance job',
+        pattern: /\n  performance:\n[\s\S]*?run: npm run test:performance/
       },
       {
         label: 'labeled correctness gate',
