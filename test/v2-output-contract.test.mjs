@@ -124,6 +124,9 @@ test('v2 output remains explicit, contained, and cannot replace an input through
   const inside = run(['check', 'doc.md', '--format', 'json', '--output', 'out/result.json'], cwd);
   assert.equal(inside.status, 0, inside.stderr);
   assert.equal(JSON.parse(fs.readFileSync(path.join(cwd, 'out', 'result.json'), 'utf8')).schemaVersion, 3);
+  const repeated = run(['check', 'doc.md', '--format', 'json', '--output', 'out/result.json'], cwd);
+  assert.equal(repeated.status, 0, repeated.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(cwd, 'out', 'result.json'), 'utf8')).schemaVersion, 3);
   assert.match(run(['check', 'doc.md', '--format', 'json', '--output', '../result.json'], cwd).stderr, /^output-outside-workspace:/);
   fs.symlinkSync(document, path.join(cwd, 'result.json'));
   const symlink = run(['check', 'doc.md', '--format', 'json', '--output', 'result.json'], cwd);
@@ -133,6 +136,28 @@ test('v2 output remains explicit, contained, and cannot replace an input through
   const hardlink = run(['check', 'doc.md', '--format', 'json', '--output', 'result.json'], cwd);
   assert.match(hardlink.stderr, /^output-overwrites-input:/);
   assert.equal(fs.readFileSync(document, 'utf8'), '# Clean\n');
+});
+
+test('v2 output refuses to replace an existing file outside the scan', (t) => {
+  const cwd = temp(t);
+  fs.mkdirSync(path.join(cwd, 'docs'));
+  fs.writeFileSync(path.join(cwd, 'docs', 'doc.md'), '# Clean\n', 'utf8');
+  const existing = path.join(cwd, 'README.md');
+  fs.writeFileSync(existing, '# Preserve me\n', 'utf8');
+
+  const result = run(['check', 'docs', '--format', 'json', '--output', 'README.md'], cwd);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /^output-exists:/);
+  assert.equal(fs.readFileSync(existing, 'utf8'), '# Preserve me\n');
+
+  for (const [name, link] of [['linked.json', fs.symlinkSync], ['hardlinked.json', fs.linkSync]]) {
+    const output = path.join(cwd, name);
+    link(existing, output);
+    const linkedResult = run(['check', 'docs', '--format', 'json', '--output', name], cwd);
+    assert.equal(linkedResult.status, 0, linkedResult.stderr);
+    assert.equal(fs.readFileSync(existing, 'utf8'), '# Preserve me\n');
+    assert.equal(JSON.parse(fs.readFileSync(output, 'utf8')).schemaVersion, 3);
+  }
 });
 
 test('v2 rejects workspace escapes and leaves skipped files without an invented purpose', async (t) => {

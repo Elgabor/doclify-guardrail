@@ -31,6 +31,8 @@ printf '# Notes\n' | npx doclify-guardrail check - --stdin-name README.md
 
 Text output is bounded. Pass `--all` for every finding. Machine formats always
 contain the complete result and can be written only through an explicit path.
+Report paths are replaced atomically so repeated CI runs stay safe. An existing
+Markdown or MDX document is never replaced by report output.
 
 ```sh
 npx doclify-guardrail check README.md --format json --output .doclify/result.json

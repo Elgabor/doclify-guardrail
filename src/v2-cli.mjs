@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { DoclifyUsageError, runCheck } from './core.mjs';
+import { isMarkdownPath } from './markdown-files.mjs';
 import { renderResult, terminalText } from './result-renderers.mjs';
 import { isV2Command, parseV2Args, renderV2Help } from './v2-command.mjs';
 import { resolveWorkspacePath } from './workspace-path.mjs';
@@ -50,6 +52,34 @@ function assertOutputDoesNotOverwriteInput(outputPath, result, workspace) {
     }
     if (canonicalOutput === canonicalInput || (outputIdentity != null && outputIdentity === inputIdentity)) {
       throw new DoclifyUsageError('output-overwrites-input', 'Output path must not overwrite a scanned document.');
+    }
+  }
+}
+
+function writeOutput(outputPath, rendered) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  if (isMarkdownPath(outputPath)) {
+    try {
+      fs.writeFileSync(outputPath, rendered, { encoding: 'utf8', flag: 'wx' });
+      return;
+    } catch (error) {
+      if (error?.code === 'EEXIST') {
+        throw new DoclifyUsageError('output-exists', 'Refusing to overwrite an existing Markdown document.');
+      }
+      throw error;
+    }
+  }
+
+  // Replacing the directory entry keeps repeatable reports from following links.
+  const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${randomUUID()}.tmp`);
+  try {
+    fs.writeFileSync(temporary, rendered, { encoding: 'utf8', flag: 'wx' });
+    fs.renameSync(temporary, outputPath);
+  } finally {
+    try {
+      fs.unlinkSync(temporary);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
     }
   }
 }
@@ -107,8 +137,7 @@ async function runV2Cli(argv) {
         throw new DoclifyUsageError('output-outside-workspace', 'Output path must stay inside the workspace.');
       }
       assertOutputDoesNotOverwriteInput(outputPath, result, workspace);
-      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-      fs.writeFileSync(outputPath, rendered, 'utf8');
+      writeOutput(outputPath, rendered);
     } else {
       process.stdout.write(rendered);
     }
