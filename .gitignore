@@ -5,7 +5,7 @@ node_modules/
 doclify-report.md
 report.md
 /bench/out/
-/tasks
+/tasks.md
 
 # Local secrets and auth
 .env
