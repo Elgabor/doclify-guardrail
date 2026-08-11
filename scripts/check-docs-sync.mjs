@@ -88,7 +88,7 @@ const checks = [
       },
       {
         label: 'immutable Action candidate pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@ba9998334dbb8ce3e1b7796fc070d124d372c738/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@8b0ba3eda0462f9b1306a0b3eaf221337606a079/
       },
       {
         label: 'immutable Action caller-workspace proof',
