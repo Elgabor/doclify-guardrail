@@ -64,11 +64,11 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-smoke.outputs.complete }}
           DOCLIFY_BLOCKING: ${{ steps.action-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_BLOCKING" = 0
-      # This full-SHA pin proves public installation of the frozen candidate;
+      # This full-SHA pin proves public installation of the beta.3 release;
       # the local ./action smoke above remains the coverage for current HEAD.
-      - name: Smoke frozen Action v2 candidate from an immutable reference
+      - name: Smoke released Action v2 beta.3 from an immutable reference
         id: action-sha-smoke
-        uses: Elgabor/doclify-guardrail/action@8b0ba3eda0462f9b1306a0b3eaf221337606a079
+        uses: Elgabor/doclify-guardrail/action@3e0f9970319c75ea1760f09e57b203d156144d26
         with:
           path: evidence/private-beta-protocol.md
       - name: Verify immutable Action reads the caller workspace

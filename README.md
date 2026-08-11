@@ -4,9 +4,9 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-This source release is `2.0.0-beta.3`, an opt-in prerelease for npm's `next`
-tag. `latest` remains on the stable v1 line. The supported v1 Action remains
-frozen at `Elgabor/doclify-guardrail/action@v1`.
+Version `2.0.0-beta.3` is published on npm's `next` tag. `latest` remains on
+the stable v1 line. The supported v1 Action remains frozen at
+`Elgabor/doclify-guardrail/action@v1`.
 
 ## Start
 
@@ -126,8 +126,8 @@ node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --co
 
 The beta.3 Action is a thin adapter over the same CLI result. It requires no
 token, has only `contents: read` permission, and stays offline unless
-`external-links: 'true'` is set. Until beta.3 has an immutable published
-reference, it can be verified from a checkout with the local Action path:
+`external-links: 'true'` is set. Its signed release tag is
+`v2.0.0-beta.3`. Pin the full release commit in CI:
 
 ```yaml
 permissions:
@@ -137,10 +137,13 @@ steps:
   - uses: actions/checkout@v5.0.1
     with:
       persist-credentials: false
-  - uses: ./action
+  - uses: Elgabor/doclify-guardrail/action@3e0f9970319c75ea1760f09e57b203d156144d26
     with:
       path: README.md
 ```
+
+The tag form is `Elgabor/doclify-guardrail/action@v2.0.0-beta.3`; the full SHA
+above prevents ref movement.
 
 Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
 Git selection to the v2 `changed` command. A base comparison needs the requested

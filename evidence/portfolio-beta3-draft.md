@@ -3,8 +3,9 @@
 Status: `DRAFT_DO_NOT_PUBLISH`
 
 This file prepares task A5. It does not authorize a portfolio edit or deploy.
-Publication remains blocked until the private beta evidence exists, beta.3 has
-an immutable released reference, and a separate portfolio task is authorized.
+Publication remains blocked until the private beta evidence exists and a
+separate portfolio task is authorized. Beta.3 now has a signed release tag and
+GitHub prerelease; that alone is not adoption evidence.
 
 ## Current claim audit
 
@@ -14,8 +15,9 @@ catalog. The replacement below names only behavior demonstrated by the public
 fixture and tests.
 
 As verified on 2026-08-11, npm serves `1.7.4` on `latest` and
-`2.0.0-beta.2` on `next`. The Action v2 adapter in this branch is a beta.3
-source candidate, not a published Action release.
+`2.0.0-beta.3` on `next`. The Action v2 adapter is published under the signed
+tag `v2.0.0-beta.3` at commit
+`3e0f9970319c75ea1760f09e57b203d156144d26`.
 
 ## Proposed Italian copy
 
@@ -43,7 +45,7 @@ source candidate, not a published Action release.
 | Offline by default | `README.md`, `scripts/check-network-boundary.mjs`, `test/action-v2.test.mjs`, and `.github/workflows/docs-check.yml` |
 | Does not execute documented examples | `README.md` and the static checker implementation |
 | Evidence for blocking errors | broken demo JSON output and the labeled correctness gate |
-| Open-source beta status | repository license and the immutable beta.3 release reference, once published |
+| Open-source beta status | repository license and the signed beta.3 release reference |
 
 The private beta may support a separate adoption statement only after A4 meets
 its declared thresholds. Do not add participant counts, time-to-result,
@@ -51,7 +53,8 @@ replacement claims, or quotations before that evidence is committed.
 
 ## Reproducible demo script
 
-Run from a clean checkout of the immutable beta.3 release reference.
+Run from a clean checkout of beta.3 commit
+`3e0f9970319c75ea1760f09e57b203d156144d26`.
 
 1. Show the clean local result:
 
