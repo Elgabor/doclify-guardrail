@@ -1,165 +1,161 @@
 import * as core from '@actions/core';
-import * as github from '@actions/github';
-import { spawn } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { postPrComment } from './pr-comment.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ACTION_DIR = path.dirname(fileURLToPath(import.meta.url));
+const MAX_BUFFER = 16 * 1024 * 1024;
+const MAX_ANNOTATIONS = 50;
+const VALUE_INPUTS = [
+  ['config', '--config'],
+  ['ignore-rules', '--ignore-rules'],
+  ['exclude', '--exclude'],
+  ['site-root', '--site-root'],
+  ['link-allow-list', '--link-allow-list'],
+  ['link-timeout-ms', '--link-timeout-ms'],
+  ['link-concurrency', '--link-concurrency']
+];
+const ACTION_INPUTS = new Set([
+  'mode', 'path', 'base', 'staged', 'external-links',
+  ...VALUE_INPUTS.map(([name]) => name)
+]);
 
 function resolveCliPath() {
   const candidates = [
-    path.resolve(__dirname, '..', 'src', 'index.mjs'),
-    path.resolve(__dirname, '..', '..', 'src', 'index.mjs')
+    path.resolve(ACTION_DIR, '..', 'src', 'index.mjs'),
+    path.resolve(ACTION_DIR, '..', '..', 'src', 'index.mjs')
   ];
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-
-  throw new Error(`Unable to locate doclify CLI. Tried: ${candidates.join(', ')}`);
+  const cli = candidates.find(existsSync);
+  if (cli) return cli;
+  throw new Error('Doclify Action could not locate the v2 CLI in this immutable checkout.');
 }
 
-function runDoclifyProcess(cliArgs, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, cliArgs, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        ...(options.env || {})
-      }
-    });
+function appendInput(args, name, flag) {
+  const value = core.getInput(name);
+  if (value) args.push(flag, value);
+}
 
-    let stdout = '';
-    let stderr = '';
+function buildCliArgs() {
+  const cli = resolveCliPath();
+  const mode = core.getInput('mode') || 'check';
+  let args;
+  if (mode === 'check') {
+    const target = core.getInput('path') || '.';
+    if (/[\r\n]/.test(target)) {
+      throw new Error('Action input "path" must be one file, directory, or glob target.');
+    }
+    args = [cli, 'check', target];
+  } else if (mode === 'changed') {
+    args = [cli, 'changed'];
+    appendInput(args, 'base', '--base');
+    const staged = core.getInput('staged');
+    if (staged && core.getBooleanInput('staged')) args.push('--staged');
+  } else {
+    throw new Error('Action input "mode" must be check or changed.');
+  }
+  args.push('--format', 'json');
+  for (const [name, flag] of VALUE_INPUTS) appendInput(args, name, flag);
+  const externalLinks = core.getInput('external-links');
+  if (externalLinks && core.getBooleanInput('external-links')) args.push('--external-links');
+  return args;
+}
 
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-
-    child.on('error', reject);
-    child.on('close', (code) => {
-      resolve({
-        exitCode: typeof code === 'number' ? code : 1,
-        stdout,
-        stderr
-      });
-    });
+function runCli(args) {
+  const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+  return spawnSync(process.execPath, args, {
+    cwd: workspace,
+    encoding: 'utf8',
+    maxBuffer: MAX_BUFFER,
+    env: {
+      PATH: process.env.PATH || '',
+      LANG: 'C',
+      LC_ALL: 'C',
+      NO_COLOR: '1',
+      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_TERMINAL_PROMPT: '0'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
   });
 }
 
-async function run() {
+function parseResult(run) {
+  if (run.error) throw new Error(`Doclify Action could not launch the CLI (${run.error.code || 'UNKNOWN'}).`);
+  if (run.signal) throw new Error(`Doclify Action CLI stopped with ${run.signal}.`);
+  if (run.status === 2) {
+    const detail = String(run.stderr || '').split(/\r?\n/, 1)[0].slice(0, 300) || 'invalid invocation';
+    throw new Error(`Doclify could not start the requested scan: ${detail}`);
+  }
+  let result;
   try {
-    const CLI = resolveCliPath();
-    const scanPath = core.getInput('path') || '.';
-    if (/[\r\n]/.test(scanPath)) {
-      throw new Error('Action input "path" must be a single file, directory, or glob target.');
-    }
-    const strict = core.getInput('strict') === 'true';
-    const minScore = core.getInput('min-score');
-    const checkLinks = core.getInput('check-links') === 'true';
-    const checkFreshness = core.getInput('check-freshness') === 'true';
-    const checkFrontmatter = core.getInput('check-frontmatter') === 'true';
-    const aiDrift = core.getInput('ai-drift') === 'true';
-    const aiMode = core.getInput('ai-mode') || 'offline';
-    const failOnDrift = core.getInput('fail-on-drift');
-    const failOnDriftScope = core.getInput('fail-on-drift-scope') || 'unmodified';
-    const apiUrl = core.getInput('api-url');
-    const doclifyToken = core.getInput('doclify-token');
-    const push = core.getInput('push') === 'true';
-    const projectId = core.getInput('project-id');
-    const format = core.getInput('format') || 'compact';
-    const sarifEnabled = core.getInput('sarif') !== 'false';
-    const sarifFile = core.getInput('sarif-file') || 'doclify.sarif';
-    const prCommentEnabled = core.getInput('pr-comment') !== 'false';
-    const token = core.getInput('token');
+    result = JSON.parse(run.stdout);
+  } catch {
+    throw new Error('Doclify Action received an invalid machine result from the CLI.');
+  }
+  if (result?.schemaVersion !== 3 || !result.summary || !Array.isArray(result.findings)
+    || !Array.isArray(result.diagnostics) || ![0, 1].includes(run.status)) {
+    throw new Error('Doclify Action received an unsupported machine result from the CLI.');
+  }
+  return result;
+}
 
-    // Build CLI args
-    const cliArgs = [CLI, scanPath, '--json', '--ascii'];
-    const childEnv = {};
-    if (strict) cliArgs.push('--strict');
-    if (minScore) cliArgs.push('--min-score', minScore);
-    if (checkLinks) cliArgs.push('--check-links');
-    if (checkFreshness) cliArgs.push('--check-freshness');
-    if (checkFrontmatter) cliArgs.push('--check-frontmatter');
-    if (aiDrift) cliArgs.push('--ai-drift');
-    if (aiMode) cliArgs.push('--ai-mode', aiMode);
-    if (failOnDrift) cliArgs.push('--fail-on-drift', failOnDrift);
-    if (failOnDriftScope) cliArgs.push('--fail-on-drift-scope', failOnDriftScope);
-    if (apiUrl) cliArgs.push('--api-url', apiUrl);
-    if (doclifyToken) {
-      core.setSecret(doclifyToken);
-      childEnv.DOCLIFY_TOKEN = doclifyToken;
-    }
-    if (push) cliArgs.push('--push');
-    if (projectId) cliArgs.push('--project-id', projectId);
-    if (sarifEnabled) cliArgs.push('--sarif', sarifFile);
-    cliArgs.push('--format', format);
+function annotationProperties(item, title) {
+  const properties = { title };
+  if (item.path) properties.file = item.path;
+  if (Number.isInteger(item.line) && item.line > 0) properties.startLine = item.line;
+  if (properties.startLine && Number.isInteger(item.column) && item.column > 0) {
+    properties.startColumn = item.column;
+  }
+  return properties;
+}
 
-    // Run doclify CLI
-    let output = null;
-    let exitCode = 0;
-
-    const proc = await runDoclifyProcess(cliArgs, { env: childEnv });
-    exitCode = proc.exitCode;
-    if (proc.stdout) {
-      try {
-        output = JSON.parse(proc.stdout);
-      } catch {
-        core.warning(`Doclify output was not valid JSON: ${proc.stderr || proc.stdout}`);
-      }
-    }
-
-    // Set outputs
-    if (output && output.summary) {
-      core.setOutput('score', String(output.summary.avgHealthScore ?? 0));
-      core.setOutput('status', output.summary.status ?? 'FAIL');
-      core.setOutput('errors', String(output.summary.totalErrors ?? 0));
-      core.setOutput('warnings', String(output.summary.totalWarnings ?? 0));
-    }
-
-    // Log summary to GitHub Actions
-    if (output && output.summary) {
-      const s = output.summary;
-      core.info(`Score: ${s.avgHealthScore}/100 | Errors: ${s.totalErrors} | Warnings: ${s.totalWarnings} | Status: ${s.status}`);
-    }
-
-    // Post PR comment
-    const ctx = github.context;
-    if (prCommentEnabled && token && ctx.payload.pull_request && output) {
-      try {
-        const octokit = github.getOctokit(token);
-        await postPrComment(octokit, {
-          owner: ctx.repo.owner,
-          repo: ctx.repo.repo,
-          prNumber: ctx.payload.pull_request.number
-        }, output);
-        core.info('PR comment posted successfully');
-      } catch (err) {
-        core.warning(`Failed to post PR comment: ${err.message}`);
-      }
-    }
-
-    // SARIF info
-    if (sarifEnabled && existsSync(sarifFile)) {
-      core.info(`SARIF report written to ${sarifFile}`);
-      core.info('Add github/codeql-action/upload-sarif@v3 step to upload to Code Scanning');
-    }
-
-    // Set overall result
-    if (exitCode !== 0) {
-      const msg = output && output.summary
-        ? `Quality gate failed: score ${output.summary.avgHealthScore}/100, ${output.summary.totalErrors} error(s)`
-        : `Doclify exited with code ${exitCode}`;
-      core.setFailed(msg);
-    }
-  } catch (err) {
-    core.setFailed(`Doclify Action error: ${err.message}`);
+function emitAnnotations(result) {
+  const annotations = [
+    ...result.diagnostics.map((item) => ({ level: 'error', item, title: `Doclify ${item.code}` })),
+    ...result.findings.map((item) => ({
+      level: item.severity === 'blocking' ? 'error' : 'warning',
+      item,
+      title: `Doclify ${item.ruleId}`
+    }))
+  ];
+  for (const annotation of annotations.slice(0, MAX_ANNOTATIONS)) {
+    core[annotation.level](annotation.item.message, annotationProperties(annotation.item, annotation.title));
+  }
+  if (annotations.length > MAX_ANNOTATIONS) {
+    core.notice(`${MAX_ANNOTATIONS} of ${annotations.length} annotations shown; outputs retain the complete counts.`);
   }
 }
 
-run();
+function emitOutputs(result) {
+  core.setOutput('status', result.status);
+  core.setOutput('complete', String(result.complete));
+  core.setOutput('files', String(result.summary.filesSelected));
+  core.setOutput('blocking', String(result.summary.blocking));
+  core.setOutput('advisory', String(result.summary.advisory));
+  core.setOutput('diagnostics', String(result.summary.diagnostics));
+}
 
-export { resolveCliPath };
+function failForResult(result) {
+  if (!result.complete) {
+    core.setFailed(`Doclify scan incomplete: ${result.summary.diagnostics} operational diagnostic(s).`);
+  } else if (result.status === 'fail') {
+    core.setFailed(`Doclify found ${result.summary.blocking} blocking documentation finding(s).`);
+  }
+}
+
+function run() {
+  try {
+    const result = parseResult(runCli(buildCliArgs()));
+    emitAnnotations(result);
+    emitOutputs(result);
+    core.info(`Doclify: ${result.status}; ${result.summary.filesScanned}/${result.summary.filesSelected} files scanned; ${result.summary.blocking} blocking; ${result.summary.advisory} advisory.`);
+    failForResult(result);
+  } catch (error) {
+    core.setFailed(error instanceof Error ? error.message : 'Doclify Action failed.');
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) run();
+
+export { ACTION_INPUTS, buildCliArgs, resolveCliPath, run };

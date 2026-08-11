@@ -1,78 +1,61 @@
-name: 'Doclify Guardrail'
-description: 'Quality gate for Markdown documentation. Lint, score, and enforce doc quality in your CI pipeline.'
+name: 'Doclify Guardrail v2'
+description: 'Deterministic, local documentation integrity checks for Markdown repositories.'
 author: 'Elgabor'
 branding:
   icon: 'check-circle'
   color: 'green'
 
 inputs:
+  mode:
+    description: 'Selection mode: check or changed'
+    default: 'check'
   path:
-    description: 'Single scan target: file, directory, or glob'
+    description: 'One file, directory, or glob target when mode is check'
     default: '.'
-  strict:
-    description: 'Treat warnings as errors'
-    default: 'false'
-  min-score:
-    description: 'Fail if health score is below this value (0-100)'
+  base:
+    description: 'Git base revision when mode is changed'
     default: ''
-  check-links:
-    description: 'Validate HTTP and local links'
+  staged:
+    description: 'Select staged Markdown when mode is changed'
     default: 'false'
-  check-freshness:
-    description: 'Check document freshness via frontmatter dates'
-    default: 'false'
-  check-frontmatter:
-    description: 'Require YAML frontmatter block'
-    default: 'false'
-  ai-drift:
-    description: 'Run Drift Guard alongside the standard scan'
-    default: 'false'
-  ai-mode:
-    description: 'Drift Guard mode: offline or cloud'
-    default: 'offline'
-  fail-on-drift:
-    description: 'Fail if drift risk reaches this threshold (high or medium)'
+  config:
+    description: 'Workspace-contained v2 configuration file'
     default: ''
-  fail-on-drift-scope:
-    description: 'Drift gate scope: unmodified docs only or all docs'
-    default: 'unmodified'
-  api-url:
-    description: 'Doclify Cloud API base URL override'
+  ignore-rules:
+    description: 'Comma-separated rule ids to ignore'
     default: ''
-  doclify-token:
-    description: 'Doclify Cloud API key used for AI features'
+  exclude:
+    description: 'Comma-separated workspace paths to exclude'
     default: ''
-  push:
-    description: 'Push score summary to Doclify Cloud'
+  site-root:
+    description: 'Workspace-contained root for site-relative links'
+    default: ''
+  external-links:
+    description: 'Explicitly enable advisory remote-link checks'
     default: 'false'
-  project-id:
-    description: 'Doclify Cloud project id used for score push'
+  link-allow-list:
+    description: 'Comma-separated remote URL or hostname allow list'
     default: ''
-  format:
-    description: 'Output format: default, compact'
-    default: 'compact'
-  sarif:
-    description: 'Generate SARIF report for GitHub Code Scanning'
-    default: 'true'
-  sarif-file:
-    description: 'SARIF output file path'
-    default: 'doclify.sarif'
-  pr-comment:
-    description: 'Post quality report as PR comment'
-    default: 'true'
-  token:
-    description: 'GitHub token for PR comments'
-    default: ${{ github.token }}
+  link-timeout-ms:
+    description: 'Positive remote-link timeout in milliseconds'
+    default: ''
+  link-concurrency:
+    description: 'Positive remote-link concurrency limit'
+    default: ''
 
 outputs:
-  score:
-    description: 'Average health score (0-100)'
   status:
-    description: 'PASS or FAIL'
-  errors:
-    description: 'Total error count'
-  warnings:
-    description: 'Total warning count'
+    description: 'pass, fail, or incomplete from the v2 result'
+  complete:
+    description: 'Whether the scan completed without operational diagnostics'
+  files:
+    description: 'Number of selected files'
+  blocking:
+    description: 'Number of verified blocking findings'
+  advisory:
+    description: 'Number of advisory findings'
+  diagnostics:
+    description: 'Number of operational diagnostics'
 
 runs:
   using: 'node24'

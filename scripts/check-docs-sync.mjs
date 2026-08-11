@@ -24,6 +24,14 @@ const checks = [
       {
         label: 'stdin command',
         pattern: /check - --stdin-name README\.md/
+      },
+      {
+        label: 'local Action v2 candidate example',
+        pattern: /uses: \.\/action/
+      },
+      {
+        label: 'Action v2 offline default',
+        pattern: /stays offline unless\s+`external-links: 'true'`/
       }
     ]
   },
@@ -94,6 +102,22 @@ const checks = [
       {
         label: 'Node 24 action runtime',
         pattern: /using: 'node24'/
+      },
+      {
+        label: 'v2 Action name',
+        pattern: /name: 'Doclify Guardrail v2'/
+      },
+      {
+        label: 'changed selection mode',
+        pattern: /mode:\s*[\s\S]*?default: 'check'[\s\S]*?base:[\s\S]*?staged:/
+      },
+      {
+        label: 'external links disabled by default',
+        pattern: /external-links:\s*[\s\S]*?default: 'false'/
+      },
+      {
+        label: 'v2 status output',
+        pattern: /outputs:\s*[\s\S]*?status:/
       }
     ]
   }
@@ -104,6 +128,15 @@ const requiredFiles = [
 ];
 
 const forbiddenRefs = [];
+const forbiddenActionInputs = [
+  'doclify-token:',
+  'token:',
+  'push:',
+  'ai-drift:',
+  'pr-comment:',
+  'min-score:',
+  'score:'
+];
 
 const failures = [];
 
@@ -141,6 +174,13 @@ const readmeContent = fs.readFileSync(path.join(rootDir, 'README.md'), 'utf8');
 for (const forbiddenRef of forbiddenRefs) {
   if (readmeContent.includes(forbiddenRef)) {
     failures.push(`README.md: forbidden reference still present (${forbiddenRef})`);
+  }
+}
+
+const actionContent = fs.readFileSync(path.join(rootDir, 'action', 'action.yml'), 'utf8');
+for (const forbiddenInput of forbiddenActionInputs) {
+  if (actionContent.includes(forbiddenInput)) {
+    failures.push(`action/action.yml: removed v1 input still present (${forbiddenInput})`);
   }
 }
 
