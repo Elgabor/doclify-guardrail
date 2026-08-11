@@ -71,6 +71,14 @@ const checks = [
         pattern: /git diff --exit-code -- dist\/index\.mjs dist\/licenses\.txt/
       },
       {
+        label: 'real local Action smoke step',
+        pattern: /uses: \.\/action[\s\S]*?path: examples\/evidence-demo\/README\.md/
+      },
+      {
+        label: 'Action smoke output assertions',
+        pattern: /DOCLIFY_STATUS[\s\S]*?DOCLIFY_COMPLETE[\s\S]*?DOCLIFY_BLOCKING/
+      },
+      {
         label: 'docs sync step',
         pattern: /run: npm run docs:sync-check/
       },
