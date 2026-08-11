@@ -25,9 +25,10 @@
   },
   "scripts": {
     "start": "node ./src/index.mjs",
-    "test": "npm run test:correctness && npm run test:precision",
+    "test": "npm run test:correctness && npm run test:labeled",
     "test:correctness": "node ./scripts/check-test-isolation.mjs",
-    "test:precision": "node ./scripts/check-precision-holdout.mjs",
+    "test:labeled": "node ./scripts/check-labeled-correctness.mjs",
+    "test:network": "node ./scripts/check-network-boundary.mjs",
     "test:performance": "node ./scripts/perf-corpus.mjs",
     "docs:sync-check": "node ./scripts/check-docs-sync.mjs"
   },

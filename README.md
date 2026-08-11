@@ -4,9 +4,10 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-This is `2.0.0-beta.2`. The supported GitHub Action remains
-`Elgabor/doclify-guardrail/action@v1`; an Action for the v2 core is planned for
-the next beta and is not available yet.
+The npm prerelease is `2.0.0-beta.2`. This source tree also contains the
+forthcoming beta.3 Action adapter, but it is not a published release or tag.
+The supported v1 Action remains frozen at
+`Elgabor/doclify-guardrail/action@v1`.
 
 ## Start
 
@@ -31,6 +32,9 @@ printf '# Notes\n' | npx doclify-guardrail check - --stdin-name README.md
 
 Text output is bounded. Pass `--all` for every finding. Machine formats always
 contain the complete result and can be written only through an explicit path.
+Report paths are replaced atomically so repeated CI runs stay safe. An existing
+Markdown or MDX document is never replaced by report output, and output inside
+Git metadata is refused.
 
 ```sh
 npx doclify-guardrail check README.md --format json --output .doclify/result.json
@@ -118,8 +122,36 @@ node ./src/index.mjs check examples/evidence-demo/README.md --format compact
 node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --config examples/evidence-demo/.doclify-guardrail.json --format json
 ```
 
-The same result model is used by a future Action v2. The released Action v1 is
-unchanged and must be referenced through its existing `@v1` tag.
+## GitHub Action v2 candidate
+
+The beta.3 candidate is a thin adapter over the same CLI result. It requires no
+token, has only `contents: read` permission, and stays offline unless
+`external-links: 'true'` is set. Until beta.3 has an immutable published
+reference, it can be verified from a checkout with the local Action path:
+
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - uses: actions/checkout@v5.0.1
+    with:
+      persist-credentials: false
+  - uses: ./action
+    with:
+      path: README.md
+```
+
+Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
+Git selection to the v2 `changed` command. A base comparison needs the requested
+revision to be present in the checkout, commonly via `fetch-depth: 0`.
+
+Inputs map directly to v2 CLI options: `mode`, `path`, `base`, `staged`,
+`config`, `ignore-rules`, `exclude`, `site-root`, `external-links`, `link-allow-list`,
+`link-timeout-ms`, and `link-concurrency`. Outputs are `status`, `complete`,
+`files`, `blocking`, `advisory`, and `diagnostics`. The Action emits at most 50
+annotations while the outputs retain complete counts. The released v1 Action
+is unchanged and remains on its existing `@v1` tag.
 
 ## Migration from v1
 

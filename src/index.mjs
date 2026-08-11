@@ -4,22 +4,28 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RULES_BY_ID } from './rule-catalog.mjs';
+import { COMMAND_USAGE } from './cli-contract.mjs';
 import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 import { isV2Command, runV2Cli } from './v2-cli.mjs';
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(fs.readFileSync(path.join(sourceDir, '..', 'package.json'), 'utf8'));
 
+function isEntrypoint(argvPath) {
+  if (!argvPath) return false;
+  try {
+    return fs.realpathSync(argvPath) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return path.resolve(argvPath) === fileURLToPath(import.meta.url);
+  }
+}
+
 function topLevelHelp() {
   return [
     `Doclify Guardrail ${packageJson.version}`,
     '',
     'Usage:',
-    '  doclify-guardrail check [paths...]',
-    '  doclify-guardrail changed (--base <ref> | --staged)',
-    '  doclify-guardrail explain <rule-id>',
-    '  doclify-guardrail init --print',
-    '  doclify-guardrail init --write',
+    ...COMMAND_USAGE.map(([, usage]) => `  doclify-guardrail ${usage}`),
     '',
     'Run a command with --help for its options.',
     ''
@@ -77,7 +83,7 @@ async function runCli(argv = process.argv.slice(2)) {
   return 2;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntrypoint(process.argv[1])) {
   runCli().then((code) => { process.exitCode = code; });
 }
 

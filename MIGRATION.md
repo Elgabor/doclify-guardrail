@@ -77,7 +77,7 @@ silently accepted.
 | API `fix`, `score`, `RULE_CATALOG`, package-root import | Removed. |
 | config keys `strict`, `maxLineLength`, `checkLinks`, `checkFreshness`, `freshnessMaxDays`, `checkFrontmatter`, `checkInlineHtml`, `push`, `projectId` | Removed keys fail with `config-removed-key`. |
 | `.doclify-history.json`, `doclify-report.md`, `doclify-badge.svg`, `.doclify/` auth state | No v2 equivalent; remove them only after validating they are no longer used by your own workflow. |
-| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract; there is no Action v2 in this beta. |
+| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or migrate to the beta.3 candidate contract below after an immutable v2 reference is published. |
 
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
@@ -89,5 +89,20 @@ claims. This is classification, not a style preset.
 ## GitHub Action
 
 `Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. This beta
-does not change, rebuild, or retag that Action. A v2 Action belongs to the next
-beta after the core contract has been exercised on real repositories.
+does not change, rebuild, or retag that Action.
+
+The source tree contains the forthcoming beta.3 Action adapter for local and
+immutable-checkout validation. It maps `mode`, `path`, `base`, `staged`,
+`config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
+settings directly to the v2 CLI. `mode: changed` requires exactly one of `base`
+or `staged`; base comparisons also require that revision in the checkout. It
+requires no token and does not comment on pull requests, push data,
+calculate a score, or run Cloud and AI features. Its outputs are `status`,
+`complete`, `files`, `blocking`, `advisory`, and `diagnostics`.
+If the scan cannot start because the invocation or configuration is invalid,
+the step fails before those result outputs exist.
+
+The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
+remains available from the CLI with `--format sarif --output <path>`. Do not
+replace `@v1` with a floating `@v2` reference until the separate v2 line has
+been published and smoke-tested; pin its immutable commit when available.

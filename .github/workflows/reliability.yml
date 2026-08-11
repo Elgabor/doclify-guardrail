@@ -1,0 +1,66 @@
+name: Reliability
+
+permissions:
+  contents: read
+
+on:
+  push:
+    paths:
+      - '.github/workflows/reliability.yml'
+      - 'action/**'
+      - 'bench/**'
+      - 'package.json'
+      - 'scripts/**'
+      - 'src/**'
+      - 'test/**'
+  pull_request:
+    paths:
+      - '.github/workflows/reliability.yml'
+      - 'action/**'
+      - 'bench/**'
+      - 'package.json'
+      - 'scripts/**'
+      - 'src/**'
+      - 'test/**'
+
+jobs:
+  correctness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '20'
+      - name: Install Action test dependencies
+        working-directory: action
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Run isolated correctness profile
+        run: npm run test:correctness
+      - name: Gate labeled rule correctness
+        run: npm run test:labeled
+
+  network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '20'
+      - name: Test controlled local network behavior
+        run: npm run test:network
+
+  performance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '20'
+      - name: Enforce reviewed performance baseline
+        run: npm run test:performance

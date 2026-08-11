@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
+import { decodeLocalPath } from './local-url.mjs';
 import { stripCodeBlocks, stripInlineCode } from './markdown-content.mjs';
 import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
 import {
@@ -244,7 +245,7 @@ function buildRootRelativeCandidates(targetPath) {
 }
 
 function resolveLocalUrl(url, { sourceFile, siteRoot } = {}) {
-  const withoutAnchor = url.split('#')[0];
+  const withoutAnchor = decodeLocalPath(url);
   if (!withoutAnchor) return null;
 
   if (withoutAnchor.startsWith('/')) {

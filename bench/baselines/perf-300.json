@@ -8,7 +8,7 @@
   },
   "ruleSet": {
     "count": 5,
-    "hash": "sha256:924ef6606f7dccf1648e8bc6c7b251171494dd54891c828a75321915d5f8207f"
+    "hash": "sha256:309acd10be9c3b7186361e92d1f28e0d8d080b8d139b16888c776bac61c85500"
   },
   "environments": {
     "darwin-arm64-node22-fs26": {
@@ -34,6 +34,32 @@
         "samplesMs": [41.265, 40.202, 39.259, 39.606, 39.286, 38.657, 38.914, 39.192, 38.948, 39.013],
         "p50Ms": 39.225,
         "p95Ms": 40.787
+      },
+      "deterministic": true
+    },
+    "linux-x64-node20-fs61267": {
+      "environment": {
+        "class": "linux-x64-node20-fs61267",
+        "node": "v20.20.2",
+        "platform": "linux",
+        "arch": "x64",
+        "filesystemType": "61267",
+        "cpuModel": "AMD EPYC 7763 64-Core Processor",
+        "cpuCount": 4,
+        "totalMemoryMb": 15990,
+        "ci": true
+      },
+      "cold": {
+        "runs": 3,
+        "samplesMs": [165.813, 161.025, 167.818],
+        "p50Ms": 165.813,
+        "p95Ms": 167.617
+      },
+      "warm": {
+        "runs": 10,
+        "samplesMs": [76.951, 62.628, 65.925, 67.343, 59.092, 59.661, 56.687, 57.4, 57.508, 57.177],
+        "p50Ms": 59.376,
+        "p95Ms": 72.627
       },
       "deterministic": true
     }
