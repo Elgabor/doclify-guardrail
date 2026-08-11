@@ -61,7 +61,7 @@ test('Unicode paths and encoded anchors resolve identically with LF and CRLF', a
   }
 });
 
-test('workspace containment is stable for missing, Unicode, and symlinked paths', (t) => {
+test('workspace containment is stable for missing, Unicode, and symlinked paths', { skip: process.platform === 'win32' }, (t) => {
   const parent = temp(t);
   const workspace = path.join(parent, 'workspace');
   const outside = path.join(parent, 'outside');
@@ -86,7 +86,7 @@ test('workspace containment is stable for missing, Unicode, and symlinked paths'
   }
 });
 
-test('workspace containment fails closed for an excessive acyclic symlink chain', (t) => {
+test('workspace containment fails closed for an excessive acyclic symlink chain', { skip: process.platform === 'win32' }, (t) => {
   const workspace = temp(t);
   fs.mkdirSync(path.join(workspace, 'terminal'));
   for (let index = 40; index >= 0; index -= 1) {
