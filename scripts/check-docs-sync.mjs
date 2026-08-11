@@ -107,8 +107,8 @@ const checks = [
         pattern: /'bench\/baselines\/perf-300\.json'/
       },
       {
-        label: 'enforced performance profile',
-        pattern: /- name: Run 300-document performance profile\n\s+run: npm run test:performance/
+        label: 'explicit catastrophic performance regression gate',
+        pattern: /- name: Reject catastrophic performance regressions\n\s+run: npm run test:performance/
       },
       {
         label: 'labeled correctness transition gate',
@@ -121,6 +121,23 @@ const checks = [
       {
         label: 'README-only docs gate',
         pattern: /run: node \.\/src\/index\.mjs check README\.md --format compact/
+      }
+    ]
+  },
+  {
+    file: 'CHANGELOG.md',
+    expectations: [
+      {
+        label: 'unreleased beta.3 candidate entry',
+        pattern: /## \[Unreleased\] — 2\.0\.0-beta\.3 candidate/
+      },
+      {
+        label: 'unpublished candidate boundary',
+        pattern: /describes source merged to `main`, not a published release/
+      },
+      {
+        label: 'open private-beta gate',
+        pattern: /private-beta task A4 still awaits qualifying real-user sessions/
       }
     ]
   },

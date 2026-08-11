@@ -91,8 +91,9 @@ as authored documentation.
 }
 ```
 
-`init --print` shows the smallest valid configuration. `init --write` creates
-that file only when it does not already exist.
+The example above shows optional fields. `init --print` shows the smallest
+valid configuration. `init --write` creates that file only when it does not
+already exist.
 
 ```sh
 npx doclify-guardrail init --print

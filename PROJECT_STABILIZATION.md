@@ -7,7 +7,6 @@ Updated: 2026-06-09
 ## Operating Context
 
 - Repository: `Elgabor/doclify-guardrail`
-- Local path: `/Users/lorenzoborgato/code/doclify-guardrail`
 - Goal: stabilize the repo, remove low-quality code, make CI pass, assess
   security, research real user pain points, and prepare a phased plan for a
   better version and future npm publish.
