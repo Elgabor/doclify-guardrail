@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { check } from '../src/api.mjs';
+import { blockedHostReason } from '../src/network-guard.mjs';
 import { getReadContainment } from '../src/workspace-path.mjs';
 
 function temp(t) {
@@ -82,6 +83,26 @@ test('workspace containment is stable for missing, Unicode, and symlinked paths'
   ];
   for (const [candidate, expected] of cases) {
     assert.equal(getReadContainment(candidate, workspace), expected, candidate);
+  }
+});
+
+test('workspace containment fails closed for an excessive acyclic symlink chain', (t) => {
+  const workspace = temp(t);
+  fs.mkdirSync(path.join(workspace, 'terminal'));
+  for (let index = 40; index >= 0; index -= 1) {
+    const target = index === 40 ? 'terminal' : `link-${index + 1}`;
+    fs.symlinkSync(target, path.join(workspace, `link-${index}`));
+  }
+
+  assert.equal(getReadContainment(path.join(workspace, 'link-0'), workspace), 'indeterminate');
+});
+
+test('private-network guard blocks CGNAT metadata and IPv4-compatible IPv6 literals', () => {
+  for (const host of ['100.64.0.1', '100.100.100.200', '::127.0.0.1', '::7f00:1']) {
+    assert.match(blockedHostReason(host), /Blocked private host\/IP/, host);
+  }
+  for (const host of ['100.63.255.255', '100.128.0.0', '::8.8.8.8']) {
+    assert.equal(blockedHostReason(host), null, host);
   }
 });
 

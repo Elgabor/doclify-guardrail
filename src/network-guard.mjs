@@ -29,6 +29,7 @@ function isBlockedIpv4(host) {
 
   const [a, b] = octets;
   if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 192 && b === 168) return true;
@@ -37,10 +38,10 @@ function isBlockedIpv4(host) {
 
 function ipv4FromMappedIpv6(host) {
   const normalized = normalizeHost(host);
-  const dotted = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const dotted = normalized.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/i);
   if (dotted) return dotted[1];
 
-  const hex = normalized.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  const hex = normalized.match(/^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
   if (!hex) return null;
 
   const high = parseInt(hex[1], 16);

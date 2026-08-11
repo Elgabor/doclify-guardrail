@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const MAX_SYMBOLIC_LINK_DEPTH = 40;
+
 function canonicalizeForBoundaryCheck(targetPath, seenLinks = new Set()) {
   const resolved = path.resolve(targetPath);
 
@@ -20,6 +22,7 @@ function canonicalizeForBoundaryCheck(targetPath, seenLinks = new Set()) {
     }
 
     if (stat.isSymbolicLink()) {
+      if (seenLinks.size >= MAX_SYMBOLIC_LINK_DEPTH) return null;
       if (seenLinks.has(current)) return null;
       const nextSeenLinks = new Set(seenLinks);
       nextSeenLinks.add(current);
@@ -70,6 +73,7 @@ function resolveWorkspacePath(targetPath, options = {}) {
 }
 
 export {
+  canonicalizeForBoundaryCheck,
   getReadContainment,
   isDescendantOrSame,
   resolveWorkspacePath

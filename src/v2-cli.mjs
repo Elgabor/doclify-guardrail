@@ -6,7 +6,7 @@ import { DoclifyUsageError, runCheck } from './core.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { renderResult, terminalText } from './result-renderers.mjs';
 import { isV2Command, parseV2Args, renderV2Help } from './v2-command.mjs';
-import { resolveWorkspacePath } from './workspace-path.mjs';
+import { canonicalizeForBoundaryCheck, resolveWorkspacePath } from './workspace-path.mjs';
 
 const MAX_STDIN_BYTES = 4 * 1024 * 1024;
 
@@ -56,6 +56,18 @@ function assertOutputDoesNotOverwriteInput(outputPath, result, workspace) {
   }
 }
 
+function assertOutputOutsideGitMetadata(outputPath, workspace) {
+  const canonicalOutput = canonicalizeForBoundaryCheck(outputPath);
+  const canonicalWorkspace = canonicalizeForBoundaryCheck(workspace);
+  if (canonicalOutput == null || canonicalWorkspace == null) {
+    throw new DoclifyUsageError('output-outside-workspace', 'Output path could not be safely resolved.');
+  }
+  const segments = path.relative(canonicalWorkspace, canonicalOutput).split(path.sep);
+  if (segments.some((segment) => segment.toLowerCase() === '.git')) {
+    throw new DoclifyUsageError('output-in-git-directory', 'Output path must not write inside Git metadata.');
+  }
+}
+
 function writeOutput(outputPath, rendered) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   if (isMarkdownPath(outputPath)) {
@@ -72,14 +84,18 @@ function writeOutput(outputPath, rendered) {
 
   // Replacing the directory entry keeps repeatable reports from following links.
   const temporary = path.join(path.dirname(outputPath), `.${path.basename(outputPath)}.${randomUUID()}.tmp`);
+  let primaryError = null;
   try {
     fs.writeFileSync(temporary, rendered, { encoding: 'utf8', flag: 'wx' });
     fs.renameSync(temporary, outputPath);
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
     try {
       fs.unlinkSync(temporary);
     } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
+      if (primaryError == null && error?.code !== 'ENOENT') throw error;
     }
   }
 }
@@ -136,6 +152,7 @@ async function runV2Cli(argv) {
       } catch {
         throw new DoclifyUsageError('output-outside-workspace', 'Output path must stay inside the workspace.');
       }
+      assertOutputOutsideGitMetadata(outputPath, workspace);
       assertOutputDoesNotOverwriteInput(outputPath, result, workspace);
       writeOutput(outputPath, rendered);
     } else {

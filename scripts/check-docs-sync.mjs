@@ -26,6 +26,10 @@ const checks = [
         pattern: /check - --stdin-name README\.md/
       },
       {
+        label: 'Git metadata output refusal',
+        pattern: /output inside\s+Git metadata is refused/
+      },
+      {
         label: 'local Action v2 candidate example',
         pattern: /uses: \.\/action/
       },

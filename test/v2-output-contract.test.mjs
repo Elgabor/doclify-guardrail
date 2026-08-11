@@ -136,6 +136,19 @@ test('v2 output remains explicit, contained, and cannot replace an input through
   const hardlink = run(['check', 'doc.md', '--format', 'json', '--output', 'result.json'], cwd);
   assert.match(hardlink.stderr, /^output-overwrites-input:/);
   assert.equal(fs.readFileSync(document, 'utf8'), '# Clean\n');
+
+  fs.mkdirSync(path.join(cwd, '.git'));
+  fs.writeFileSync(path.join(cwd, '.git', 'config'), 'preserve\n', 'utf8');
+  const gitMetadata = run(['check', 'doc.md', '--format', 'json', '--output', '.git/config'], cwd);
+  assert.equal(gitMetadata.status, 2);
+  assert.match(gitMetadata.stderr, /^output-in-git-directory:/);
+  assert.equal(fs.readFileSync(path.join(cwd, '.git', 'config'), 'utf8'), 'preserve\n');
+
+  fs.symlinkSync('.git', path.join(cwd, 'git-alias'), 'dir');
+  const gitAlias = run(['check', 'doc.md', '--format', 'json', '--output', 'git-alias/config'], cwd);
+  assert.equal(gitAlias.status, 2);
+  assert.match(gitAlias.stderr, /^output-in-git-directory:/);
+  assert.equal(fs.readFileSync(path.join(cwd, '.git', 'config'), 'utf8'), 'preserve\n');
 });
 
 test('v2 output refuses to replace an existing file outside the scan', (t) => {
