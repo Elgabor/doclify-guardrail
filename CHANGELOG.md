@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased] — 2.0.0-beta.3 candidate
+## [2.0.0-beta.3] - 2026-08-11
 
 ### Added
 
@@ -25,7 +25,7 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 
-- the package remains `2.0.0-beta.2` until Lorenzo explicitly performs the npm publication step; this entry describes source merged to `main`, not a published release
+- this is an opt-in prerelease; `latest` remains on the stable v1 line
 - the performance tolerance catches macroscopic regressions; it is not evidence of a tight performance target
 - private-beta task A4 still awaits qualifying real-user sessions
 

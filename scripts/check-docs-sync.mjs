@@ -30,12 +30,25 @@ const checks = [
         pattern: /output inside\s+Git metadata is refused/
       },
       {
-        label: 'local Action v2 candidate example',
+        label: 'local Action v2 prerelease example',
         pattern: /uses: \.\/action/
       },
       {
         label: 'Action v2 offline default',
         pattern: /stays offline unless\s+`external-links: 'true'`/
+      },
+      {
+        label: 'beta.3 source release',
+        pattern: /This source release is `2\.0\.0-beta\.3`/
+      }
+    ]
+  },
+  {
+    file: 'MIGRATION.md',
+    expectations: [
+      {
+        label: 'beta.3 migration boundary',
+        pattern: /`2\.0\.0-beta\.3` is an opt-in prerelease for npm's `next` tag/
       }
     ]
   },
@@ -128,12 +141,12 @@ const checks = [
     file: 'CHANGELOG.md',
     expectations: [
       {
-        label: 'unreleased beta.3 candidate entry',
-        pattern: /## \[Unreleased\] — 2\.0\.0-beta\.3 candidate/
+        label: 'beta.3 release entry',
+        pattern: /## \[2\.0\.0-beta\.3\] - 2026-08-11/
       },
       {
-        label: 'unpublished candidate boundary',
-        pattern: /describes source merged to `main`, not a published release/
+        label: 'prerelease channel boundary',
+        pattern: /this is an opt-in prerelease; `latest` remains on the stable v1 line/
       },
       {
         label: 'open private-beta gate',
