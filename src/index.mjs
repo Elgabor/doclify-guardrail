@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RULES_BY_ID } from './rule-catalog.mjs';
+import { COMMAND_USAGE } from './cli-contract.mjs';
 import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 import { isV2Command, runV2Cli } from './v2-cli.mjs';
 
@@ -15,11 +16,7 @@ function topLevelHelp() {
     `Doclify Guardrail ${packageJson.version}`,
     '',
     'Usage:',
-    '  doclify-guardrail check [paths...]',
-    '  doclify-guardrail changed (--base <ref> | --staged)',
-    '  doclify-guardrail explain <rule-id>',
-    '  doclify-guardrail init --print',
-    '  doclify-guardrail init --write',
+    ...COMMAND_USAGE.map(([, usage]) => `  doclify-guardrail ${usage}`),
     '',
     'Run a command with --help for its options.',
     ''

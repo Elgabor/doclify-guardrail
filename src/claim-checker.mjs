@@ -30,7 +30,7 @@ function normalizeAnchor(value) {
   }
 }
 
-function claimSegments(content) {
+function analyzeRepositoryClaims(content) {
   const lines = String(content).split(/\r?\n/);
   const fences = analyzeFences(lines);
   const segments = [];
@@ -54,17 +54,13 @@ function claimSegments(content) {
       segments.push({ line: offset + 1, text: match[1] });
     }
   }
-  return { lines, fences, segments };
-}
-
-function hasRepositoryClaim(content) {
-  const { lines, fences, segments } = claimSegments(content);
-  if (segments.some(({ text }) => /\b(?:npm(?:\s+--workspace(?:=|\s+)[^\s]+)?\s+run|make\s+|doclify-guardrail\s+)/.test(text))) return true;
-  return lines.some((line, offset) => !fences.inFence[offset]
+  const hasCommand = segments.some(({ text }) => /\b(?:npm(?:\s+--workspace(?:=|\s+)[^\s]+)?\s+run|make\s+|doclify-guardrail\s+)/.test(text));
+  const hasAnchor = lines.some((line, offset) => !fences.inFence[offset]
     && /\[[^\]]*\]\([^\s)]+#[^\s)]+\)/.test(line));
+  return { lines, fences, segments, hasClaims: hasCommand || hasAnchor };
 }
 
-function checkRepositoryClaims(content, index, filePath) {
+function checkRepositoryClaims(analysis, index, filePath) {
   const findings = [];
   const seen = new Set();
   const add = (finding) => {
@@ -75,7 +71,7 @@ function checkRepositoryClaims(content, index, filePath) {
     }
   };
 
-  const { lines, fences, segments } = claimSegments(content);
+  const { lines, fences, segments } = analysis;
   for (const [offset, line] of lines.entries()) {
     const lineNumber = offset + 1;
     if (fences.inFence[offset]) continue;
@@ -137,4 +133,4 @@ function checkRepositoryClaims(content, index, filePath) {
   return findings;
 }
 
-export { checkRepositoryClaims, hasRepositoryClaim };
+export { analyzeRepositoryClaims, checkRepositoryClaims };

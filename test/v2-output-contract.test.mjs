@@ -7,8 +7,10 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { check } from '../src/api.mjs';
+import { COMMANDS, FLAGS, SCAN_FLAGS } from '../src/cli-contract.mjs';
 import { createResult } from '../src/result.mjs';
 import { renderResult, terminalText } from '../src/result-renderers.mjs';
+import { parseV2Args, renderV2Help } from '../src/v2-command.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = path.join(ROOT, 'src', 'index.mjs');
@@ -24,6 +26,66 @@ function run(args, cwd) {
     cwd, encoding: 'utf8', env: { LANG: 'C', LC_ALL: 'C', NO_COLOR: '1', PATH: process.env.PATH || '' }
   });
 }
+
+test('v2 parser, help, and documentation checker share one scan surface', () => {
+  const invocations = new Map([
+    ['--format', ['check', 'doc.md', '--format', 'json']],
+    ['--output', ['check', 'doc.md', '--output', 'result.json']],
+    ['--all', ['check', 'doc.md', '--all']],
+    ['--ignore-rules', ['check', 'doc.md', '--ignore-rules', 'local-link']],
+    ['--exclude', ['check', 'doc.md', '--exclude', 'drafts']],
+    ['--config', ['check', 'doc.md', '--config', 'config.json']],
+    ['--purpose', ['check', 'doc.md', '--purpose', 'published']],
+    ['--site-root', ['check', 'doc.md', '--site-root', 'site']],
+    ['--external-links', ['check', 'doc.md', '--external-links']],
+    ['--link-allow-list', ['check', 'doc.md', '--link-allow-list', 'https://example.test']],
+    ['--link-timeout-ms', ['check', 'doc.md', '--link-timeout-ms', '100']],
+    ['--link-concurrency', ['check', 'doc.md', '--link-concurrency', '2']],
+    ['--stdin-name', ['check', '-', '--stdin-name', 'doc.md']],
+    ['--no-color', ['check', 'doc.md', '--no-color']],
+    ['--base', ['changed', '--base', 'HEAD~1']],
+    ['--staged', ['changed', '--staged']],
+    ['--help', ['check', '--help']],
+    ['-h', ['check', '-h']]
+  ]);
+
+  assert.deepEqual(new Set(invocations.keys()), SCAN_FLAGS);
+  for (const [flag, argv] of invocations) {
+    assert.doesNotThrow(() => parseV2Args(argv), flag);
+    if (flag.startsWith('--') && !['--base', '--staged', '--help'].includes(flag)) {
+      assert.match(renderV2Help('check'), new RegExp(`^  ${flag}(?: |$)`, 'm'));
+    }
+  }
+
+  for (const argv of [
+    ['check', 'doc.md', '--base', 'HEAD~1'],
+    ['check', 'doc.md', '--staged'],
+    ['changed', '--base', 'HEAD~1', '--stdin-name', 'doc.md']
+  ]) {
+    assert.throws(() => parseV2Args(argv), (error) => error?.code === 'invalid-option');
+  }
+
+  const topLevelHelp = run(['--help'], ROOT);
+  assert.equal(topLevelHelp.status, 0, topLevelHelp.stderr);
+  for (const command of COMMANDS) assert.match(topLevelHelp.stdout, new RegExp(`doclify-guardrail ${command}`));
+
+  const nonScanInvocations = new Map([
+    ['--print', ['init', '--print']],
+    ['--write', ['init', '--write']],
+    ['--version', ['--version']],
+    ['-v', ['-v']]
+  ]);
+  assert.deepEqual(new Set([...SCAN_FLAGS, ...nonScanInvocations.keys()]), FLAGS);
+  for (const argv of nonScanInvocations.values()) {
+    const cwd = argv.includes('--write') ? fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-init-contract-')) : ROOT;
+    try {
+      const result = run(argv, cwd);
+      assert.equal(result.status, 0, result.stderr);
+    } finally {
+      if (cwd !== ROOT) fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  }
+});
 
 test('v2 result order, bounded human output, and complete machine output are deterministic', () => {
   const findings = Array.from({ length: 55 }, (_, index) => ({

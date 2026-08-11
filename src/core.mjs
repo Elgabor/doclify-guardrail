@@ -10,7 +10,7 @@ import { createResult } from './result.mjs';
 import { allowsRepositoryClaims, resolveDocumentPurpose } from './document-purpose.mjs';
 import { createSuppressionMatcher } from './suppressions.mjs';
 import { buildRepositoryIndex } from './repository-index.mjs';
-import { checkRepositoryClaims, hasRepositoryClaim } from './claim-checker.mjs';
+import { analyzeRepositoryClaims, checkRepositoryClaims } from './claim-checker.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { TargetSelectionError, relativePath, selectTargets } from './target-selector.mjs';
 import { getReadContainment, isDescendantOrSame } from './workspace-path.mjs';
@@ -345,8 +345,9 @@ async function runCheck(options = {}) {
     const purpose = resolveDocumentPurpose(filePath, content, fileOptions.purpose);
     const ignored = new Set(fileOptions.ignoreRules);
     const indexPath = relativePath(absolutePath, discoveryRoot);
-    const fileFindings = (allowsRepositoryClaims(purpose) && hasRepositoryClaim(content)
-      ? checkRepositoryClaims(content, getRepositoryIndex(), indexPath) : [])
+    const claimAnalysis = allowsRepositoryClaims(purpose) ? analyzeRepositoryClaims(content) : null;
+    const fileFindings = (claimAnalysis?.hasClaims
+      ? checkRepositoryClaims(claimAnalysis, getRepositoryIndex(), indexPath) : [])
       .filter((finding) => !ignored.has(finding.ruleId) && !suppressionMatcher.isSuppressed(finding.ruleId, finding.line))
       .map((finding) => ({ ...finding, path: filePath }));
 
