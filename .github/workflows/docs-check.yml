@@ -68,7 +68,7 @@ jobs:
       # the local ./action smoke above remains the coverage for current HEAD.
       - name: Smoke frozen Action v2 candidate from an immutable reference
         id: action-sha-smoke
-        uses: Elgabor/doclify-guardrail/action@6026ef1999e2bb11fd6b7532113d4ff64ea07894
+        uses: Elgabor/doclify-guardrail/action@ba9998334dbb8ce3e1b7796fc070d124d372c738
         with:
           path: evidence/private-beta-protocol.md
       - name: Verify immutable Action reads the caller workspace
