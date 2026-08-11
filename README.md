@@ -4,10 +4,9 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-The npm prerelease is `2.0.0-beta.2`. This source tree also contains the
-forthcoming beta.3 Action adapter, but it is not a published release or tag.
-The supported v1 Action remains frozen at
-`Elgabor/doclify-guardrail/action@v1`.
+This source release is `2.0.0-beta.3`, an opt-in prerelease for npm's `next`
+tag. `latest` remains on the stable v1 line. The supported v1 Action remains
+frozen at `Elgabor/doclify-guardrail/action@v1`.
 
 ## Start
 
@@ -79,7 +78,7 @@ Every selected document has one purpose: `published`, `instructions`,
 `fragment`, `plan`, `changelog`, or `generated`. Configuration wins over the
 filename heuristic; the safe fallback is `fragment`. Purpose is included in
 the result for each file and does not turn generic formatting into a gate.
-In beta.2 the high-signal integrity rules are shared by non-generated purposes;
+In beta.3 the high-signal integrity rules are shared by non-generated purposes;
 `generated` skips repository-command claims so generated output is not treated
 as authored documentation.
 
@@ -123,9 +122,9 @@ node ./src/index.mjs check examples/evidence-demo/README.md --format compact
 node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --config examples/evidence-demo/.doclify-guardrail.json --format json
 ```
 
-## GitHub Action v2 candidate
+## GitHub Action v2 prerelease
 
-The beta.3 candidate is a thin adapter over the same CLI result. It requires no
+The beta.3 Action is a thin adapter over the same CLI result. It requires no
 token, has only `contents: read` permission, and stays offline unless
 `external-links: 'true'` is set. Until beta.3 has an immutable published
 reference, it can be verified from a checkout with the local Action path:
