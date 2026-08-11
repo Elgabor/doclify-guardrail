@@ -12,6 +12,7 @@ import { renderResult } from '../src/result-renderers.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = path.join(ROOT, 'src', 'index.mjs');
+const PACKAGE_VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 function makeTempDir(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-beta2-'));
@@ -27,6 +28,21 @@ function runCli(args, cwd, input) {
     env: { LANG: 'C', LC_ALL: 'C', NO_COLOR: '1', PATH: process.env.PATH || '' }
   });
 }
+
+test('npm-style binary symlink invokes the CLI entrypoint', { skip: process.platform === 'win32' }, (t) => {
+  const cwd = makeTempDir(t);
+  const bin = path.join(cwd, 'doclify-guardrail');
+  fs.symlinkSync(CLI, bin);
+
+  const run = spawnSync(bin, ['--version'], {
+    cwd,
+    encoding: 'utf8',
+    env: { LANG: 'C', LC_ALL: 'C', NO_COLOR: '1', PATH: process.env.PATH || '' }
+  });
+
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.stdout, `${PACKAGE_VERSION}\n`);
+});
 
 function writeRepository(root) {
   fs.mkdirSync(path.join(root, 'packages', 'app'), { recursive: true });

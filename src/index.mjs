@@ -11,6 +11,15 @@ import { isV2Command, runV2Cli } from './v2-cli.mjs';
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(fs.readFileSync(path.join(sourceDir, '..', 'package.json'), 'utf8'));
 
+function isEntrypoint(argvPath) {
+  if (!argvPath) return false;
+  try {
+    return fs.realpathSync(argvPath) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return path.resolve(argvPath) === fileURLToPath(import.meta.url);
+  }
+}
+
 function topLevelHelp() {
   return [
     `Doclify Guardrail ${packageJson.version}`,
@@ -74,7 +83,7 @@ async function runCli(argv = process.argv.slice(2)) {
   return 2;
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntrypoint(process.argv[1])) {
   runCli().then((code) => { process.exitCode = code; });
 }
 
