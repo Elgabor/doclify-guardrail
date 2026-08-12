@@ -112,6 +112,69 @@ test('beta.2 blocks only static, reproducible repository claim failures', async 
   assert.equal(result.findings.some((finding) => finding.message.includes('Existing')), false);
 });
 
+test('make-target ignores assignments and checks options, directories, and every explicit target', async (t) => {
+  const cwd = makeTempDir(t);
+  writeRepository(cwd);
+  fs.appendFileSync(path.join(cwd, 'Makefile'), 'deploy:\n\t@true\n');
+  fs.mkdirSync(path.join(cwd, 'tools'));
+  fs.writeFileSync(path.join(cwd, 'tools', 'Makefile'), 'build:\n\t@true\n', 'utf8');
+  fs.writeFileSync(path.join(cwd, 'README.md'), [
+    '# Make', '',
+    '`make BUILD_TLS=yes`',
+    '`make CFLAGS="-O2 -g"`',
+    '`make MALLOC=libc`',
+    '`make PREFIX=/opt/redis-deploy`',
+    '`make check doclify-definitely-missing`',
+    '`make -j8 doclify-definitely-missing`',
+    '`make -C tools build`',
+    '`make -C tools doclify-definitely-missing`',
+    '`make BUILD_TLS=yes doclify-definitely-missing`', ''
+  ].join('\n'), 'utf8');
+
+  const result = await check({ cwd, paths: ['README.md'] });
+  const findings = result.findings.filter((finding) => finding.ruleId === 'make-target');
+  assert.equal(findings.length, 4);
+  assert.equal(findings.every((finding) => finding.message.includes('doclify-definitely-missing')), true);
+  assert.equal(findings.some((finding) => /BUILD_TLS|CFLAGS|MALLOC|PREFIX/.test(finding.message)), false);
+  assert.equal(findings.some((finding) => finding.evidence.source === 'tools/Makefile'), true);
+});
+
+test('make-target leaves dynamic default and pattern rules unverified', async (t) => {
+  for (const dynamicRule of ['.DEFAULT:\n\t@true\n', '%-generated:\n\t@true\n']) {
+    const cwd = makeTempDir(t);
+    writeRepository(cwd);
+    fs.appendFileSync(path.join(cwd, 'Makefile'), dynamicRule);
+    fs.writeFileSync(path.join(cwd, 'README.md'), '# Make\n\n`make dynamic-generated`\n', 'utf8');
+    const result = await check({ cwd, paths: ['README.md'] });
+    assert.deepEqual(result.findings.filter((finding) => finding.ruleId === 'make-target'), []);
+  }
+});
+
+test('cli-contract validates complete invocations with the runtime command grammar', async (t) => {
+  const cwd = makeTempDir(t);
+  writeRepository(cwd);
+  fs.writeFileSync(path.join(cwd, 'README.md'), [
+    '# CLI', '',
+    '`doclify-guardrail changed --stdin-name README.md`',
+    '`doclify-guardrail check --base HEAD`',
+    '`doclify-guardrail explain --format json`',
+    '`doclify-guardrail init --external-links`',
+    '`doclify-guardrail changed --base HEAD --staged`',
+    '`doclify-guardrail changed`',
+    '`doclify-guardrail check README.md --format json`',
+    '`doclify-guardrail changed --base HEAD`',
+    '`doclify-guardrail explain local-link`',
+    '`doclify-guardrail init --print`',
+    '`doclify-guardrail <command> [options]`',
+    '`doclify-guardrail@next`',
+    '`Elgabor/doclify-guardrail/action@v2`',
+    '`.doclify-guardrail.json`', ''
+  ].join('\n'), 'utf8');
+
+  const result = await check({ cwd, paths: ['README.md'] });
+  assert.equal(result.findings.filter((finding) => finding.ruleId === 'cli-contract').length, 6);
+});
+
 test('beta.2 leaves ordinary prose and unsupported claims unverified rather than failing', async (t) => {
   const cwd = makeTempDir(t);
   fs.writeFileSync(path.join(cwd, 'README.md'), '# Readme\n\nRun make missing after deployment. The service has an unsupported flag.\n', 'utf8');

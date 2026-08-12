@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RULES_BY_ID } from './rule-catalog.mjs';
-import { COMMAND_USAGE } from './cli-contract.mjs';
+import { COMMAND_USAGE, renderCommandHelp, validateCliInvocation } from './cli-contract.mjs';
 import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 import { isV2Command, runV2Cli } from './v2-cli.mjs';
 
@@ -33,9 +33,14 @@ function topLevelHelp() {
 }
 
 function runExplain(argv) {
-  if (argv.length !== 1 || argv[0].startsWith('-')) {
+  const validation = validateCliInvocation(['explain', ...argv]);
+  if (!validation.valid) {
     process.stderr.write('invalid-explain: explain requires exactly one rule id.\n');
     return 2;
+  }
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(renderCommandHelp('explain'));
+    return 0;
   }
   const rule = RULES_BY_ID.get(argv[0]);
   if (!rule) {
@@ -48,9 +53,14 @@ function runExplain(argv) {
 
 function runInit(argv) {
   const template = '{\n  "ignoreRules": []\n}\n';
-  if (argv.length !== 1 || !['--print', '--write'].includes(argv[0])) {
+  const validation = validateCliInvocation(['init', ...argv]);
+  if (!validation.valid) {
     process.stderr.write('invalid-init: Use init --print or init --write.\n');
     return 2;
+  }
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(renderCommandHelp('init'));
+    return 0;
   }
   if (argv[0] === '--print') {
     process.stdout.write(template);

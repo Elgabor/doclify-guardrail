@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { check } from '../src/api.mjs';
-import { COMMANDS, FLAGS, SCAN_FLAGS } from '../src/cli-contract.mjs';
+import { COMMANDS, FLAGS, SCAN_FLAGS, validateCliInvocation } from '../src/cli-contract.mjs';
 import { createResult } from '../src/result.mjs';
 import { renderResult, terminalText } from '../src/result-renderers.mjs';
 import { parseV2Args, renderV2Help } from '../src/v2-command.mjs';
@@ -84,6 +84,45 @@ test('v2 parser, help, and documentation checker share one scan surface', () => 
     } finally {
       if (cwd !== ROOT) fs.rmSync(cwd, { recursive: true, force: true });
     }
+  }
+});
+
+test('command help and invocation validation are command-aware', () => {
+  const expectedFlags = new Map([
+    ['check', [
+      '--format', '--output', '--all', '--ignore-rules', '--exclude', '--config', '--purpose',
+      '--site-root', '--external-links', '--link-allow-list', '--link-timeout-ms',
+      '--link-concurrency', '--no-color', '--stdin-name', '--help'
+    ]],
+    ['changed', [
+      '--format', '--output', '--all', '--ignore-rules', '--exclude', '--config', '--purpose',
+      '--site-root', '--external-links', '--link-allow-list', '--link-timeout-ms',
+      '--link-concurrency', '--no-color', '--base', '--staged', '--help'
+    ]],
+    ['explain', ['--help']],
+    ['init', ['--print', '--write', '--help']]
+  ]);
+  for (const [command, flags] of expectedFlags) {
+    const result = run([command, '--help'], ROOT);
+    assert.equal(result.status, 0, `${command}: ${result.stderr}`);
+    assert.deepEqual([...result.stdout.matchAll(/^  (-{1,2}[a-z][a-z-]*)/gm)].map((match) => match[1]), flags);
+  }
+  assert.match(run(['check', '--help'], ROOT).stdout, /^doclify-guardrail check \[paths\.\.\.\] \[options\]/);
+  assert.match(run(['changed', '--help'], ROOT).stdout, /^doclify-guardrail changed \(--base <ref> \| --staged\) \[options\]/);
+  assert.match(run(['explain', '--help'], ROOT).stdout, /^doclify-guardrail explain <rule-id>/);
+  assert.match(run(['init', '--help'], ROOT).stdout, /^doclify-guardrail init --print\ndoclify-guardrail init --write/);
+
+  for (const argv of [
+    ['changed', '--stdin-name', 'README.md'],
+    ['check', '--base', 'HEAD'],
+    ['explain', '--format', 'json'],
+    ['init', '--external-links'],
+    ['changed', '--base', 'HEAD', '--staged'],
+    ['changed']
+  ]) {
+    assert.equal(validateCliInvocation(argv).valid, false, argv.join(' '));
+    const result = run(argv, ROOT);
+    assert.equal(result.status, 2, argv.join(' '));
   }
 });
 

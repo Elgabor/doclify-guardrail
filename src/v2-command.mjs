@@ -1,4 +1,9 @@
-import { FORMATS, SCAN_COMMANDS, SCAN_OPTIONS } from './cli-contract.mjs';
+import {
+  FORMATS,
+  SCAN_COMMANDS,
+  renderCommandHelp,
+  validateCliInvocation
+} from './cli-contract.mjs';
 import { DoclifyUsageError } from './core.mjs';
 import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 
@@ -31,6 +36,13 @@ function parseV2Args(argv) {
   if (!SCAN_COMMANDS.has(command)) {
     throw new DoclifyUsageError('invalid-command', 'Expected check or changed.');
   }
+  const legacy = argv.slice(1).find((token) => token === '--json' || isLegacyToken(token));
+  if (legacy === '--json') {
+    throw new DoclifyUsageError('legacy-option', 'Use --format json with the v2 command grammar.');
+  }
+  if (legacy) throw new DoclifyUsageError('legacy-option', migrationMessage(legacy));
+  const validation = validateCliInvocation(argv);
+  if (!validation.valid) throw new DoclifyUsageError(validation.code, validation.message);
   const parsed = {
     command,
     paths: [],
@@ -101,7 +113,6 @@ function parseV2Args(argv) {
       continue;
     }
     if (token === '--stdin-name') {
-      if (command !== 'check') throw new DoclifyUsageError('invalid-option', '--stdin-name is only valid with check.');
       parsed.stdinName = takeValue(argv, index, token);
       index += 1;
       continue;
@@ -126,20 +137,14 @@ function parseV2Args(argv) {
       continue;
     }
     if (token === '--base') {
-      if (command !== 'changed') throw new DoclifyUsageError('invalid-option', '--base is only valid with changed.');
       parsed.base = takeValue(argv, index, token);
       index += 1;
       continue;
     }
     if (token === '--staged') {
-      if (command !== 'changed') throw new DoclifyUsageError('invalid-option', '--staged is only valid with changed.');
       parsed.staged = true;
       continue;
     }
-    if (token === '--json') {
-      throw new DoclifyUsageError('legacy-option', 'Use --format json with the v2 command grammar.');
-    }
-    if (isLegacyToken(token)) throw new DoclifyUsageError('legacy-option', migrationMessage(token));
     if (token !== '-' && token.startsWith('-')) {
       throw new DoclifyUsageError('unknown-option', `Unknown option: ${token}.`);
     }
@@ -149,29 +154,12 @@ function parseV2Args(argv) {
     parsed.paths.push(token);
   }
 
-  if (command === 'changed' && !parsed.help) {
-    const selectors = Number(parsed.base != null) + Number(parsed.staged);
-    if (selectors !== 1) {
-      throw new DoclifyUsageError('invalid-changed-selector', 'changed requires exactly one of --base or --staged.');
-    }
-  }
-  if (command === 'check' && parsed.paths.includes('-')) {
-    if (parsed.paths.length !== 1 || !parsed.stdinName) {
-      throw new DoclifyUsageError('invalid-stdin', 'check - requires --stdin-name <workspace-relative name>.');
-    }
-  } else if (parsed.stdinName) {
-    throw new DoclifyUsageError('invalid-stdin', '--stdin-name requires check - as its only target.');
-  }
   if (command === 'check' && parsed.paths.length === 0) parsed.paths.push('.');
   return parsed;
 }
 
 function renderV2Help(command) {
-  const common = SCAN_OPTIONS.map(([flag, detail]) => `  ${flag}${detail}`);
-  const usage = command === 'changed'
-    ? 'doclify-guardrail changed (--base <ref> | --staged) [options]'
-    : 'doclify-guardrail check [paths...] [options]';
-  return `${usage}\n\nOptions:\n${common.join('\n')}\n`;
+  return renderCommandHelp(command);
 }
 
 function isV2Command(argv) {
