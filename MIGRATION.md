@@ -1,7 +1,8 @@
 # Migrating to Doclify Guardrail v2
 
-`2.0.0-beta.3` is published on npm's `next` tag. `latest` remains on the v1
-line. The v2 core is local and read-only by default.
+The repository candidate is `2.0.0`, but it is not published yet. npm still
+serves `2.0.0-beta.3` on `next` and the v1 line on `latest`. The v2 core is
+local and read-only by default.
 
 ## Command changes
 
@@ -82,16 +83,16 @@ silently accepted.
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
 
-In beta.3 purpose is reported for every selected file. The high-signal integrity
+In v2 purpose is reported for every selected file. The high-signal integrity
 rules are shared by non-generated purposes; `generated` skips repository-command
 claims. This is classification, not a style preset.
 
 ## GitHub Action
 
-`Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. This beta
-does not change, rebuild, or retag that Action.
+`Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. The v2
+candidate does not change or retag that Action.
 
-The beta.3 Action adapter is published under the signed tag
+The currently published v2 Action adapter is the beta.3 build under the signed tag
 `v2.0.0-beta.3` at commit `3e0f9970319c75ea1760f09e57b203d156144d26`.
 It maps `mode`, `path`, `base`, `staged`,
 `config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
@@ -111,6 +112,6 @@ the step fails before those result outputs exist.
 
 The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
 remains available from the CLI with `--format sarif --output <path>`. Do not
-replace `@v1` with a floating `@v2` reference. Test beta.3 with the full release
-commit above; its signed tag is
+replace `@v1` with a floating `@v2` reference before the stable Action is
+published. Test beta.3 with the full release commit above; its signed tag is
 `Elgabor/doclify-guardrail/action@v2.0.0-beta.3`.

@@ -38,8 +38,8 @@ const checks = [
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'beta.3 published release',
-        pattern: /Version `2\.0\.0-beta\.3` is published on npm's `next` tag/
+        label: 'stable candidate publication boundary',
+        pattern: /The repository candidate is `2\.0\.0`, but the stable package and Action are not\s+published yet/
       }
     ]
   },
@@ -47,8 +47,26 @@ const checks = [
     file: 'MIGRATION.md',
     expectations: [
       {
-        label: 'beta.3 migration boundary',
-        pattern: /`2\.0\.0-beta\.3` is published on npm's `next` tag/
+        label: 'stable migration boundary',
+        pattern: /The repository candidate is `2\.0\.0`, but it is not published yet/
+      }
+    ]
+  },
+  {
+    file: 'package.json',
+    expectations: [
+      {
+        label: 'stable package version',
+        pattern: /"version": "2\.0\.0"/
+      }
+    ]
+  },
+  {
+    file: 'action/package.json',
+    expectations: [
+      {
+        label: 'stable Action package version',
+        pattern: /"version": "2\.0\.0"/
       }
     ]
   },

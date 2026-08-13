@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.0] - 2026-08-13
+
+### Changed
+
+- removed residual v1-only helpers and centralized document-purpose policy without adding dependencies or compatibility paths
+- made indeterminate filesystem containment fail closed while preserving ordinary unreadable-file diagnostics
+- aligned the package and Action metadata, README, and migration guide for the stable candidate
+
+### Security
+
+- expanded remote-link SSRF protection to non-global IANA documentation, benchmark, translation, discard-only, and reserved IPv4/IPv6 ranges
+- retained the globally reachable IANA exceptions and connection-time DNS checks that prevent rebinding around the initial URL validation
+
+### Notes
+
+- this commit prepares the `2.0.0` candidate; npm `latest`, the stable GitHub Release, and the Action `v2` reference are not published by S3
+- private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
+
 ## [2.0.0-beta.3] - 2026-08-11
 
 ### Added

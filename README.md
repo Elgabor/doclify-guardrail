@@ -4,8 +4,9 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-Version `2.0.0-beta.3` is published on npm's `next` tag. `latest` remains on
-the stable v1 line. The supported v1 Action remains frozen at
+The repository candidate is `2.0.0`, but the stable package and Action are not
+published yet. npm still serves `1.7.4` on `latest` and `2.0.0-beta.3` on
+`next`. The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
 ## Start
@@ -78,7 +79,7 @@ Every selected document has one purpose: `published`, `instructions`,
 `fragment`, `plan`, `changelog`, or `generated`. Configuration wins over the
 filename heuristic; the safe fallback is `fragment`. Purpose is included in
 the result for each file and does not turn generic formatting into a gate.
-In beta.3 the high-signal integrity rules are shared by non-generated purposes;
+In v2 the high-signal integrity rules are shared by non-generated purposes;
 `generated` skips repository-command claims so generated output is not treated
 as authored documentation.
 
@@ -122,12 +123,12 @@ node ./src/index.mjs check examples/evidence-demo/README.md --format compact
 node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --config examples/evidence-demo/.doclify-guardrail.json --format json
 ```
 
-## GitHub Action v2 prerelease
+## GitHub Action v2
 
-The beta.3 Action is a thin adapter over the same CLI result. It requires no
-token, has only `contents: read` permission, and stays offline unless
-`external-links: 'true'` is set. Its signed release tag is
-`v2.0.0-beta.3`. Pin the full release commit in CI:
+The v2 Action is a thin adapter over the same CLI result. It requires no token,
+has only `contents: read` permission, and stays offline unless
+`external-links: 'true'` is set. Until the stable Action is published, pin the
+published beta.3 release commit in CI:
 
 ```yaml
 permissions:
@@ -142,8 +143,9 @@ steps:
       path: README.md
 ```
 
-The tag form is `Elgabor/doclify-guardrail/action@v2.0.0-beta.3`; the full SHA
-above prevents ref movement.
+Its signed tag is `Elgabor/doclify-guardrail/action@v2.0.0-beta.3`; the full SHA
+above prevents ref movement. The stable `v2.0.0` tag and `v2` major reference
+remain publication steps, not artifacts created by this candidate.
 
 Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
 Git selection to the v2 `changed` command. A base comparison needs the requested
