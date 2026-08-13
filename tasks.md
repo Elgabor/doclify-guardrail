@@ -2,7 +2,8 @@
 
 Stato: registro operativo
 Piano di riferimento locale: `plan.md`
-Versioni pubblicate: stable `1.7.4`; prerelease `2.0.0-beta.3`
+Versioni pubblicate: stable `1.7.4`; prerelease `2.0.0-beta.3`; candidato locale
+`2.0.0` non pubblicato
 
 Questo file registra task, prove e rischi residui del prodotto. `plan.md` resta il piano
 locale di riferimento; codice, test e contratti pubblici restano le fonti di verità sul
@@ -564,11 +565,11 @@ soltanto `main` in locale e su `origin`. A4 resta `BLOCKED_INPUT`.
 
 Branch: `release/v2.0.0`
 Base: `2.0.0-beta.3` più correzioni provate dalla beta
-Esito: prima release stabile del nuovo prodotto.
+Esito atteso: prima release stabile del nuovo prodotto.
 
 ### S1 — Chiudere i finding della beta
 
-Stato: `IN PROGRESS`
+Stato: `DONE`
 
 - correggere soltanto difetti riproducibili o rimuovere/declassare regole non provate;
 - aggiungere regression test per ogni fix;
@@ -615,6 +616,30 @@ Rischi residui: i sei finding `local-link` osservati su Redis sono estranei alle
 la classe performance Docker `linux-arm64-node22-fs2035054128` è deterministica ma
 non ha una baseline revisionata; nessuna baseline è stata modificata.
 
+#### S1.2 — Bloccare le reti IANA non globali nei link remoti
+
+Stato: `DONE`
+
+Finding riprodotto durante l'audit finale: il guard SSRF lasciava passare alcuni
+prefissi IANA non globalmente raggiungibili, inclusi i blocchi di documentazione
+IPv4/IPv6, discard-only e translation locale.
+
+Lavoro completato:
+
+- sostituita la logica a rami con `node:net` `BlockList`, senza dipendenze;
+- aggiunti i prefissi IANA non globali mancanti e mantenute le eccezioni globali
+  `192.0.0.9`, `192.0.0.10` e `64:ff9b::/96`;
+- mantenuti il controllo dopo DNS lookup e il blocco dei target IPv4 mappati in IPv6;
+- aggiunti regression test positivi, negativi e ai confini dei prefissi.
+
+QA: il test fallisce prima del fix su `192.0.2.1`; dopo il fix passa su Node locale e
+Node 22 Docker, insieme a `test:network`, alla suite 64/64 e al corpus etichettato
+41/41. Commit firmata: `1de75ae`.
+
+Chiusura S1: non risultano issue GitHub aperte e tutti i finding riproducibili emersi
+dalla stabilizzazione sono coperti. A4 resta un gate separato di evidenza con utenti,
+non un finding di codice da chiudere artificialmente.
+
 ### S2 — Audit finale di semplicità, sicurezza e compatibilità
 
 Stato: `DONE`
@@ -654,12 +679,29 @@ QA eseguita:
 
 Commit: `f22486f` (`refactor(release): remove residual v2 complexity`, firma valida).
 
-Rischi residui: A4 resta senza prove da utenti reali e S1 rimane aperta per eventuali
-finding futuri; se il prodotto cambia, S2 deve essere rieseguita prima della stable.
+Rischi residui del primo audit: A4 resta senza prove da utenti reali; ogni modifica
+successiva a S1 richiede una nuova esecuzione proporzionata di S2.
+
+Riesecuzione finale dopo S1.2 e sul candidato `2.0.0`:
+
+- Docker: suite 64/64, corpus 41/41 con precisione 100% per regola e zero falsi
+  positivi bloccanti; rete, docs sync, self-scan, pack e bundle Action verdi;
+- performance Docker ARM non registrata: cold p95 60.55 ms, warm p95 19.558 ms;
+  nessuna baseline modificata;
+- DwarfStar `84cc882` pulito su 19 file e Redis `1b8c472` con i sei `local-link`
+  attesi su 27 file; text, compact, JSON deterministico, SARIF, JUnit, Git selection,
+  glob, external link opt-in, stdin, init, explain, API e Action sorgente/bundle provati;
+- su copie tmpfs di entrambi i corpus, cinque mutazioni controllate producono
+  esattamente un finding per regola; la riparazione torna pulita;
+- Action production audit: zero vulnerabilità su sette dipendenze runtime.
+
+Rischi residui aggiornati: A4 resta senza prove real-user; i sei link Redis puntano a
+file o moduli assenti dal checkout sorgente; la classe performance Docker ARM non è
+una baseline revisionata.
 
 ### S3 — Preparare gli artefatti di release
 
-Stato: `TODO`
+Stato: `DONE`
 
 - aggiornare versione, changelog, migrazione, README, metadati npm e Action;
 - produrre tarball con checksum e installarlo in un progetto temporaneo;
@@ -669,9 +711,45 @@ Stato: `TODO`
 QA: pack/installazione isolata più matrice completa finale.
 Commit suggerita: `chore(release): prepare doclify guardrail 2.0.0`
 
+Artefatti preparati:
+
+- package npm e metadati Action allineati a `2.0.0`; README, migrazione e changelog
+  distinguono il candidato locale dagli artefatti pubblicati;
+- branch `release/v2.0.0`; commit firmate `1de75ae` e `7acd109`; nome del tag
+  candidato non ancora creato `v2.0.0`, dist-tag npm atteso `latest`, major Action
+  atteso `v2`;
+- tarball `doclify-guardrail-2.0.0.tgz`: 35 file, 38.322 byte, npm shasum
+  `2a594cf8c5ba2136e62d43e64d3b1b3524f4acd4`, SHA-256
+  `228633ef4738098c8214c98d0d90c13555ddd4906c5c0d35c381a99600ad8698`;
+- installazione offline pulita del tarball: versione, help, CLI su DwarfStar/Redis e
+  import API verdi.
+
+Bozza note GitHub: prima stable del core locale e read-only; cinque regole di
+integrità evidence-backed; CLI/API/Action v2 deterministiche; output macchina e
+selezione Git; hardening di path, output atomici e SSRF; superfici v1 Cloud/AI/fixer
+rimosse come documentato in `MIGRATION.md`. A4 non è adozione dimostrata.
+
+Checklist candidata:
+
+- [x] versione, changelog, migrazione, README e metadati Action;
+- [x] bundle Action riproducibile e audit production senza vulnerabilità;
+- [x] pack, checksum, installazione offline e matrice completa finale;
+- [ ] merge della PR in `main`;
+- [ ] tag firmato `v2.0.0` e GitHub Release;
+- [ ] riferimento Action `v2` e pubblicazione npm su `latest`;
+- [ ] verifica indipendente degli artefatti pubblicati.
+
 ### S4 — Pubblicare e verificare 2.0.0
 
-Stato: `TODO`
+Stato: `READY_FOR_RELEASE`
+
+Confine concordato per questo lavoro: creare e verificare branch, commit, push e PR
+verso `main`. Merge, tag, GitHub Release, spostamento Action `v2`, npm publish e
+portfolio restano esclusi. S4 non è `DONE` finché gli artefatti pubblicati non sono
+verificati separatamente.
+
+Stato pre-pubblicazione verificato il 2026-08-13: npm espone `latest=1.7.4` e
+`next=2.0.0-beta.3`; non esistono tag o GitHub Release `v2.0.0`.
 
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
@@ -869,15 +947,16 @@ Compilare una riga dopo ogni task completata:
 | P4 | DONE | `369dd45` | test contratto beta.2; docs sync; demo stdin/output/explain | Output testuale limitato; formati macchina completi e deterministici. |
 | P5 | DONE | `369dd45` | esempi clean/failing; docs sync; scan v2; pack dry-run; demo riproducibile | README e migrazione dichiarano beta.2; Action v2 resta futura. |
 | A1 | DONE | `7d5188c` | suite 59/59; pack installato; QA 69 file su 4 checkout autorizzati; Git invariato | Output Markdown non sovrascrivibile; report non Markdown atomici; invocazione bin npm via symlink coperta. |
-| A2 | DONE | `df0ad54` | test Action sorgente/bundle; build riproducibile; audit 0 vulnerabilità; smoke locale e SHA immutabile in CI | Action package resta `1.7.4`; `v2.0.0-beta.3` è il riferimento immutabile pubblicato, mentre non esiste un alias mobile `v2`. |
+| A2 | DONE | `df0ad54` | test Action sorgente/bundle; build riproducibile; audit 0 vulnerabilità; smoke locale e SHA immutabile in CI | Nel gate beta.3 l'Action package era `1.7.4`; S3 allinea il candidato a `2.0.0`. `v2.0.0-beta.3` resta il riferimento immutabile pubblicato e non esiste ancora un alias mobile `v2`. |
 | A3 | DONE | `c71434e`, `2170e26` | 26/26 casi etichettati; 0 falsi positivi bloccanti; rete locale; property test; perf Linux/macOS verde | Soglia CI ampia, adatta solo a regressioni macroscopiche; test symlink saltati solo su Windows; evidenza reale demandata ad A4. |
 | A4 | BLOCKED_INPUT | `2048e4c` | protocollo e confini privacy revisionati; nessun risultato qualificante registrato | Richiede 3-5 utenti reali, almeno 3 completamenti e 30 finding revisionati; non inferire adozione dalla QA locale. |
 | A5 | DONE | `e21ba8e`, `7e74c42` | demo su tarball/checkouts puliti; claim mappati a prove pubbliche; changelog candidato; review anti-slop | Solo draft; portfolio intatto e pubblicazione non autorizzata. |
-| S1 | IN PROGRESS | - | S1.1 completata; nessuna issue GitHub aperta | A4 resta aperta e può produrre finding prima della stable. |
+| S1 | DONE | `41ab3db`, `1de75ae` | S1.1 e S1.2; regression test; nessuna issue GitHub aperta | A4 resta un gate real-user separato. |
 | S1.1 | DONE | `41ab3db`, `343a404` | Docker: 63/63 test; corpus 41/41; rete, performance, docs sync, self-scan e pack; RD/DS invariati; 8 check GitHub verdi | `.DEFAULT`, Makefile alternativo e sintassi shell ambigua restano non verificati; classe performance Docker ARM non registrata. |
-| S2 | DONE | `f22486f` | 64/64 test; corpus 41/41; rete/performance/docs/pack; PF/LL/PP/SG/FX invariati; smoke npm v1/v2 e Action v1/v2; audit Action 0 vulnerabilità | A4 resta senza prove real-user; rieseguire S2 dopo ulteriori fix S1. |
-| S3 | TODO | - | - | - |
-| S4 | TODO | - | - | - |
+| S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
+| S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
+| S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
+| S4 | READY_FOR_RELEASE | - | stato npm/tag/Release verificato; checklist pronta | Confine corrente termina alla PR; pubblicazione e verifica esterna restano da eseguire. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |
