@@ -751,6 +751,11 @@ verificati separatamente.
 Stato pre-pubblicazione verificato il 2026-08-13: npm espone `latest=1.7.4` e
 `next=2.0.0-beta.3`; non esistono tag o GitHub Release `v2.0.0`.
 
+PR #31 aperta da `release/v2.0.0` verso `main`. Sul head `20f30a7`, gli otto check
+GitHub di push e pull request (`guardrail`, `correctness`, `network`, `performance`)
+sono verdi. La commit che registra questa evidenza deve superare nuovamente gli stessi
+gate prima della consegna.
+
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
 1. merge del branch di release in `main`;
@@ -956,7 +961,7 @@ Compilare una riga dopo ogni task completata:
 | S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
 | S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
 | S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
-| S4 | READY_FOR_RELEASE | - | stato npm/tag/Release verificato; checklist pronta | Confine corrente termina alla PR; pubblicazione e verifica esterna restano da eseguire. |
+| S4 | READY_FOR_RELEASE | PR #31 | stato npm/tag/Release verificato; checklist pronta; 8 check GitHub verdi su `20f30a7` | Confine corrente termina alla PR; pubblicazione e verifica esterna restano da eseguire. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |
