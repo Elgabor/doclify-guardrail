@@ -148,32 +148,8 @@ function getChangedFilesFromRoot(root, opts = {}) {
     : changedFiles;
 }
 
-/**
- * Get files changed in Git relative to a base ref. Paths are absolute and
- * resolved from the repository root, even when cwd is a subdirectory.
- *
- * @param {object} [opts]
- * @param {string} [opts.base='HEAD']
- * @param {boolean} [opts.staged=false]
- * @param {boolean} [opts.markdownOnly=false]
- * @param {string} [opts.cwd=process.cwd()]
- * @returns {{ status: string, path: string, previousPath: string | null }[]}
- */
-function getChangedFiles(opts = {}) {
-  const base = Object.hasOwn(opts, 'base') ? opts.base : 'HEAD';
-  if (opts.staged !== true) assertSafeBaseRef(base);
-  const root = opts.gitRoot || discoverGitRoot(opts.cwd || process.cwd());
-  return getChangedFilesFromRoot(root, opts);
-}
-
-function getChangedMarkdownFiles(opts = {}) {
-  return getChangedFiles({ ...opts, markdownOnly: true }).map((entry) => entry.path);
-}
-
 export {
   GitSelectionError,
   discoverGitRoot,
-  getChangedFiles,
-  getChangedFilesFromRoot,
-  getChangedMarkdownFiles
+  getChangedFilesFromRoot
 };

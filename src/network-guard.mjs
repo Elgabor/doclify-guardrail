@@ -27,12 +27,15 @@ function isBlockedIpv4(host) {
   const octets = parts.map((part) => Number(part));
   if (octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
 
-  const [a, b] = octets;
+  const [a, b, c, d] = octets;
   if (a === 0 || a === 10 || a === 127) return true;
   if (a === 100 && b >= 64 && b <= 127) return true;
   if (a === 169 && b === 254) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) return true;
   if (a === 192 && b === 168) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 224) return true;
   return false;
 }
 
@@ -69,6 +72,8 @@ function isBlockedIpv6(host) {
   if (!Number.isNaN(firstHextet)) {
     if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7
     if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10
+    if ((firstHextet & 0xffc0) === 0xfec0) return true; // fec0::/10
+    if ((firstHextet & 0xff00) === 0xff00) return true; // ff00::/8
   }
   return false;
 }
@@ -190,19 +195,8 @@ function createPrivateNetworkBlockingLookup({ lookupFn = lookup } = {}) {
   };
 }
 
-function isLocalDevelopmentHost(hostname) {
-  const host = normalizeHost(hostname);
-  return host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host === '127.0.0.1' ||
-    host === '::1';
-}
-
 export {
   blockedHostReason,
   createPrivateNetworkBlockingLookup,
-  getBlockedRemoteUrlReason,
-  isLocalDevelopmentHost,
-  normalizeHost,
-  resolveAddresses
+  getBlockedRemoteUrlReason
 };

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { PURPOSES } from './document-purpose.mjs';
 import { isDescendantOrSame } from './workspace-path.mjs';
 
 const CONFIG_NAME = '.doclify-guardrail.json';
@@ -25,8 +26,6 @@ const REMOVED_KEYS = new Set([
   'projectId'
 ]);
 const OPTIONAL_CONFIG_UNAVAILABLE_CODES = new Set(['EACCES', 'EPERM', 'ENOTDIR']);
-const PURPOSES = new Set(['published', 'instructions', 'fragment', 'plan', 'changelog', 'generated']);
-
 class ConfigV2Error extends Error {
   constructor(code, message) {
     super(message);
