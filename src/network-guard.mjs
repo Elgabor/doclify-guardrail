@@ -5,6 +5,39 @@ const METADATA_HOSTNAMES = new Set([
   'metadata.google.internal'
 ]);
 
+const NON_GLOBAL_IPS = new net.BlockList();
+for (const [network, prefix, family] of [
+  ['0.0.0.0', 8, 'ipv4'],
+  ['10.0.0.0', 8, 'ipv4'],
+  ['100.64.0.0', 10, 'ipv4'],
+  ['127.0.0.0', 8, 'ipv4'],
+  ['169.254.0.0', 16, 'ipv4'],
+  ['172.16.0.0', 12, 'ipv4'],
+  ['192.0.0.0', 24, 'ipv4'],
+  ['192.0.2.0', 24, 'ipv4'],
+  ['192.88.99.0', 24, 'ipv4'],
+  ['192.168.0.0', 16, 'ipv4'],
+  ['198.18.0.0', 15, 'ipv4'],
+  ['198.51.100.0', 24, 'ipv4'],
+  ['203.0.113.0', 24, 'ipv4'],
+  ['224.0.0.0', 4, 'ipv4'],
+  ['240.0.0.0', 4, 'ipv4'],
+  ['64:ff9b:1::', 48, 'ipv6'],
+  ['100::', 64, 'ipv6'],
+  ['100:0:0:1::', 64, 'ipv6'],
+  ['2001:2::', 48, 'ipv6'],
+  ['2001:10::', 28, 'ipv6'],
+  ['2001:db8::', 32, 'ipv6'],
+  ['3fff::', 20, 'ipv6'],
+  ['5f00::', 16, 'ipv6'],
+  ['fc00::', 7, 'ipv6'],
+  ['fe80::', 10, 'ipv6'],
+  ['fec0::', 10, 'ipv6'],
+  ['ff00::', 8, 'ipv6']
+]) {
+  NON_GLOBAL_IPS.addSubnet(network, prefix, family);
+}
+
 function normalizeHost(input) {
   if (!input) return '';
   let host = input.trim().toLowerCase();
@@ -22,21 +55,8 @@ function normalizeHost(input) {
 }
 
 function isBlockedIpv4(host) {
-  const parts = host.split('.');
-  if (parts.length !== 4) return false;
-  const octets = parts.map((part) => Number(part));
-  if (octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) return false;
-
-  const [a, b, c, d] = octets;
-  if (a === 0 || a === 10 || a === 127) return true;
-  if (a === 100 && b >= 64 && b <= 127) return true;
-  if (a === 169 && b === 254) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  if (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 198 && (b === 18 || b === 19)) return true;
-  if (a >= 224) return true;
-  return false;
+  if (host === '192.0.0.9' || host === '192.0.0.10') return false;
+  return NON_GLOBAL_IPS.check(host, 'ipv4');
 }
 
 function ipv4FromMappedIpv6(host) {
@@ -62,20 +82,9 @@ function ipv4FromMappedIpv6(host) {
 }
 
 function isBlockedIpv6(host) {
-  if (host === '::' || host === '::1') return true;
-
   const mappedV4 = ipv4FromMappedIpv6(host);
   if (mappedV4 && isBlockedIpv4(mappedV4)) return true;
-
-  const first = host.split(':')[0];
-  const firstHextet = parseInt(first || '0', 16);
-  if (!Number.isNaN(firstHextet)) {
-    if ((firstHextet & 0xfe00) === 0xfc00) return true; // fc00::/7
-    if ((firstHextet & 0xffc0) === 0xfe80) return true; // fe80::/10
-    if ((firstHextet & 0xffc0) === 0xfec0) return true; // fec0::/10
-    if ((firstHextet & 0xff00) === 0xff00) return true; // ff00::/8
-  }
-  return false;
+  return host === '::' || host === '::1' || NON_GLOBAL_IPS.check(host, 'ipv6');
 }
 
 function blockedHostReason(host, resolvedIp = null) {
