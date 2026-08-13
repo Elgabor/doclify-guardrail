@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { isSupportedCliCommand, isSupportedCliFlag } from './cli-contract.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
+const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
+const MAKEFILE_ASSIGNMENT = /^\s*(?:(?:override|export|private)\s+)*[A-Za-z_][A-Za-z0-9_]*\s*(?::::=|::=|:=|\+=|\?=|!=|=)/;
+const MAKEFILE_INCLUDE = /^\s*(?:-?include|sinclude)\s+/;
 
 function portable(value) {
   return value.split(path.sep).join('/');
@@ -39,12 +41,25 @@ function anchorsFor(content) {
 
 function makeTargetsFor(content) {
   const targets = new Set();
+  const patterns = [];
+  let acceptsUnknownTargets = false;
   for (const line of String(content).split(/\r?\n/)) {
+    if (MAKEFILE_ASSIGNMENT.test(line)) continue;
     const match = line.match(/^([A-Za-z0-9][A-Za-z0-9_.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9_.-]*)*)\s*:/);
-    if (!match) continue;
+    if (!match) {
+      if (/^\s*\.DEFAULT\s*:/.test(line) || MAKEFILE_INCLUDE.test(line)) {
+        acceptsUnknownTargets = true;
+      }
+      const pattern = line.match(/^\s*([^:#\s]*%[^:#\s]*)\s*:/)?.[1];
+      if (pattern) {
+        const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('%', '.*');
+        patterns.push(new RegExp(`^${escaped}$`));
+      }
+      continue;
+    }
     for (const target of match[1].split(/\s+/)) targets.add(target);
   }
-  return targets;
+  return { targets, patterns, acceptsUnknownTargets };
 }
 
 function readJson(filePath) {
@@ -91,9 +106,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     anchors: new Map(),
     packages: new Map(),
     rootPackage: null,
-    makeTargets: new Set(),
-    hasMakefile: false,
-    cli: { isSupportedCliCommand, isSupportedCliFlag }
+    makefiles: new Map()
   };
 
   const packageCandidates = [];
@@ -117,10 +130,16 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
       const relative = portable(path.relative(workspace, absolutePath));
       index.files.add(relative);
       if (entry.name === 'package.json') packageCandidates.push(absolutePath);
-      if (entry.name === 'Makefile' || entry.name === 'makefile') {
-        index.hasMakefile = true;
+      if (MAKEFILE_PRIORITY.has(entry.name)) {
         try {
-          for (const target of makeTargetsFor(fs.readFileSync(absolutePath, 'utf8'))) index.makeTargets.add(target);
+          const directory = portable(path.relative(workspace, path.dirname(absolutePath))) || '.';
+          const current = index.makefiles.get(directory);
+          if (!current || MAKEFILE_PRIORITY.get(entry.name) < MAKEFILE_PRIORITY.get(path.basename(current.path))) {
+            index.makefiles.set(directory, {
+              path: relative,
+              ...makeTargetsFor(fs.readFileSync(absolutePath, 'utf8'))
+            });
+          }
         } catch {
           // An unreadable optional evidence source is not a negative claim.
         }

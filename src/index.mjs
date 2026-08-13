@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { RULES_BY_ID } from './rule-catalog.mjs';
-import { COMMAND_USAGE } from './cli-contract.mjs';
+import { COMMAND_USAGE, parseCliInvocation, renderCommandHelp } from './cli-contract.mjs';
 import { isLegacyToken, migrationMessage } from './legacy-surface.mjs';
 import { isV2Command, runV2Cli } from './v2-cli.mjs';
 
@@ -33,13 +33,19 @@ function topLevelHelp() {
 }
 
 function runExplain(argv) {
-  if (argv.length !== 1 || argv[0].startsWith('-')) {
+  const invocation = parseCliInvocation(['explain', ...argv]);
+  if (!invocation.valid) {
     process.stderr.write('invalid-explain: explain requires exactly one rule id.\n');
     return 2;
   }
-  const rule = RULES_BY_ID.get(argv[0]);
+  if (invocation.options.has('--help')) {
+    process.stdout.write(renderCommandHelp('explain'));
+    return 0;
+  }
+  const ruleId = invocation.positionals[0];
+  const rule = RULES_BY_ID.get(ruleId);
   if (!rule) {
-    process.stderr.write(`unknown-rule: Unknown rule id: ${argv[0]}.\n`);
+    process.stderr.write(`unknown-rule: Unknown rule id: ${ruleId}.\n`);
     return 2;
   }
   process.stdout.write(`${rule.id}\nPurpose: ${rule.purpose}\nEvidence: ${rule.evidence}\nSafe remedy: ${rule.remediation}\n`);
@@ -48,11 +54,16 @@ function runExplain(argv) {
 
 function runInit(argv) {
   const template = '{\n  "ignoreRules": []\n}\n';
-  if (argv.length !== 1 || !['--print', '--write'].includes(argv[0])) {
+  const invocation = parseCliInvocation(['init', ...argv]);
+  if (!invocation.valid) {
     process.stderr.write('invalid-init: Use init --print or init --write.\n');
     return 2;
   }
-  if (argv[0] === '--print') {
+  if (invocation.options.has('--help')) {
+    process.stdout.write(renderCommandHelp('init'));
+    return 0;
+  }
+  if (invocation.options.has('--print')) {
     process.stdout.write(template);
     return 0;
   }

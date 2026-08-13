@@ -52,8 +52,8 @@ contradicts it. Ordinary prose and unsupported claims are left alone.
 | `local-link` | Local Markdown path or anchor | Workspace files and heading anchors |
 | `package-script` | `npm run <script>` | `package.json` scripts |
 | `workspace-package` | `npm --workspace <package> run <script>` | Workspace package manifests |
-| `make-target` | `make <target>` | Makefile targets |
-| `cli-contract` | `doclify-guardrail <command> [flags]` | Static v2 CLI contract |
+| `make-target` | `make [options] [assignments] [targets...]` | Selected Makefile targets |
+| `cli-contract` | `doclify-guardrail <command> [options]` | Command-aware v2 CLI grammar |
 
 With `--external-links`, `external-link` reports a remote failure as advisory
 and unverified; it never turns a complete local scan into a false blocking result.

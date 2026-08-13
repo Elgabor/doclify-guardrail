@@ -285,6 +285,10 @@ const initDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-docs-sync-'
 try {
   const commands = [
     { label: '--help', args: ['--help'], status: 0 },
+    { label: 'check --help', args: ['check', '--help'], status: 0 },
+    { label: 'changed --help', args: ['changed', '--help'], status: 0 },
+    { label: 'explain --help', args: ['explain', '--help'], status: 0 },
+    { label: 'init --help', args: ['init', '--help'], status: 0 },
     { label: 'clean demo', args: ['check', 'examples/evidence-demo/README.md', '--format', 'compact'], status: 0 },
     { label: 'broken demo', args: ['check', 'examples/evidence-demo/fixtures/README.broken.md', '--config', 'examples/evidence-demo/.doclify-guardrail.json', '--format', 'json'], status: 1 },
     { label: 'explain', args: ['explain', 'local-link'], status: 0 },

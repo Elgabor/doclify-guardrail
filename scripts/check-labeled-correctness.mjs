@@ -44,7 +44,13 @@ function setup(root, fixture) {
       name: '@fixture/app', scripts: { build: 'node build.mjs' }
     }), 'utf8');
   }
-  if (!fixture.withoutMakefile) fs.writeFileSync(path.join(root, 'Makefile'), 'check:\n\t@true\n', 'utf8');
+  if (!fixture.withoutMakefile) {
+    const makefiles = fixture.makefiles || { Makefile: 'check:\n\t@true\n' };
+    for (const [relativePath, content] of Object.entries(makefiles)) {
+      fs.mkdirSync(path.dirname(path.join(root, relativePath)), { recursive: true });
+      fs.writeFileSync(path.join(root, relativePath), content, 'utf8');
+    }
+  }
   fs.writeFileSync(path.join(root, 'guide.md'), '# Guide\n\n## my_section\n', 'utf8');
   const file = fixture.file || 'README.md';
   fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });

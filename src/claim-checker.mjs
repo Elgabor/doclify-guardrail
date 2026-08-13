@@ -1,10 +1,22 @@
 import path from 'node:path';
 
 import { analyzeFences, getFenceOpen } from './fences.mjs';
+import { parseCliInvocation } from './cli-contract.mjs';
 import { decodeLocalPath } from './local-url.mjs';
 import { anchorFor } from './repository-index.mjs';
 
 const SHELL_FENCE_LANGUAGES = new Set(['sh', 'bash', 'shell', 'console', 'zsh', 'fish']);
+const MAKE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?::|\+|\?|!)?=.*/;
+const MAKE_TARGET = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const MAKE_FLAG_OPTIONS = new Set([
+  '--always-make', '--debug', '--environment-overrides', '--ignore-errors', '--keep-going',
+  '--no-builtin-rules', '--no-builtin-variables', '--no-print-directory', '--print-data-base',
+  '--question', '--silent', '--stop', '--touch', '--trace', '--version', '--warn-undefined-variables'
+]);
+const MAKE_VALUE_OPTIONS = new Set([
+  '--assume-new', '--assume-old', '--directory', '--include-dir',
+  '--new-file', '--old-file', '--what-if'
+]);
 
 function claim(ruleId, line, message, fact, source) {
   return {
@@ -29,6 +41,120 @@ function normalizeAnchor(value) {
   } catch {
     return anchorFor(value);
   }
+}
+
+function staticCommandWords(text) {
+  const words = [];
+  let word = '';
+  let quote = null;
+  let escaped = false;
+  const push = () => {
+    if (word !== '') words.push(word);
+    word = '';
+  };
+  for (const character of text) {
+    if (escaped) {
+      word += character;
+      escaped = false;
+      continue;
+    }
+    if (character === '\\' && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) quote = null;
+      else word += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      push();
+      continue;
+    }
+    if (';&|'.includes(character)) {
+      push();
+      break;
+    }
+    if (character === '#' && word === '') break;
+    word += character;
+  }
+  if (quote || escaped) return null;
+  push();
+  return words;
+}
+
+function makeDirectory(current, value) {
+  if (!value || path.posix.isAbsolute(value) || /[$`*?\[\]{}]/.test(value)) return null;
+  const resolved = path.posix.normalize(path.posix.join(current, value));
+  return resolved === '..' || resolved.startsWith('../') ? null : resolved;
+}
+
+function parseMakeInvocation(words) {
+  let directory = '.';
+  const targets = [];
+  let optionsEnded = false;
+  for (let index = 1; index < words.length; index += 1) {
+    const token = words[index];
+    if (MAKE_ASSIGNMENT.test(token)) continue;
+    if (optionsEnded) {
+      if (!MAKE_TARGET.test(token)) return null;
+      targets.push(token);
+      continue;
+    }
+    if (token === '--') {
+      optionsEnded = true;
+      continue;
+    }
+    if (!token.startsWith('-') || token === '-') {
+      if (!MAKE_TARGET.test(token)) return null;
+      targets.push(token);
+      continue;
+    }
+
+    const [longFlag, attachedValue] = token.startsWith('--') ? token.split(/=(.*)/s, 2) : [null, null];
+    if (longFlag) {
+      if (MAKE_FLAG_OPTIONS.has(longFlag)) {
+        if (attachedValue != null) return null;
+        continue;
+      }
+      if (['--jobs', '--load-average', '--max-load', '--output-sync'].includes(longFlag)) {
+        if (attachedValue == null && /^\d+(?:\.\d+)?$/.test(words[index + 1] || '')) index += 1;
+        continue;
+      }
+      if (longFlag === '--makefile' || longFlag === '--eval') return null;
+      if (!MAKE_VALUE_OPTIONS.has(longFlag)) return null;
+      const value = attachedValue == null ? words[++index] : attachedValue;
+      if (!value) return null;
+      if (longFlag === '--directory') {
+        directory = makeDirectory(directory, value);
+        if (directory == null) return null;
+      }
+      continue;
+    }
+
+    if (token === '-C' || token.startsWith('-C')) {
+      const value = token === '-C' ? words[++index] : token.slice(2);
+      directory = makeDirectory(directory, value);
+      if (directory == null) return null;
+      continue;
+    }
+    if (token === '-f' || token.startsWith('-f')) return null;
+    if (/^-[IW](?:.+)?$/.test(token)) {
+      if (token.length === 2 && !words[++index]) return null;
+      continue;
+    }
+    if (/^-(?:j|l|O)(?:\d+(?:\.\d+)?|none|line|target|recurse)?$/.test(token)) {
+      if (token.length === 2 && /^\d+(?:\.\d+)?$/.test(words[index + 1] || '')) index += 1;
+      continue;
+    }
+    if (/^-[bBdeikmnpqrsStvw]+$/.test(token)) continue;
+    return null;
+  }
+  return { directory, targets };
 }
 
 function analyzeRepositoryClaims(content) {
@@ -108,26 +234,32 @@ function checkRepositoryClaims(analysis, index, filePath) {
       }
     }
 
-    const make = /\bmake\s+([A-Za-z0-9][A-Za-z0-9_.-]*)/g;
+    const make = /\bmake\b/g;
     let makeMatch;
     while ((makeMatch = make.exec(segment)) !== null) {
-      const target = makeMatch[1];
-      if (index.hasMakefile && !index.makeTargets.has(target)) {
-        add(claim('make-target', lineNumber, `Unknown make target: ${target}.`, `No Makefile target named ${target} was found.`, 'Makefile target index'));
+      const words = staticCommandWords(segment.slice(makeMatch.index));
+      const invocation = words && parseMakeInvocation(words);
+      if (!invocation) continue;
+      const makefile = index.makefiles.get(invocation.directory);
+      if (!makefile) continue;
+      for (const target of invocation.targets) {
+        if (!makefile.acceptsUnknownTargets && !makefile.targets.has(target)
+          && !makefile.patterns.some((pattern) => pattern.test(target))) {
+          add(claim('make-target', lineNumber, `Unknown make target: ${target}.`, `No Makefile target named ${target} was found.`, makefile.path));
+        }
       }
     }
 
-    const cli = /\bdoclify-guardrail\s+([a-z][a-z-]*)([^\n]*)/g;
+    const cli = /\bdoclify-guardrail(?=\s)/g;
     let cliMatch;
     while ((cliMatch = cli.exec(segment)) !== null) {
-      const command = cliMatch[1];
-      if (!index.cli.isSupportedCliCommand(command)) {
-        add(claim('cli-contract', lineNumber, `Unknown Doclify Guardrail command: ${command}.`, `${command} is not in the static Doclify Guardrail CLI command set.`, 'src/cli-contract.mjs'));
-      }
-      for (const flag of cliMatch[2].matchAll(/--[a-z][a-z-]*/g)) {
-        if (!index.cli.isSupportedCliFlag(flag[0])) {
-          add(claim('cli-contract', lineNumber, `Unknown Doclify Guardrail flag: ${flag[0]}.`, `${flag[0]} is not in the static Doclify Guardrail CLI flag set.`, 'src/cli-contract.mjs'));
-        }
+      const commandText = segment.slice(cliMatch.index);
+      if (/<[A-Za-z][^>]*>/.test(commandText)) continue;
+      const words = staticCommandWords(commandText);
+      if (!words) continue;
+      const invocation = parseCliInvocation(words.slice(1));
+      if (!invocation.valid) {
+        add(claim('cli-contract', lineNumber, 'Invalid Doclify Guardrail invocation.', invocation.message, 'src/cli-contract.mjs'));
       }
     }
   }
