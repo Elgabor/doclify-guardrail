@@ -608,7 +608,8 @@ QA eseguito interamente in Docker:
   finding `make-target`, inclusa la selezione del Makefile tramite `-C`;
 - snapshot Redis e DwarfStar montati read-only e stato Git identico prima/dopo.
 
-Commit: `41ab3db` (`fix(checks): align make and CLI contracts`, firma valida).
+Commit: `41ab3db` e `343a404`, mergiate in `main` da PR #30 come `dfe86b7`;
+firme valide e otto check GitHub verdi sul head finale.
 
 Rischi residui: i sei finding `local-link` osservati su Redis sono estranei alle issue;
 la classe performance Docker `linux-arm64-node22-fs2035054128` è deterministica ma
@@ -616,7 +617,7 @@ non ha una baseline revisionata; nessuna baseline è stata modificata.
 
 ### S2 — Audit finale di semplicità, sicurezza e compatibilità
 
-Stato: `TODO`
+Stato: `DONE`
 
 - cercare codice morto, duplicazione, astrazioni premature e compatibilità nascosta;
 - verificare path traversal, SSRF opt-in, escape terminale/report e limiti risorse;
@@ -625,6 +626,36 @@ Stato: `TODO`
 
 QA: `PF`, `LL`, `PP`, `SG`, `FX`.
 Commit suggerita: `refactor(release): remove residual complexity before v2 stable`
+
+Lavoro completato:
+
+- rimossi helper v1 non raggiungibili dalla CLI/API v2 e ridotto il prodotto di 113
+  righe nette senza aggiungere file, dipendenze o astrazioni;
+- unificati i valori `purpose` nel modulo di dominio già responsabile della
+  classificazione dei documenti;
+- reso fail-closed un target con contenimento indeterminato, preservando il contratto
+  `file-unreadable` per i normali errori di permesso;
+- esteso il blocco SSRF a IPv4 special-purpose/benchmark/multicast-reserved e IPv6
+  site-local/multicast, mantenendo rete disabilitata senza opt-in;
+- verificati escape terminale, JSON/SARIF/JUnit, output contenuti e atomici, limite
+  stdin, timeout/concorrenza link, limite delle annotazioni e buffer della Action;
+- confrontati in ambienti isolati npm v1.7.4 e v2, oltre alla Action congelata `v1`
+  e alla Action v2; le rimozioni restano coperte da `MIGRATION.md`.
+
+QA eseguita:
+
+- `npm test` 64/64 e corpus etichettato 41/41 con zero falsi positivi bloccanti;
+- rete locale, performance su 300 documenti, docs sync, self-scan di README,
+  migrazione e registro, `git diff --check` e pack dry-run con 35 file verdi;
+- PF 5/5, LL 32/32, PP 27/27, SG 5/5 e FX 2/2: scansioni complete e pulite,
+  stato Git invariato prima/dopo;
+- tarball v1.7.4 e v2 installati offline e provati sulla stessa fixture; smoke Action
+  `v1`/v2 verdi; audit production della Action con zero vulnerabilità.
+
+Commit: `f22486f` (`refactor(release): remove residual v2 complexity`, firma valida).
+
+Rischi residui: A4 resta senza prove da utenti reali e S1 rimane aperta per eventuali
+finding futuri; se il prodotto cambia, S2 deve essere rieseguita prima della stable.
 
 ### S3 — Preparare gli artefatti di release
 
@@ -842,9 +873,9 @@ Compilare una riga dopo ogni task completata:
 | A3 | DONE | `c71434e`, `2170e26` | 26/26 casi etichettati; 0 falsi positivi bloccanti; rete locale; property test; perf Linux/macOS verde | Soglia CI ampia, adatta solo a regressioni macroscopiche; test symlink saltati solo su Windows; evidenza reale demandata ad A4. |
 | A4 | BLOCKED_INPUT | `2048e4c` | protocollo e confini privacy revisionati; nessun risultato qualificante registrato | Richiede 3-5 utenti reali, almeno 3 completamenti e 30 finding revisionati; non inferire adozione dalla QA locale. |
 | A5 | DONE | `e21ba8e`, `7e74c42` | demo su tarball/checkouts puliti; claim mappati a prove pubbliche; changelog candidato; review anti-slop | Solo draft; portfolio intatto e pubblicazione non autorizzata. |
-| S1 | IN PROGRESS | - | S1.1 completata; altre correzioni richiedono evidenza riproducibile dalla beta | A4 resta aperta e può produrre ulteriori finding prima della stable. |
-| S1.1 | DONE | `41ab3db` | Docker: 63/63 test; corpus 41/41; rete, performance, docs sync, self-scan e pack; RD/DS read-only invariati | `.DEFAULT`, Makefile alternativo e sintassi shell ambigua restano non verificati; classe performance Docker ARM non registrata. |
-| S2 | TODO | - | - | - |
+| S1 | IN PROGRESS | - | S1.1 completata; nessuna issue GitHub aperta | A4 resta aperta e può produrre finding prima della stable. |
+| S1.1 | DONE | `41ab3db`, `343a404` | Docker: 63/63 test; corpus 41/41; rete, performance, docs sync, self-scan e pack; RD/DS invariati; 8 check GitHub verdi | `.DEFAULT`, Makefile alternativo e sintassi shell ambigua restano non verificati; classe performance Docker ARM non registrata. |
+| S2 | DONE | `f22486f` | 64/64 test; corpus 41/41; rete/performance/docs/pack; PF/LL/PP/SG/FX invariati; smoke npm v1/v2 e Action v1/v2; audit Action 0 vulnerabilità | A4 resta senza prove real-user; rieseguire S2 dopo ulteriori fix S1. |
 | S3 | TODO | - | - | - |
 | S4 | TODO | - | - | - |
 | R1 | TODO | - | - | - |
