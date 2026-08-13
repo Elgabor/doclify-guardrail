@@ -18,8 +18,27 @@ const COMMON_SCAN_OPTIONS = [
   ['--no-color', '                         Accepted; human output is always color-free']
 ];
 
+function optionMap(options) {
+  const result = new Map();
+  for (const [flag, , settings = {}] of options) {
+    const option = {
+      flag,
+      takesValue: settings.value === true || settings.values instanceof Set || settings.positiveInteger === true,
+      values: settings.values,
+      positiveInteger: settings.positiveInteger === true
+    };
+    result.set(flag, option);
+    for (const alias of settings.aliases || []) result.set(alias, option);
+  }
+  return result;
+}
+
+function defineCommand(definition) {
+  return { ...definition, optionMap: optionMap(definition.options) };
+}
+
 const COMMAND_DEFINITIONS = new Map([
-  ['check', {
+  ['check', defineCommand({
     usage: ['check [paths...]'],
     options: [
       ...COMMON_SCAN_OPTIONS,
@@ -27,8 +46,8 @@ const COMMAND_DEFINITIONS = new Map([
       HELP_OPTION
     ],
     positionals: { maximum: Infinity }
-  }],
-  ['changed', {
+  })],
+  ['changed', defineCommand({
     usage: ['changed (--base <ref> | --staged)'],
     options: [
       ...COMMON_SCAN_OPTIONS,
@@ -38,13 +57,13 @@ const COMMAND_DEFINITIONS = new Map([
     ],
     positionals: { maximum: 0 },
     exactlyOne: ['--base', '--staged']
-  }],
-  ['explain', {
+  })],
+  ['explain', defineCommand({
     usage: ['explain <rule-id>'],
     options: [HELP_OPTION],
     positionals: { minimum: 1, maximum: 1 }
-  }],
-  ['init', {
+  })],
+  ['init', defineCommand({
     usage: ['init --print', 'init --write'],
     options: [
       ['--print', ''],
@@ -53,34 +72,13 @@ const COMMAND_DEFINITIONS = new Map([
     ],
     positionals: { maximum: 0 },
     exactlyOne: ['--print', '--write']
-  }]
+  })]
 ]);
-
-function optionMap(definition) {
-  const options = new Map();
-  for (const [flag, detail, settings = {}] of definition.options) {
-    const option = {
-      flag,
-      detail,
-      takesValue: settings.value === true || settings.values instanceof Set || settings.positiveInteger === true,
-      values: settings.values,
-      positiveInteger: settings.positiveInteger === true
-    };
-    options.set(flag, option);
-    for (const alias of settings.aliases || []) options.set(alias, option);
-  }
-  return options;
-}
-
-for (const definition of COMMAND_DEFINITIONS.values()) {
-  definition.optionMap = optionMap(definition);
-}
 
 const COMMAND_USAGE = [...COMMAND_DEFINITIONS.entries()]
   .flatMap(([command, definition]) => definition.usage.map((usage) => [command, usage]));
 const COMMANDS = new Set(COMMAND_DEFINITIONS.keys());
 const SCAN_COMMANDS = new Set(['check', 'changed']);
-const SCAN_OPTIONS = COMMON_SCAN_OPTIONS.map(([flag, detail]) => [flag, detail]);
 const SCAN_FLAGS = new Set([...SCAN_COMMANDS]
   .flatMap((command) => [...COMMAND_DEFINITIONS.get(command).optionMap.keys()]));
 const FLAGS = new Set([
@@ -88,27 +86,23 @@ const FLAGS = new Set([
   '--version', '-v'
 ]);
 
-function isSupportedCliCommand(value) {
-  return COMMANDS.has(value);
-}
-
-function isSupportedCliFlag(value) {
-  return FLAGS.has(value);
-}
-
 function invalid(code, message) {
   return { valid: false, code, message };
 }
 
-function validateCliInvocation(argv) {
+function parseCliInvocation(argv) {
   const command = argv[0];
-  if (argv.length === 1 && ['--help', '-h', '--version', '-v'].includes(command)) return { valid: true };
+  if (['--help', '-h'].includes(command)) {
+    return { valid: true, command, positionals: [], options: new Map() };
+  }
+  if (argv.length === 1 && ['--version', '-v'].includes(command)) {
+    return { valid: true, command, positionals: [], options: new Map() };
+  }
   const definition = COMMAND_DEFINITIONS.get(command);
   if (!definition) return invalid('invalid-command', `Unknown Doclify Guardrail command: ${command || '<missing>'}.`);
 
-  const present = new Set();
+  const options = new Map();
   const positionals = [];
-  let help = false;
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '-' && command === 'check') {
@@ -120,21 +114,29 @@ function validateCliInvocation(argv) {
       continue;
     }
     const option = definition.optionMap.get(token);
-    if (!option) return invalid('invalid-option', `${token} is not valid with ${command}.`);
-    present.add(option.flag);
-    if (option.flag === '--help') help = true;
-    if (!option.takesValue) continue;
-    const value = argv[index + 1];
-    if (!value || value.startsWith('-')) return invalid('invalid-option', `Missing value for ${token}.`);
-    if (option.values && !option.values.has(value)) {
-      return invalid(option.flag === '--format' ? 'invalid-format' : 'invalid-option', `Invalid value for ${token}: ${value}.`);
+    if (!option) {
+      return FLAGS.has(token)
+        ? invalid('invalid-option', `${token} is not valid with ${command}.`)
+        : invalid('unknown-option', `Unknown option: ${token}.`);
     }
-    if (option.positiveInteger && (!Number.isInteger(Number(value)) || Number(value) <= 0)) {
-      return invalid('invalid-option', `${token} must be a positive integer.`);
+    let value = true;
+    if (option.takesValue) {
+      value = argv[index + 1];
+      if (!value || value.startsWith('-')) return invalid('invalid-option', `Missing value for ${token}.`);
+      if (option.values && !option.values.has(value)) {
+        return invalid(option.flag === '--format' ? 'invalid-format' : 'invalid-option', `Invalid value for ${token}: ${value}.`);
+      }
+      if (option.positiveInteger && (!Number.isInteger(Number(value)) || Number(value) <= 0)) {
+        return invalid('invalid-option', `${token} must be a positive integer.`);
+      }
+      index += 1;
     }
-    index += 1;
+    const values = options.get(option.flag) || [];
+    values.push(value);
+    options.set(option.flag, values);
   }
 
+  const help = options.has('--help');
   const minimum = definition.positionals.minimum || 0;
   const maximum = definition.positionals.maximum;
   if (positionals.length < minimum && !help) return invalid(`invalid-${command}`, `${command} requires a positional argument.`);
@@ -142,19 +144,19 @@ function validateCliInvocation(argv) {
     return invalid(command === 'changed' ? 'unexpected-target' : `invalid-${command}`, `${command} accepts at most ${maximum} positional argument(s).`);
   }
   if (definition.exactlyOne && !help) {
-    const count = definition.exactlyOne.filter((flag) => present.has(flag)).length;
+    const count = definition.exactlyOne.filter((flag) => options.has(flag)).length;
     if (count !== 1) {
       return invalid(command === 'changed' ? 'invalid-changed-selector' : `invalid-${command}`, `${command} requires exactly one of ${definition.exactlyOne.join(' or ')}.`);
     }
   }
   if (command === 'check') {
     const stdin = positionals.includes('-');
-    const stdinName = present.has('--stdin-name');
+    const stdinName = options.has('--stdin-name');
     if ((stdin && (positionals.length !== 1 || !stdinName)) || (!stdin && stdinName)) {
       return invalid('invalid-stdin', 'check - and --stdin-name must be used together as the only target.');
     }
   }
-  return { valid: true };
+  return { valid: true, command, positionals, options };
 }
 
 function renderCommandHelp(command) {
@@ -171,12 +173,8 @@ export {
   COMMANDS,
   COMMAND_USAGE,
   FLAGS,
-  FORMATS,
   SCAN_COMMANDS,
   SCAN_FLAGS,
-  SCAN_OPTIONS,
-  isSupportedCliCommand,
-  isSupportedCliFlag,
-  renderCommandHelp,
-  validateCliInvocation
+  parseCliInvocation,
+  renderCommandHelp
 };

@@ -139,15 +139,33 @@ test('make-target ignores assignments and checks options, directories, and every
   assert.equal(findings.some((finding) => finding.evidence.source === 'tools/Makefile'), true);
 });
 
-test('make-target leaves dynamic default and pattern rules unverified', async (t) => {
-  for (const dynamicRule of ['.DEFAULT:\n\t@true\n', '%-generated:\n\t@true\n']) {
+test('make-target stays conservative for dynamic rules, includes, assignments, and eval', async (t) => {
+  for (const dynamicRule of [
+    '.DEFAULT:\n\t@true\n',
+    '%-generated:\n\t@true\n',
+    'include targets.mk\n',
+    'VALUE := not-a-target\n'
+  ]) {
     const cwd = makeTempDir(t);
     writeRepository(cwd);
     fs.appendFileSync(path.join(cwd, 'Makefile'), dynamicRule);
-    fs.writeFileSync(path.join(cwd, 'README.md'), '# Make\n\n`make dynamic-generated`\n', 'utf8');
+    const command = dynamicRule.startsWith('VALUE') ? 'make VALUE' : 'make dynamic-generated';
+    fs.writeFileSync(path.join(cwd, 'README.md'), `# Make\n\n\`${command}\`\n`, 'utf8');
     const result = await check({ cwd, paths: ['README.md'] });
-    assert.deepEqual(result.findings.filter((finding) => finding.ruleId === 'make-target'), []);
+    const findings = result.findings.filter((finding) => finding.ruleId === 'make-target');
+    if (dynamicRule.startsWith('VALUE')) {
+      assert.equal(findings.length, 1);
+      assert.match(findings[0].message, /VALUE/);
+    } else {
+      assert.deepEqual(findings, []);
+    }
   }
+
+  const cwd = makeTempDir(t);
+  writeRepository(cwd);
+  fs.writeFileSync(path.join(cwd, 'README.md'), '# Make\n\n`make --eval="dynamic: ; @true" dynamic`\n', 'utf8');
+  const result = await check({ cwd, paths: ['README.md'] });
+  assert.deepEqual(result.findings.filter((finding) => finding.ruleId === 'make-target'), []);
 });
 
 test('cli-contract validates complete invocations with the runtime command grammar', async (t) => {

@@ -7,7 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { check } from '../src/api.mjs';
-import { COMMANDS, FLAGS, SCAN_FLAGS, validateCliInvocation } from '../src/cli-contract.mjs';
+import { COMMANDS, FLAGS, SCAN_FLAGS, parseCliInvocation } from '../src/cli-contract.mjs';
 import { createResult } from '../src/result.mjs';
 import { renderResult, terminalText } from '../src/result-renderers.mjs';
 import { parseV2Args, renderV2Help } from '../src/v2-command.mjs';
@@ -120,10 +120,19 @@ test('command help and invocation validation are command-aware', () => {
     ['changed', '--base', 'HEAD', '--staged'],
     ['changed']
   ]) {
-    assert.equal(validateCliInvocation(argv).valid, false, argv.join(' '));
+    assert.equal(parseCliInvocation(argv).valid, false, argv.join(' '));
     const result = run(argv, ROOT);
     assert.equal(result.status, 2, argv.join(' '));
   }
+
+  const extraHelpArgument = run(['--help', 'extra'], ROOT);
+  assert.equal(parseCliInvocation(['--help', 'extra']).valid, true);
+  assert.equal(extraHelpArgument.status, 0);
+  assert.equal(extraHelpArgument.stderr, '');
+
+  const unknownOption = run(['check', 'README.md', '--bogus'], ROOT);
+  assert.equal(unknownOption.status, 2);
+  assert.match(unknownOption.stderr, /^unknown-option:/);
 });
 
 test('v2 result order, bounded human output, and complete machine output are deterministic', () => {

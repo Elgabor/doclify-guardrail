@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { analyzeFences, getFenceOpen } from './fences.mjs';
-import { validateCliInvocation } from './cli-contract.mjs';
+import { parseCliInvocation } from './cli-contract.mjs';
 import { decodeLocalPath } from './local-url.mjs';
 import { anchorFor } from './repository-index.mjs';
 
@@ -14,7 +14,7 @@ const MAKE_FLAG_OPTIONS = new Set([
   '--question', '--silent', '--stop', '--touch', '--trace', '--version', '--warn-undefined-variables'
 ]);
 const MAKE_VALUE_OPTIONS = new Set([
-  '--assume-new', '--assume-old', '--directory', '--eval', '--include-dir', '--makefile',
+  '--assume-new', '--assume-old', '--directory', '--include-dir',
   '--new-file', '--old-file', '--what-if'
 ]);
 
@@ -125,10 +125,10 @@ function parseMakeInvocation(words) {
         if (attachedValue == null && /^\d+(?:\.\d+)?$/.test(words[index + 1] || '')) index += 1;
         continue;
       }
+      if (longFlag === '--makefile' || longFlag === '--eval') return null;
       if (!MAKE_VALUE_OPTIONS.has(longFlag)) return null;
       const value = attachedValue == null ? words[++index] : attachedValue;
       if (!value) return null;
-      if (longFlag === '--makefile') return null;
       if (longFlag === '--directory') {
         directory = makeDirectory(directory, value);
         if (directory == null) return null;
@@ -257,9 +257,9 @@ function checkRepositoryClaims(analysis, index, filePath) {
       if (/<[A-Za-z][^>]*>/.test(commandText)) continue;
       const words = staticCommandWords(commandText);
       if (!words) continue;
-      const validation = validateCliInvocation(words.slice(1));
-      if (!validation.valid) {
-        add(claim('cli-contract', lineNumber, 'Invalid Doclify Guardrail invocation.', validation.message, 'src/cli-contract.mjs'));
+      const invocation = parseCliInvocation(words.slice(1));
+      if (!invocation.valid) {
+        add(claim('cli-contract', lineNumber, 'Invalid Doclify Guardrail invocation.', invocation.message, 'src/cli-contract.mjs'));
       }
     }
   }

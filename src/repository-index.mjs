@@ -6,6 +6,8 @@ import { compareText } from './text-order.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
 const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
+const MAKEFILE_ASSIGNMENT = /^\s*(?:(?:override|export|private)\s+)*[A-Za-z_][A-Za-z0-9_]*\s*(?::::=|::=|:=|\+=|\?=|!=|=)/;
+const MAKEFILE_INCLUDE = /^\s*(?:-?include|sinclude)\s+/;
 
 function portable(value) {
   return value.split(path.sep).join('/');
@@ -42,9 +44,12 @@ function makeTargetsFor(content) {
   const patterns = [];
   let acceptsUnknownTargets = false;
   for (const line of String(content).split(/\r?\n/)) {
+    if (MAKEFILE_ASSIGNMENT.test(line)) continue;
     const match = line.match(/^([A-Za-z0-9][A-Za-z0-9_.-]*(?:\s+[A-Za-z0-9][A-Za-z0-9_.-]*)*)\s*:/);
     if (!match) {
-      if (/^\s*\.DEFAULT\s*:/.test(line)) acceptsUnknownTargets = true;
+      if (/^\s*\.DEFAULT\s*:/.test(line) || MAKEFILE_INCLUDE.test(line)) {
+        acceptsUnknownTargets = true;
+      }
       const pattern = line.match(/^\s*([^:#\s]*%[^:#\s]*)\s*:/)?.[1];
       if (pattern) {
         const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('%', '.*');
