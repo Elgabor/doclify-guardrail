@@ -30,16 +30,16 @@ const checks = [
         pattern: /output inside\s+Git metadata is refused/
       },
       {
-        label: 'immutable Action v2 prerelease example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@3e0f9970319c75ea1760f09e57b203d156144d26/
+        label: 'immutable stable Action v2 example',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985/
       },
       {
         label: 'Action v2 offline default',
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'stable candidate publication boundary',
-        pattern: /The repository candidate is `2\.0\.0`, but the stable package and Action are not\s+published yet/
+        label: 'stable npm release',
+        pattern: /Version `2\.0\.0` is published on npm's `latest` tag/
       }
     ]
   },
@@ -47,8 +47,8 @@ const checks = [
     file: 'MIGRATION.md',
     expectations: [
       {
-        label: 'stable migration boundary',
-        pattern: /The repository candidate is `2\.0\.0`, but it is not published yet/
+        label: 'stable migration release',
+        pattern: /Version `2\.0\.0` is published on npm's `latest` tag/
       }
     ]
   },
@@ -119,7 +119,7 @@ const checks = [
       },
       {
         label: 'immutable Action release pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@3e0f9970319c75ea1760f09e57b203d156144d26/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985/
       },
       {
         label: 'immutable Action caller-workspace proof',
@@ -175,6 +175,14 @@ const checks = [
   {
     file: 'CHANGELOG.md',
     expectations: [
+      {
+        label: 'stable release entry',
+        pattern: /## \[2\.0\.0\] - 2026-08-14/
+      },
+      {
+        label: 'stable release artifacts',
+        pattern: /`2\.0\.0` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2\.0\.0` tag/
+      },
       {
         label: 'beta.3 release entry',
         pattern: /## \[2\.0\.0-beta\.3\] - 2026-08-11/

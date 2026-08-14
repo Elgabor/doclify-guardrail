@@ -2,8 +2,7 @@
 
 Stato: registro operativo
 Piano di riferimento locale: `plan.md`
-Versioni pubblicate: stable `1.7.4`; prerelease `2.0.0-beta.3`; candidato locale
-`2.0.0` non pubblicato
+Versioni pubblicate: stable `2.0.0`; prerelease `2.0.0-beta.3`
 
 Questo file registra task, prove e rischi residui del prodotto. `plan.md` resta il piano
 locale di riferimento; codice, test e contratti pubblici restano le fonti di verità sul
@@ -734,27 +733,31 @@ Checklist candidata:
 - [x] versione, changelog, migrazione, README e metadati Action;
 - [x] bundle Action riproducibile e audit production senza vulnerabilità;
 - [x] pack, checksum, installazione offline e matrice completa finale;
-- [ ] merge della PR in `main`;
-- [ ] tag firmato `v2.0.0` e GitHub Release;
-- [ ] riferimento Action `v2` e pubblicazione npm su `latest`;
-- [ ] verifica indipendente degli artefatti pubblicati.
+- [x] merge della PR in `main`;
+- [x] tag firmato `v2.0.0` e GitHub Release;
+- [x] pubblicazione npm su `latest` e verifica indipendente dal registry;
+- [ ] riferimento mobile Action `v2`.
 
 ### S4 — Pubblicare e verificare 2.0.0
 
-Stato: `READY_FOR_RELEASE`
+Stato: `IN PROGRESS`
 
-Confine concordato per questo lavoro: creare e verificare branch, commit, push e PR
-verso `main`. Merge, tag, GitHub Release, spostamento Action `v2`, npm publish e
-portfolio restano esclusi. S4 non è `DONE` finché gli artefatti pubblicati non sono
-verificati separatamente.
+PR #31 è stata fusa in `main` come `5ce78dc`. I workflow post-merge Docs Check e
+Reliability sono verdi. npm pubblica `2.0.0` su `latest` con `gitHead=5ce78dc`,
+integrity `sha512-NSZYl2CbDA4TQfs30w2qqSuYD43rrLSyfjjUrMbEdN/gQwD9KHKdkIgEld6JtCcq6sg1ZsGABM8gfaVh6s31vg==`
+e shasum `2a594cf8c5ba2136e62d43e64d3b1b3524f4acd4`; `next` resta su
+`2.0.0-beta.3`. Installazione pulita, versione, help, check e API dal registry sono
+verdi.
 
-Stato pre-pubblicazione verificato il 2026-08-13: npm espone `latest=1.7.4` e
-`next=2.0.0-beta.3`; non esistono tag o GitHub Release `v2.0.0`.
+Il tag firmato `v2.0.0` punta a `5ce78dc` e la GitHub Release stabile è pubblicata:
+`https://github.com/Elgabor/doclify-guardrail/releases/tag/v2.0.0`. Il riferimento
+immutabile Action `v2.0.0` è disponibile; resta da decidere e creare il major mobile
+`v2`. A4 resta `BLOCKED_INPUT` e il portfolio richiede una task separata.
 
-PR #31 aperta da `release/v2.0.0` verso `main`. Sul head `20f30a7`, gli otto check
-GitHub di push e pull request (`guardrail`, `correctness`, `network`, `performance`)
-sono verdi. La commit che registra questa evidenza deve superare nuovamente gli stessi
-gate prima della consegna.
+Rischio residuo: il tarball npm `2.0.0` è immutabile e contiene i documenti del
+candidato, antecedenti a questa correzione post-release. GitHub e il repository
+vengono allineati con una PR protetta; correggere anche i documenti inclusi nel
+pacchetto richiede una nuova versione e non è autorizzato da questa task.
 
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
@@ -952,7 +955,7 @@ Compilare una riga dopo ogni task completata:
 | P4 | DONE | `369dd45` | test contratto beta.2; docs sync; demo stdin/output/explain | Output testuale limitato; formati macchina completi e deterministici. |
 | P5 | DONE | `369dd45` | esempi clean/failing; docs sync; scan v2; pack dry-run; demo riproducibile | README e migrazione dichiarano beta.2; Action v2 resta futura. |
 | A1 | DONE | `7d5188c` | suite 59/59; pack installato; QA 69 file su 4 checkout autorizzati; Git invariato | Output Markdown non sovrascrivibile; report non Markdown atomici; invocazione bin npm via symlink coperta. |
-| A2 | DONE | `df0ad54` | test Action sorgente/bundle; build riproducibile; audit 0 vulnerabilità; smoke locale e SHA immutabile in CI | Nel gate beta.3 l'Action package era `1.7.4`; S3 allinea il candidato a `2.0.0`. `v2.0.0-beta.3` resta il riferimento immutabile pubblicato e non esiste ancora un alias mobile `v2`. |
+| A2 | DONE | `df0ad54` | test Action sorgente/bundle; build riproducibile; audit 0 vulnerabilità; smoke locale e SHA immutabile in CI | L'Action stabile è disponibile con tag `v2.0.0` e SHA `5ce78dc`; non esiste ancora un alias mobile `v2`. |
 | A3 | DONE | `c71434e`, `2170e26` | 26/26 casi etichettati; 0 falsi positivi bloccanti; rete locale; property test; perf Linux/macOS verde | Soglia CI ampia, adatta solo a regressioni macroscopiche; test symlink saltati solo su Windows; evidenza reale demandata ad A4. |
 | A4 | BLOCKED_INPUT | `2048e4c` | protocollo e confini privacy revisionati; nessun risultato qualificante registrato | Richiede 3-5 utenti reali, almeno 3 completamenti e 30 finding revisionati; non inferire adozione dalla QA locale. |
 | A5 | DONE | `e21ba8e`, `7e74c42` | demo su tarball/checkouts puliti; claim mappati a prove pubbliche; changelog candidato; review anti-slop | Solo draft; portfolio intatto e pubblicazione non autorizzata. |
@@ -961,7 +964,7 @@ Compilare una riga dopo ogni task completata:
 | S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
 | S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
 | S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
-| S4 | READY_FOR_RELEASE | PR #31 | stato npm/tag/Release verificato; checklist pronta; 8 check GitHub verdi su `20f30a7` | Confine corrente termina alla PR; pubblicazione e verifica esterna restano da eseguire. |
+| S4 | IN PROGRESS | PR #31, `5ce78dc`, `v2.0.0` | merge e CI; npm `latest`; install smoke; tag firmato; GitHub Release; Action SHA/tag immutabili | Restano il major mobile Action `v2`, la task portfolio e l'eventuale versione documentale successiva; A4 resta `BLOCKED_INPUT`. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |

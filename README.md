@@ -4,15 +4,14 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-The repository candidate is `2.0.0`, but the stable package and Action are not
-published yet. npm still serves `1.7.4` on `latest` and `2.0.0-beta.3` on
-`next`. The supported v1 Action remains frozen at
+Version `2.0.0` is published on npm's `latest` tag. The prerelease line remains
+at `2.0.0-beta.3` on `next`. The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
 ## Start
 
 ```sh
-npm install --save-dev doclify-guardrail@next
+npm install --save-dev doclify-guardrail
 npx doclify-guardrail check README.md
 ```
 
@@ -127,8 +126,7 @@ node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --co
 
 The v2 Action is a thin adapter over the same CLI result. It requires no token,
 has only `contents: read` permission, and stays offline unless
-`external-links: 'true'` is set. Until the stable Action is published, pin the
-published beta.3 release commit in CI:
+`external-links: 'true'` is set. Pin the stable release commit in CI:
 
 ```yaml
 permissions:
@@ -138,14 +136,13 @@ steps:
   - uses: actions/checkout@v5.0.1
     with:
       persist-credentials: false
-  - uses: Elgabor/doclify-guardrail/action@3e0f9970319c75ea1760f09e57b203d156144d26
+  - uses: Elgabor/doclify-guardrail/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985
     with:
       path: README.md
 ```
 
-Its signed tag is `Elgabor/doclify-guardrail/action@v2.0.0-beta.3`; the full SHA
-above prevents ref movement. The stable `v2.0.0` tag and `v2` major reference
-remain publication steps, not artifacts created by this candidate.
+Its signed tag is `Elgabor/doclify-guardrail/action@v2.0.0`; the full SHA above
+prevents ref movement. A floating `v2` major reference has not been created.
 
 Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
 Git selection to the v2 `changed` command. A base comparison needs the requested
