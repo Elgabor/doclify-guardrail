@@ -2,7 +2,8 @@
 
 Stato: registro operativo
 Piano di riferimento locale: `plan.md`
-Versioni pubblicate: stable `2.0.0`; prerelease `2.0.0-beta.3`
+Versioni pubblicate: stable `2.0.0`; prerelease `2.0.0-beta.3`; patch `2.0.1`
+in preparazione
 
 Questo file registra task, prove e rischi residui del prodotto. `plan.md` resta il piano
 locale di riferimento; codice, test e contratti pubblici restano le fonti di verità sul
@@ -754,10 +755,27 @@ Il tag firmato `v2.0.0` punta a `5ce78dc` e la GitHub Release stabile è pubblic
 immutabile Action `v2.0.0` è disponibile; resta da decidere e creare il major mobile
 `v2`. A4 resta `BLOCKED_INPUT` e il portfolio richiede una task separata.
 
-Rischio residuo: il tarball npm `2.0.0` è immutabile e contiene i documenti del
-candidato, antecedenti a questa correzione post-release. GitHub e il repository
-vengono allineati con una PR protetta; correggere anche i documenti inclusi nel
-pacchetto richiede una nuova versione e non è autorizzato da questa task.
+Il tarball npm `2.0.0` è immutabile e contiene i documenti del candidato,
+antecedenti alla correzione post-release. La patch `2.0.1` è autorizzata per
+includere README e migrazione aggiornati; il tag mobile Action `v2` deve puntare
+allo stesso commit della patch senza modificare `v1`.
+
+Preparazione `2.0.1`: suite 64/64, corpus etichettato 41/41, rete, performance,
+docs sync, scansione dei documenti, bundle Action e audit production sono verdi.
+Il tarball contiene 35 file, ha npm shasum
+`fce4fd6255477652fd60c406514498e02c19e9dc` e SHA-256
+`de9f367d23f3ae7a37b76d196787b33ca167723e8725c8e9e7ed31960503390d`.
+Installazione, CLI e API sono verdi localmente; il pack/install Node 22 Docker è
+verde in modalità offline, read-only e non-root. Il runtime non è cambiato, quindi
+la matrice DwarfStar/Redis già registrata per `2.0.0` non è stata riclonata.
+
+Checklist di chiusura `2.0.1`:
+
+- [ ] merge protetto del diff di release;
+- [ ] tag firmato e GitHub Release `v2.0.1`;
+- [ ] pubblicazione npm `2.0.1` su `latest` e installazione pulita;
+- [ ] creazione del riferimento mobile Action `v2` sul commit `v2.0.1`;
+- [ ] PR finale con SHA e prove degli artefatti pubblicati.
 
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
@@ -964,7 +982,7 @@ Compilare una riga dopo ogni task completata:
 | S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
 | S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
 | S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
-| S4 | IN PROGRESS | PR #31, `5ce78dc`, `v2.0.0` | merge e CI; npm `latest`; install smoke; tag firmato; GitHub Release; Action SHA/tag immutabili | Restano il major mobile Action `v2`, la task portfolio e l'eventuale versione documentale successiva; A4 resta `BLOCKED_INPUT`. |
+| S4 | IN PROGRESS | PR #31, `5ce78dc`, `v2.0.0` | merge e CI; npm `latest`; install smoke; tag firmato; GitHub Release; Action SHA/tag immutabili | Patch `2.0.1` e major mobile Action `v2` autorizzati; A4 resta `BLOCKED_INPUT`. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |
