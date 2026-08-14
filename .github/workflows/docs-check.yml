@@ -66,9 +66,9 @@ jobs:
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_BLOCKING" = 0
       # This full-SHA pin proves public installation of the stable release;
       # the local ./action smoke above remains the coverage for current HEAD.
-      - name: Smoke released Action v2.0.0 from an immutable reference
+      - name: Smoke released Action v2.0.1 from an immutable reference
         id: action-sha-smoke
-        uses: Elgabor/doclify-guardrail/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985
+        uses: Elgabor/doclify-guardrail/action@ad98fb4efc0744360c305747767070d0549c764f
         with:
           path: evidence/private-beta-protocol.md
       - name: Verify immutable Action reads the caller workspace
@@ -77,6 +77,18 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-sha-smoke.outputs.complete }}
           DOCLIFY_FILES: ${{ steps.action-sha-smoke.outputs.files }}
           DOCLIFY_BLOCKING: ${{ steps.action-sha-smoke.outputs.blocking }}
+        run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_FILES" = 1 && test "$DOCLIFY_BLOCKING" = 0
+      - name: Smoke Action v2 major reference
+        id: action-major-smoke
+        uses: Elgabor/doclify-guardrail/action@v2
+        with:
+          path: evidence/private-beta-protocol.md
+      - name: Verify Action v2 major reference
+        env:
+          DOCLIFY_STATUS: ${{ steps.action-major-smoke.outputs.status }}
+          DOCLIFY_COMPLETE: ${{ steps.action-major-smoke.outputs.complete }}
+          DOCLIFY_FILES: ${{ steps.action-major-smoke.outputs.files }}
+          DOCLIFY_BLOCKING: ${{ steps.action-major-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_FILES" = 1 && test "$DOCLIFY_BLOCKING" = 0
       - name: Audit action dependency chain
         working-directory: action

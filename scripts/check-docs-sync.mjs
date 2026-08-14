@@ -119,11 +119,15 @@ const checks = [
       },
       {
         label: 'immutable Action release pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@ad98fb4efc0744360c305747767070d0549c764f/
       },
       {
         label: 'immutable Action caller-workspace proof',
         pattern: /path: evidence\/private-beta-protocol\.md[\s\S]*?DOCLIFY_FILES/
+      },
+      {
+        label: 'Action v2 major reference smoke',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\s/
       },
       {
         label: 'docs sync step',
@@ -181,7 +185,7 @@ const checks = [
       },
       {
         label: 'Action major release policy',
-        pattern: /the movable Action tag `v2` follows the latest compatible v2 release/
+        pattern: /`2\.0\.1` is published on npm's `latest` tag and in a GitHub Release[\s\S]*?Action tag `v2` points to the same commit/
       },
       {
         label: 'stable release entry',
