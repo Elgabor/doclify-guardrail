@@ -2,13 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-## [2.0.0] - 2026-08-13
+## [2.0.0] - 2026-08-14
 
 ### Changed
 
 - removed residual v1-only helpers and centralized document-purpose policy without adding dependencies or compatibility paths
 - made indeterminate filesystem containment fail closed while preserving ordinary unreadable-file diagnostics
-- aligned the package and Action metadata, README, and migration guide for the stable candidate
+- aligned the package and Action metadata, README, and migration guide for the stable release
 
 ### Security
 
@@ -17,7 +17,7 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 
-- this commit prepares the `2.0.0` candidate; npm `latest`, the stable GitHub Release, and the Action `v2` reference are not published by S3
+- `2.0.0` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2.0.0` tag; a floating Action `v2` reference has not been created
 - private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
 
 ## [2.0.0-beta.3] - 2026-08-11

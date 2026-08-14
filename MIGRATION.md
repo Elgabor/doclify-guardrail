@@ -1,8 +1,7 @@
 # Migrating to Doclify Guardrail v2
 
-The repository candidate is `2.0.0`, but it is not published yet. npm still
-serves `2.0.0-beta.3` on `next` and the v1 line on `latest`. The v2 core is
-local and read-only by default.
+Version `2.0.0` is published on npm's `latest` tag. The v2 core is local and
+read-only by default.
 
 ## Command changes
 
@@ -78,7 +77,7 @@ silently accepted.
 | API `fix`, `score`, `RULE_CATALOG`, package-root import | Removed. |
 | config keys `strict`, `maxLineLength`, `checkLinks`, `checkFreshness`, `freshnessMaxDays`, `checkFrontmatter`, `checkInlineHtml`, `push`, `projectId` | Removed keys fail with `config-removed-key`. |
 | `.doclify-history.json`, `doclify-report.md`, `doclify-badge.svg`, `.doclify/` auth state | No v2 equivalent; remove them only after validating they are no longer used by your own workflow. |
-| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or test the beta.3 contract with the full release commit below. |
+| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or use the stable v2 contract with the full release commit below. |
 
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
@@ -90,10 +89,10 @@ claims. This is classification, not a style preset.
 ## GitHub Action
 
 `Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. The v2
-candidate does not change or retag that Action.
+release does not change or retag that Action.
 
-The currently published v2 Action adapter is the beta.3 build under the signed tag
-`v2.0.0-beta.3` at commit `3e0f9970319c75ea1760f09e57b203d156144d26`.
+The stable v2 Action adapter is published under the signed tag `v2.0.0` at
+commit `5ce78dcda488c3734b10ba2a5fdbf4b44fd20985`.
 It maps `mode`, `path`, `base`, `staged`,
 `config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
 settings directly to the v2 CLI. `mode: changed` requires exactly one of `base`
@@ -105,13 +104,13 @@ If the scan cannot start because the invocation or configuration is invalid,
 the step fails before those result outputs exist.
 
 ```yaml
-- uses: Elgabor/doclify-guardrail/action@3e0f9970319c75ea1760f09e57b203d156144d26
+- uses: Elgabor/doclify-guardrail/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985
   with:
     path: README.md
 ```
 
 The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
 remains available from the CLI with `--format sarif --output <path>`. Do not
-replace `@v1` with a floating `@v2` reference before the stable Action is
-published. Test beta.3 with the full release commit above; its signed tag is
-`Elgabor/doclify-guardrail/action@v2.0.0-beta.3`.
+replace `@v1` with a floating `@v2` reference because that major reference has
+not been created. Use the full release commit above or the signed tag
+`Elgabor/doclify-guardrail/action@v2.0.0`.
