@@ -4,7 +4,7 @@ Doclify Guardrail checks Markdown and MDX documentation against facts that are
 already present in the repository. It runs locally, does not execute documented
 commands, and does not contact the network unless `--external-links` is passed.
 
-Version `2.0.0` is published on npm's `latest` tag. The prerelease line remains
+Version `2.0.1` is the current stable npm release. The prerelease line remains
 at `2.0.0-beta.3` on `next`. The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
@@ -126,7 +126,7 @@ node ./src/index.mjs check examples/evidence-demo/fixtures/README.broken.md --co
 
 The v2 Action is a thin adapter over the same CLI result. It requires no token,
 has only `contents: read` permission, and stays offline unless
-`external-links: 'true'` is set. Pin the stable release commit in CI:
+`external-links: 'true'` is set. Pin the release-specific tag in CI:
 
 ```yaml
 permissions:
@@ -136,13 +136,14 @@ steps:
   - uses: actions/checkout@v5.0.1
     with:
       persist-credentials: false
-  - uses: Elgabor/doclify-guardrail/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985
+  - uses: Elgabor/doclify-guardrail/action@v2.0.1
     with:
       path: README.md
 ```
 
-Its signed tag is `Elgabor/doclify-guardrail/action@v2.0.0`; the full SHA above
-prevents ref movement. A floating `v2` major reference has not been created.
+The release tag `v2.0.1` is signed. Use `Elgabor/doclify-guardrail/action@v2`
+to follow the latest compatible v2 release, or pin the full commit SHA from the
+release page when the workflow requires an immutable reference.
 
 Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
 Git selection to the v2 `changed` command. A base comparison needs the requested

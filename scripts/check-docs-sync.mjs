@@ -30,8 +30,8 @@ const checks = [
         pattern: /output inside\s+Git metadata is refused/
       },
       {
-        label: 'immutable stable Action v2 example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985/
+        label: 'release-specific Action v2 example',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.1/
       },
       {
         label: 'Action v2 offline default',
@@ -39,7 +39,7 @@ const checks = [
       },
       {
         label: 'stable npm release',
-        pattern: /Version `2\.0\.0` is published on npm's `latest` tag/
+        pattern: /Version `2\.0\.1` is the current stable npm release/
       }
     ]
   },
@@ -48,7 +48,7 @@ const checks = [
     expectations: [
       {
         label: 'stable migration release',
-        pattern: /Version `2\.0\.0` is published on npm's `latest` tag/
+        pattern: /Version `2\.0\.1` is the current stable npm release/
       }
     ]
   },
@@ -57,7 +57,7 @@ const checks = [
     expectations: [
       {
         label: 'stable package version',
-        pattern: /"version": "2\.0\.0"/
+        pattern: /"version": "2\.0\.1"/
       }
     ]
   },
@@ -66,7 +66,7 @@ const checks = [
     expectations: [
       {
         label: 'stable Action package version',
-        pattern: /"version": "2\.0\.0"/
+        pattern: /"version": "2\.0\.1"/
       }
     ]
   },
@@ -175,6 +175,14 @@ const checks = [
   {
     file: 'CHANGELOG.md',
     expectations: [
+      {
+        label: 'patch release entry',
+        pattern: /## \[2\.0\.1\] - 2026-08-14/
+      },
+      {
+        label: 'Action major release policy',
+        pattern: /the movable Action tag `v2` follows the latest compatible v2 release/
+      },
       {
         label: 'stable release entry',
         pattern: /## \[2\.0\.0\] - 2026-08-14/

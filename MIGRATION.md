@@ -1,6 +1,6 @@
 # Migrating to Doclify Guardrail v2
 
-Version `2.0.0` is published on npm's `latest` tag. The v2 core is local and
+Version `2.0.1` is the current stable npm release. The v2 core is local and
 read-only by default.
 
 ## Command changes
@@ -91,8 +91,7 @@ claims. This is classification, not a style preset.
 `Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. The v2
 release does not change or retag that Action.
 
-The stable v2 Action adapter is published under the signed tag `v2.0.0` at
-commit `5ce78dcda488c3734b10ba2a5fdbf4b44fd20985`.
+The stable v2 Action adapter is published under the signed tag `v2.0.1`.
 It maps `mode`, `path`, `base`, `staged`,
 `config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
 settings directly to the v2 CLI. `mode: changed` requires exactly one of `base`
@@ -104,13 +103,13 @@ If the scan cannot start because the invocation or configuration is invalid,
 the step fails before those result outputs exist.
 
 ```yaml
-- uses: Elgabor/doclify-guardrail/action@5ce78dcda488c3734b10ba2a5fdbf4b44fd20985
+- uses: Elgabor/doclify-guardrail/action@v2.0.1
   with:
     path: README.md
 ```
 
 The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
-remains available from the CLI with `--format sarif --output <path>`. Do not
-replace `@v1` with a floating `@v2` reference because that major reference has
-not been created. Use the full release commit above or the signed tag
-`Elgabor/doclify-guardrail/action@v2.0.0`.
+remains available from the CLI with `--format sarif --output <path>`. Use
+`Elgabor/doclify-guardrail/action@v2` for compatible v2 updates, the signed
+`v2.0.1` tag for the specific release, or its full commit SHA for an immutable
+reference.

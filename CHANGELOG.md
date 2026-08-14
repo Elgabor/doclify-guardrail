@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.1] - 2026-08-14
+
+### Changed
+
+- corrected the packaged README and migration guide to describe the stable npm and GitHub Action releases
+- aligned the npm package and Action metadata with the patch version
+
+### Notes
+
+- the signed `v2.0.1` tag identifies this release; the movable Action tag `v2` follows the latest compatible v2 release
+- private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
+
 ## [2.0.0] - 2026-08-14
 
 ### Changed
