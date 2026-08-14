@@ -14,28 +14,6 @@ function parseRuleIds(raw) {
   return trimmed.split(/[,\s]+/).map((value) => value.trim()).filter(Boolean);
 }
 
-function findSuppressions(content) {
-  const lines = normalizeLineEndings(content).split('\n');
-  const fences = analyzeFences(lines);
-  const suppressions = [];
-
-  for (let index = 0; index < lines.length; index += 1) {
-    if (fences.inFence[index]) continue;
-    for (const directive of DIRECTIVES) {
-      const match = lines[index].match(directive.pattern);
-      if (!match) continue;
-      suppressions.push({
-        scope: directive.scope,
-        rules: parseRuleIds(match[1]),
-        line: index + 1
-      });
-      break;
-    }
-  }
-
-  return suppressions;
-}
-
 function appliesTo(ruleIds, ruleId) {
   return ruleIds === null || Array.isArray(ruleIds) && ruleIds.includes(ruleId);
 }
@@ -96,8 +74,4 @@ function createSuppressionMatcher(content) {
   };
 }
 
-function isSuppressed(content, ruleId, lineNumber) {
-  return createSuppressionMatcher(content).isSuppressed(ruleId, lineNumber);
-}
-
-export { createSuppressionMatcher, findSuppressions, isSuppressed };
+export { createSuppressionMatcher };

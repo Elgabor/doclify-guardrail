@@ -27,4 +27,4 @@ function allowsRepositoryClaims(purpose) {
   return purpose !== 'generated';
 }
 
-export { PURPOSES, allowsRepositoryClaims, inferDocumentPurpose, resolveDocumentPurpose };
+export { PURPOSES, allowsRepositoryClaims, resolveDocumentPurpose };

@@ -457,11 +457,5 @@ async function checkDeadLinksDetailed(content, {
   return { findings, diagnostics, stats };
 }
 
-async function checkDeadLinks(content, opts = {}) {
-  const { findings } = await checkDeadLinksDetailed(content, opts);
-  return findings.filter((finding) => finding.severity === 'error');
-}
-
-export { extractLinks, checkDeadLinks };
 export { checkDeadLinksDetailed };
 export { DEFAULT_LINK_TIMEOUT_MS, DEFAULT_LINK_CONCURRENCY };

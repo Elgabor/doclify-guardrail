@@ -97,11 +97,51 @@ test('workspace containment fails closed for an excessive acyclic symlink chain'
   assert.equal(getReadContainment(path.join(workspace, 'link-0'), workspace), 'indeterminate');
 });
 
-test('private-network guard blocks CGNAT metadata and IPv4-compatible IPv6 literals', () => {
-  for (const host of ['100.64.0.1', '100.100.100.200', '::127.0.0.1', '::7f00:1']) {
+test('target selection rejects paths whose containment is indeterminate', { skip: process.platform === 'win32' }, async (t) => {
+  const workspace = temp(t);
+  fs.symlinkSync('loop-b.md', path.join(workspace, 'loop-a.md'));
+  fs.symlinkSync('loop-a.md', path.join(workspace, 'loop-b.md'));
+
+  await assert.rejects(
+    check({ cwd: workspace, paths: ['loop-a.md'] }),
+    (error) => error?.code === 'target-unreadable'
+  );
+});
+
+test('private-network guard blocks non-public SSRF destinations', () => {
+  for (const host of [
+    '100.64.0.1',
+    '100.100.100.200',
+    '192.0.0.1',
+    '192.0.2.1',
+    '192.88.99.1',
+    '198.18.0.1',
+    '198.51.100.1',
+    '203.0.113.1',
+    '224.0.0.1',
+    '255.255.255.255',
+    '::127.0.0.1',
+    '::7f00:1',
+    '64:ff9b:1::1',
+    '100::1',
+    '2001:db8::1',
+    'fec0::1',
+    'ff02::1'
+  ]) {
     assert.match(blockedHostReason(host), /Blocked private host\/IP/, host);
   }
-  for (const host of ['100.63.255.255', '100.128.0.0', '::8.8.8.8']) {
+  for (const host of [
+    '100.63.255.255',
+    '100.128.0.0',
+    '192.0.0.9',
+    '192.0.0.10',
+    '192.0.3.1',
+    '198.51.101.1',
+    '203.0.114.1',
+    '64:ff9b::1',
+    '2001:4860::1',
+    '::8.8.8.8'
+  ]) {
     assert.equal(blockedHostReason(host), null, host);
   }
 });

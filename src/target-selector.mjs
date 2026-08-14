@@ -114,12 +114,21 @@ function walkDirectory(dirPath, workspace, shouldExclude, paths, diagnostics) {
 }
 
 function assertContained(candidate, workspace) {
-  if (getReadContainment(candidate, workspace) === 'outside') {
-    throw new TargetSelectionError(
-      'target-outside-workspace',
-      'Selected paths must stay inside the workspace.'
-    );
+  const containment = getReadContainment(candidate, workspace);
+  if (containment === 'inside') return;
+  if (containment === 'indeterminate') {
+    try {
+      if (getReadContainment(fs.realpathSync(candidate), workspace) === 'inside') return;
+    } catch (error) {
+      if (['EACCES', 'EPERM'].includes(error?.code)) return;
+    }
   }
+  throw new TargetSelectionError(
+    containment === 'outside' ? 'target-outside-workspace' : 'target-unreadable',
+    containment === 'outside'
+      ? 'Selected paths must stay inside the workspace.'
+      : 'Selected path could not be safely resolved.'
+  );
 }
 
 function selectTargets(options = {}) {
@@ -149,7 +158,7 @@ function selectTargets(options = {}) {
         ));
         continue;
       }
-      const contained = matches.filter((candidate) => getReadContainment(candidate, workspace) !== 'outside');
+      const contained = matches.filter((candidate) => getReadContainment(candidate, workspace) === 'inside');
       const usable = contained.filter((candidate) => {
         return isMarkdownPath(candidate) && !shouldExclude(candidate);
       });

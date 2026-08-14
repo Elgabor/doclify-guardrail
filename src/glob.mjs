@@ -28,18 +28,6 @@ function isIgnoredPath(filePath) {
 }
 
 /**
- * Find all Markdown (.md/.mdx) files recursively in a directory.
- */
-function findMarkdownFiles(dirPath) {
-  const resolved = path.resolve(dirPath);
-  const entries = fs.readdirSync(resolved, { recursive: true, withFileTypes: true });
-  return entries
-    .filter(e => e.isFile() && isMarkdownPath(e.name))
-    .map(e => path.join(e.parentPath || e.path, e.name))
-    .filter(f => !isIgnoredPath(path.relative(resolved, f)));
-}
-
-/**
  * Minimal glob expander. Supports patterns like:
  *   "docs/*.md"       — .md files in docs/
  *   "docs/*.mdx"      — .mdx files in docs/
@@ -96,59 +84,4 @@ function miniGlob(pattern, basePath) {
     .filter(f => !isIgnoredPath(path.relative(searchDir, f)));
 }
 
-/**
- * Resolve a list of file paths from CLI arguments.
- * Handles: explicit files, directories (recursive Markdown scan), glob patterns, --dir flag.
- */
-function resolveFileList(args) {
-  const targets = [...(args.files || [])];
-  if (args.dir) targets.push(args.dir);
-
-  if (targets.length === 0) {
-    targets.push('.');
-  }
-
-  const result = [];
-  const errors = [];
-
-  for (const target of targets) {
-    if (target.includes('*')) {
-      // Glob pattern
-      const matches = miniGlob(target, process.cwd());
-      if (matches.length === 0) {
-        errors.push(`No files matched pattern: ${target}`);
-      }
-      result.push(...matches);
-    } else {
-      const resolved = path.resolve(target);
-      try {
-        const stat = fs.statSync(resolved);
-        if (stat.isDirectory()) {
-          const mdFiles = findMarkdownFiles(resolved);
-          if (mdFiles.length === 0) {
-            errors.push(`No Markdown files found in directory: ${target}`);
-          }
-          result.push(...mdFiles);
-        } else if (stat.isFile()) {
-          result.push(resolved);
-        } else {
-          errors.push(`Not a file or directory: ${target}`);
-        }
-      } catch {
-        // File doesn't exist — will be reported as unreadable later
-        result.push(resolved);
-      }
-    }
-  }
-
-  // Deduplicate by resolved path
-  const unique = [...new Set(result)];
-
-  if (unique.length === 0 && errors.length > 0) {
-    throw new Error(errors[0]);
-  }
-
-  return unique;
-}
-
-export { resolveFileList, miniGlob, findMarkdownFiles };
+export { miniGlob };

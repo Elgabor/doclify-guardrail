@@ -1,5 +1,6 @@
+import { PURPOSES } from './document-purpose.mjs';
+
 const FORMATS = new Set(['text', 'compact', 'json', 'sarif', 'junit']);
-const PURPOSES = new Set(['published', 'instructions', 'fragment', 'plan', 'changelog', 'generated']);
 
 const HELP_OPTION = ['--help', '', { aliases: ['-h'] }];
 const COMMON_SCAN_OPTIONS = [
