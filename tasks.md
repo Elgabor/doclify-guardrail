@@ -740,7 +740,7 @@ Checklist candidata:
 
 ### S4 — Pubblicare e verificare 2.0.x
 
-Stato: `VERIFYING`
+Stato: `DONE`
 
 La PR #33 è stata fusa in `main` come `ad98fb4`; Docs Check e Reliability sono
 verdi. npm pubblica `2.0.1` su `latest` con `gitHead=ad98fb4`, integrity
@@ -752,7 +752,8 @@ Il tag firmato `v2.0.1`, la GitHub Release
 `https://github.com/Elgabor/doclify-guardrail/releases/tag/v2.0.1` e il tag mobile
 firmato `v2` puntano tutti ad `ad98fb4`. `v1` resta su `78a59f7`. Il tarball
 `2.0.1` sostituisce la documentazione candidata rimasta nel tarball immutabile
-`2.0.0`.
+`2.0.0`. La PR #34 prova in CI sia lo SHA completo sia `action@v2`; entrambi gli
+smoke sono verdi.
 
 Preparazione `2.0.1`: suite 64/64, corpus etichettato 41/41, rete, performance,
 docs sync, scansione dei documenti, bundle Action e audit production sono verdi.
@@ -769,7 +770,7 @@ Checklist di chiusura `2.0.1`:
 - [x] tag firmato e GitHub Release `v2.0.1`;
 - [x] pubblicazione npm `2.0.1` su `latest` e installazione pulita;
 - [x] creazione del riferimento mobile Action `v2` sul commit `v2.0.1`;
-- [ ] PR finale con SHA e prove degli artefatti pubblicati.
+- [x] PR finale con SHA e prove degli artefatti pubblicati.
 
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
@@ -976,7 +977,7 @@ Compilare una riga dopo ogni task completata:
 | S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
 | S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
 | S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
-| S4 | VERIFYING | PR #31, PR #33, `ad98fb4`, `v2.0.1`, `v2` | merge e CI; npm `latest`; install smoke; tag firmati; GitHub Release; Action SHA/tag mobile | Manca il gate della PR finale di evidenza; A4 resta `BLOCKED_INPUT`. |
+| S4 | DONE | PR #31, PR #33, PR #34, `ad98fb4`, `v2.0.1`, `v2` | merge e CI; npm `latest`; install smoke; tag firmati; GitHub Release; Action SHA e `v2` provate in CI | A4 resta `BLOCKED_INPUT`; il portfolio resta una task separata. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |
