@@ -2,8 +2,7 @@
 
 Stato: registro operativo
 Piano di riferimento locale: `plan.md`
-Versioni pubblicate: stable `2.0.0`; prerelease `2.0.0-beta.3`; patch `2.0.1`
-in preparazione
+Versioni pubblicate: stable `2.0.1`; prerelease `2.0.0-beta.3`
 
 Questo file registra task, prove e rischi residui del prodotto. `plan.md` resta il piano
 locale di riferimento; codice, test e contratti pubblici restano le fonti di verità sul
@@ -737,28 +736,24 @@ Checklist candidata:
 - [x] merge della PR in `main`;
 - [x] tag firmato `v2.0.0` e GitHub Release;
 - [x] pubblicazione npm su `latest` e verifica indipendente dal registry;
-- [ ] riferimento mobile Action `v2`.
+- [x] riferimento mobile Action `v2`.
 
-### S4 — Pubblicare e verificare 2.0.0
+### S4 — Pubblicare e verificare 2.0.x
 
-Stato: `IN PROGRESS`
+Stato: `DONE`
 
-PR #31 è stata fusa in `main` come `5ce78dc`. I workflow post-merge Docs Check e
-Reliability sono verdi. npm pubblica `2.0.0` su `latest` con `gitHead=5ce78dc`,
-integrity `sha512-NSZYl2CbDA4TQfs30w2qqSuYD43rrLSyfjjUrMbEdN/gQwD9KHKdkIgEld6JtCcq6sg1ZsGABM8gfaVh6s31vg==`
-e shasum `2a594cf8c5ba2136e62d43e64d3b1b3524f4acd4`; `next` resta su
-`2.0.0-beta.3`. Installazione pulita, versione, help, check e API dal registry sono
-verdi.
+La PR #33 è stata fusa in `main` come `ad98fb4`; Docs Check e Reliability sono
+verdi. npm pubblica `2.0.1` su `latest` con `gitHead=ad98fb4`, integrity
+`sha512-NMI7TqTlXk7K0gtoUi5J/7fPu+L4t5ePHGJ+QG3g7AKKimTAx5OweTs5padhTA/djLSHTRWAdcmGIntBQCFoyA==`
+e shasum `fce4fd6255477652fd60c406514498e02c19e9dc`; `next` resta su
+`2.0.0-beta.3`.
 
-Il tag firmato `v2.0.0` punta a `5ce78dc` e la GitHub Release stabile è pubblicata:
-`https://github.com/Elgabor/doclify-guardrail/releases/tag/v2.0.0`. Il riferimento
-immutabile Action `v2.0.0` è disponibile; resta da decidere e creare il major mobile
-`v2`. A4 resta `BLOCKED_INPUT` e il portfolio richiede una task separata.
-
-Il tarball npm `2.0.0` è immutabile e contiene i documenti del candidato,
-antecedenti alla correzione post-release. La patch `2.0.1` è autorizzata per
-includere README e migrazione aggiornati; il tag mobile Action `v2` deve puntare
-allo stesso commit della patch senza modificare `v1`.
+Il tag firmato `v2.0.1`, la GitHub Release
+`https://github.com/Elgabor/doclify-guardrail/releases/tag/v2.0.1` e il tag mobile
+firmato `v2` puntano tutti ad `ad98fb4`. `v1` resta su `78a59f7`. Il tarball
+`2.0.1` sostituisce la documentazione candidata rimasta nel tarball immutabile
+`2.0.0`. La PR #34 prova in CI sia lo SHA completo sia `action@v2`; entrambi gli
+smoke sono verdi.
 
 Preparazione `2.0.1`: suite 64/64, corpus etichettato 41/41, rete, performance,
 docs sync, scansione dei documenti, bundle Action e audit production sono verdi.
@@ -771,17 +766,17 @@ la matrice DwarfStar/Redis già registrata per `2.0.0` non è stata riclonata.
 
 Checklist di chiusura `2.0.1`:
 
-- [ ] merge protetto del diff di release;
-- [ ] tag firmato e GitHub Release `v2.0.1`;
-- [ ] pubblicazione npm `2.0.1` su `latest` e installazione pulita;
-- [ ] creazione del riferimento mobile Action `v2` sul commit `v2.0.1`;
-- [ ] PR finale con SHA e prove degli artefatti pubblicati.
+- [x] merge protetto del diff di release;
+- [x] tag firmato e GitHub Release `v2.0.1`;
+- [x] pubblicazione npm `2.0.1` su `latest` e installazione pulita;
+- [x] creazione del riferimento mobile Action `v2` sul commit `v2.0.1`;
+- [x] PR finale con SHA e prove degli artefatti pubblicati.
 
 Azioni, ciascuna soggetta all'autorizzazione ricevuta:
 
 1. merge del branch di release in `main`;
 2. push di branch e `main` su `origin`;
-3. creazione e push del tag immutabile `v2.0.0`;
+3. creazione e push del tag immutabile `v2.0.1`;
 4. GitHub Release;
 5. aggiornamento linea Action `v2` senza spostare `v1`;
 6. `npm publish --tag latest`;
@@ -982,7 +977,7 @@ Compilare una riga dopo ogni task completata:
 | S1.2 | DONE | `1de75ae` | fail pre-fix; Node/Docker regression; rete; suite 64/64; confini IANA pubblici/non globali | Registry IANA può evolvere; aggiornare solo da fonte primaria e con test di confine. |
 | S2 | DONE | `f22486f`, `1de75ae`, `7acd109` | 64/64; 41/41; rete/performance/docs/pack; DwarfStar/Redis tutte le superfici; mutazioni 5/5; pack installato; Action audit 0 | A4 resta senza prove real-user; classe performance Docker ARM non registrata. |
 | S3 | DONE | `7acd109` | metadata/docs; bundle; pack 35 file; SHA-256; install offline; CLI/API sui due corpus | Candidato soltanto: registry, tag, Release e Action stable non pubblicati. |
-| S4 | IN PROGRESS | PR #31, `5ce78dc`, `v2.0.0` | merge e CI; npm `latest`; install smoke; tag firmato; GitHub Release; Action SHA/tag immutabili | Patch `2.0.1` e major mobile Action `v2` autorizzati; A4 resta `BLOCKED_INPUT`. |
+| S4 | DONE | PR #31, PR #33, PR #34, `ad98fb4`, `v2.0.1`, `v2` | merge e CI; npm `latest`; install smoke; tag firmati; GitHub Release; Action SHA e `v2` provate in CI | A4 resta `BLOCKED_INPUT`; il portfolio resta una task separata. |
 | R1 | TODO | - | - | - |
 | R2-R5 | BLOCKED | - | - | R1 deve produrre go |
 | E1-E4 | BLOCKED | - | - | domanda reale non ancora dimostrata |

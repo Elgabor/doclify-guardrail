@@ -11,7 +11,7 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 
-- the signed `v2.0.1` tag identifies this release; the movable Action tag `v2` follows the latest compatible v2 release
+- `2.0.1` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2.0.1` tag; the movable Action tag `v2` points to the same commit
 - private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
 
 ## [2.0.0] - 2026-08-14
