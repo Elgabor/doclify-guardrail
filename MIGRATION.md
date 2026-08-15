@@ -54,9 +54,9 @@ import { check } from 'doclify-guardrail/api';
 
 ## Complete v1 surface lookup
 
-The following inventory preserves the beta.1 migration decisions for users who
-need an exact replacement. Every omitted item fails as `legacy-option`; none is
-silently accepted.
+The following inventory records the v1-to-v2 mapping for projects that need an
+exact replacement. Every omitted item fails as `legacy-option`; none is silently
+accepted.
 
 | v1 surface | v2 destination |
 | --- | --- |
@@ -77,7 +77,7 @@ silently accepted.
 | API `fix`, `score`, `RULE_CATALOG`, package-root import | Removed. |
 | config keys `strict`, `maxLineLength`, `checkLinks`, `checkFreshness`, `freshnessMaxDays`, `checkFrontmatter`, `checkInlineHtml`, `push`, `projectId` | Removed keys fail with `config-removed-key`. |
 | `.doclify-history.json`, `doclify-report.md`, `doclify-badge.svg`, `.doclify/` auth state | No v2 equivalent; remove them only after validating they are no longer used by your own workflow. |
-| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or use the stable v2 contract with the full release commit below. |
+| Action inputs and outputs from `action@v1` | Stay on the frozen `Elgabor/doclify-guardrail/action@v1` contract, or use the stable v2 contract documented below. |
 
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.

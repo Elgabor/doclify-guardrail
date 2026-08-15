@@ -1,0 +1,53 @@
+name: Feature request
+description: Propose a focused improvement to the documented CLI, API, or GitHub Action.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe one concrete problem or workflow. Proposals should preserve the local,
+        read-only default unless the change explicitly defines a safe opt-in boundary.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is difficult, unclear, or missing in the current behavior?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Users and evidence
+      description: Who encounters this problem, how often, and in which real workflow or repository category?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful change and its public interface.
+    validations:
+      required: true
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: What observable result would show that the change solves the problem without adding false positives?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Explain existing commands, configuration, or workarounds you considered.
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and examples
+      description: Include local examples, compatibility constraints, or output expectations.

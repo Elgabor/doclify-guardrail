@@ -1,12 +1,37 @@
 # Doclify Guardrail
 
-Doclify Guardrail checks Markdown and MDX documentation against facts that are
-already present in the repository. It runs locally, does not execute documented
-commands, and does not contact the network unless `--external-links` is passed.
+Documentation becomes misleading when links, package scripts, workspace
+packages, Make targets, or CLI examples stop matching the repository. Doclify
+Guardrail is for developers, maintainers, and CI authors: use it while editing
+docs or reviewing a pull request, including changes produced with coding
+agents, before the change is merged.
 
-Version `2.0.1` is the current stable npm release. The prerelease line remains
-at `2.0.0-beta.3` on `next`. The supported v1 Action remains frozen at
+It checks Markdown and MDX against facts already present in the repository. It
+runs locally, does not execute documented commands, and does not contact the
+network unless `--external-links` is passed.
+
+Version `2.0.1` is the current stable npm release. The `2.0.0-beta.3`
+prerelease is on `next`. The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
+
+This repository documents shipped behavior and reproducible checks.
+
+## Repository guide
+
+- [Migration from v1](MIGRATION.md) — command, configuration, API, and Action changes.
+- [Changelog](https://github.com/Elgabor/doclify-guardrail/blob/main/CHANGELOG.md) — shipped changes by version.
+- [Contributing](https://github.com/Elgabor/doclify-guardrail/blob/main/CONTRIBUTING.md) — local checks and pull request expectations.
+- [Security policy](https://github.com/Elgabor/doclify-guardrail/blob/main/SECURITY.md) — private vulnerability reporting.
+- [External validation protocol](https://github.com/Elgabor/doclify-guardrail/blob/main/docs/validation-protocol.md) — evidence required before adoption claims.
+- [Evidence demo](examples/evidence-demo/README.md) — a clean and intentionally broken scan.
+
+For a reproducible problem, use the
+[bug report form](https://github.com/Elgabor/doclify-guardrail/issues/new?template=bug_report.yml).
+Use the
+[feature request form](https://github.com/Elgabor/doclify-guardrail/issues/new?template=feature_request.yml)
+for a focused proposal. Report vulnerabilities through the
+[security policy](https://github.com/Elgabor/doclify-guardrail/blob/main/SECURITY.md),
+not a public issue.
 
 ## Start
 
@@ -20,6 +45,11 @@ Check only tracked Markdown changed from a base revision:
 ```sh
 npx doclify-guardrail changed --base origin/main
 ```
+
+`changed` selects only tracked Markdown and MDX in the requested Git diff. It
+does not select unchanged documents when only code, manifests, or configuration
+change. Use `check .` in CI when every selected document must be compared with
+the current repository facts.
 
 For a document that has not been written to disk, provide the intended
 workspace-relative name. That name determines how local references are
@@ -41,9 +71,11 @@ npx doclify-guardrail check README.md --format json --output .doclify/result.jso
 
 ## What it checks
 
-The default `repo` preset is intentionally small. A finding blocks only when
-the document uses a precise syntax and Doclify can show the static source that
-contradicts it. Ordinary prose and unsupported claims are left alone.
+The default rule set is intentionally small. A finding blocks only when the
+document uses a precise syntax and Doclify can show the static source that
+contradicts it. Ordinary prose and unsupported claims are left alone. A clean
+result means no supported claim in the selected documents was contradicted; it
+does not mean that every sentence was verified.
 
 ## Integrity Rules (5)
 
@@ -113,9 +145,11 @@ diagnostics stay on stderr, so JSON, SARIF, and JUnit stdout remain parseable.
 
 ## Reproducible demo
 
-The demo has a clean README and a deliberately broken copy. The broken copy
-points to a file that is absent; Doclify reports `local-link` with the observed
-fact and its source.
+From a checkout of this repository, the demo has a clean README and a
+deliberately broken copy. The clean scan exits `0`; the failing scan exits `1`
+because the broken copy points to a missing file. Doclify reports `local-link`
+with the observed fact and its source. The [demo runbook](examples/evidence-demo/runbook.md)
+explains both expected results.
 
 ```sh
 node ./src/index.mjs check examples/evidence-demo/README.md --format compact

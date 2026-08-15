@@ -7,7 +7,7 @@ on:
   push:
     paths:
       - 'examples/**'
-      - 'evidence/**'
+      - 'docs/**'
       - '*.md'
       - '*.mdx'
       - '.editorconfig'
@@ -22,7 +22,7 @@ on:
   pull_request:
     paths:
       - 'examples/**'
-      - 'evidence/**'
+      - 'docs/**'
       - '*.md'
       - '*.mdx'
       - '.editorconfig'
@@ -64,13 +64,13 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-smoke.outputs.complete }}
           DOCLIFY_BLOCKING: ${{ steps.action-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_BLOCKING" = 0
-      # This full-SHA pin proves public installation of the stable release;
-      # the local ./action smoke above remains the coverage for current HEAD.
+      # This full-SHA pin checks the stable release reference;
+      # the local ./action smoke above covers the current checkout.
       - name: Smoke released Action v2.0.1 from an immutable reference
         id: action-sha-smoke
         uses: Elgabor/doclify-guardrail/action@ad98fb4efc0744360c305747767070d0549c764f
         with:
-          path: evidence/private-beta-protocol.md
+          path: docs/validation-protocol.md
       - name: Verify immutable Action reads the caller workspace
         env:
           DOCLIFY_STATUS: ${{ steps.action-sha-smoke.outputs.status }}
@@ -82,7 +82,7 @@ jobs:
         id: action-major-smoke
         uses: Elgabor/doclify-guardrail/action@v2
         with:
-          path: evidence/private-beta-protocol.md
+          path: docs/validation-protocol.md
       - name: Verify Action v2 major reference
         env:
           DOCLIFY_STATUS: ${{ steps.action-major-smoke.outputs.status }}

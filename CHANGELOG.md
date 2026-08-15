@@ -12,7 +12,7 @@ All notable changes to this project are documented in this file.
 ### Notes
 
 - `2.0.1` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2.0.1` tag; the movable Action tag `v2` points to the same commit
-- private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
+- external validation still awaits qualifying real-user sessions; see the [validation protocol](docs/validation-protocol.md); this is a gate status, not an adoption claim
 
 ## [2.0.0] - 2026-08-14
 
@@ -29,8 +29,7 @@ All notable changes to this project are documented in this file.
 
 ### Notes
 
-- `2.0.0` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2.0.0` tag; a floating Action `v2` reference has not been created
-- private-beta task A4 still awaits qualifying real-user sessions and is not inferred from repository QA
+- `2.0.0` is published on npm's `latest` tag and in a GitHub Release backed by the signed `v2.0.0` tag; a floating Action `v2` reference had not been created at that release
 
 ## [2.0.0-beta.3] - 2026-08-11
 
@@ -38,7 +37,7 @@ All notable changes to this project are documented in this file.
 
 - added a v2 GitHub Action adapter that delegates to the same local CLI core, needs no token, and stays offline unless remote-link checks are explicitly enabled
 - added separate CI jobs for labeled correctness, controlled local-network behavior, and reviewed performance baselines
-- added a private-beta evidence protocol and portfolio copy draft without claiming adoption or publishing the draft
+- added an external validation evidence protocol without claiming adoption
 
 ### Changed
 
@@ -57,7 +56,7 @@ All notable changes to this project are documented in this file.
 
 - `2.0.0-beta.3` is published on npm's `next` tag with a signed GitHub prerelease; `latest` remains on the stable v1 line
 - the performance tolerance catches macroscopic regressions; it is not evidence of a tight performance target
-- private-beta task A4 still awaits qualifying real-user sessions
+- the external validation gate still awaited qualifying real-user sessions
 
 ## [2.0.0-beta.2] - 2026-08-10
 

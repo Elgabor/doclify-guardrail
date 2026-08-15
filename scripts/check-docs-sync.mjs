@@ -40,6 +40,99 @@ const checks = [
       {
         label: 'stable npm release',
         pattern: /Version `2\.0\.1` is the current stable npm release/
+      },
+      {
+        label: 'changed Markdown-only boundary',
+        pattern: /`changed` selects only tracked Markdown and MDX[\s\S]*?does not select unchanged documents/
+      },
+      {
+        label: 'clean result coverage boundary',
+        pattern: /A clean\s+result means no supported claim[\s\S]*?does not mean that every sentence was verified/
+      },
+      {
+        label: 'external validation protocol link',
+        pattern: /\[External validation protocol\]\(https:\/\/github\.com\/Elgabor\/doclify-guardrail\/blob\/main\/docs\/validation-protocol\.md\)/
+      }
+    ]
+  },
+  {
+    file: 'CONTRIBUTING.md',
+    expectations: [
+      {
+        label: 'issue-first behavior changes',
+        pattern: /Open one focused issue before changing behavior/
+      },
+      {
+        label: 'locked Action dependency install',
+        pattern: /npm --prefix action ci --no-audit --no-fund --ignore-scripts/
+      },
+      {
+        label: 'full correctness suite',
+        pattern: /npm test/
+      }
+    ]
+  },
+  {
+    file: 'SECURITY.md',
+    expectations: [
+      {
+        label: 'supported stable release line',
+        pattern: /Latest `2\.0\.x` release \| Supported/
+      },
+      {
+        label: 'private vulnerability reporting',
+        pattern: /security\/advisories\/new/
+      },
+      {
+        label: 'untrusted input boundary',
+        pattern: /treated as untrusted input/
+      }
+    ]
+  },
+  {
+    file: 'docs/validation-protocol.md',
+    expectations: [
+      {
+        label: 'real change-set denominator',
+        pattern: /at least 20 real change sets/
+      },
+      {
+        label: 'controlled challenge denominator',
+        pattern: /at least 30 expected contradictions and 30 valid or ambiguous negative/
+      },
+      {
+        label: 'per-rule precision gate',
+        pattern: /at least 95% per rule/
+      }
+    ]
+  },
+  {
+    file: '.github/ISSUE_TEMPLATE/bug_report.yml',
+    expectations: [
+      {
+        label: 'required version field',
+        pattern: /id: version[\s\S]*?required: true/
+      },
+      {
+        label: 'required reproduction field',
+        pattern: /id: reproduction[\s\S]*?required: true/
+      },
+      {
+        label: 'required environment field',
+        pattern: /id: environment[\s\S]*?required: true/
+      }
+    ]
+  },
+  {
+    file: '.github/ISSUE_TEMPLATE/feature_request.yml',
+    expectations: [
+      {
+        label: 'required user evidence',
+        pattern: /id: evidence[\s\S]*?required: true/
+      },
+      {
+        label: 'required success criteria',
+        pattern: /id: success[\s\S]*?required: true/
       }
     ]
   },
@@ -94,8 +187,8 @@ const checks = [
         pattern: /'examples\/\*\*'/
       },
       {
-        label: 'evidence trigger',
-        pattern: /'evidence\/\*\*'/
+        label: 'public docs trigger',
+        pattern: /'docs\/\*\*'/
       },
       {
         label: 'action npm ci step',
@@ -123,7 +216,7 @@ const checks = [
       },
       {
         label: 'immutable Action caller-workspace proof',
-        pattern: /path: evidence\/private-beta-protocol\.md[\s\S]*?DOCLIFY_FILES/
+        pattern: /path: docs\/validation-protocol\.md[\s\S]*?DOCLIFY_FILES/
       },
       {
         label: 'Action v2 major reference smoke',
@@ -160,23 +253,6 @@ const checks = [
     ]
   },
   {
-    file: 'evidence/portfolio-beta3-draft.md',
-    expectations: [
-      {
-        label: 'beta.3 registry evidence',
-        pattern: /npm serves `1\.7\.4` on `latest` and\s+`2\.0\.0-beta\.3` on `next`/
-      },
-      {
-        label: 'portfolio publication boundary',
-        pattern: /Publication remains blocked until the private beta evidence exists/
-      },
-      {
-        label: 'beta.3 release commit evidence',
-        pattern: /3e0f9970319c75ea1760f09e57b203d156144d26/
-      }
-    ]
-  },
-  {
     file: 'CHANGELOG.md',
     expectations: [
       {
@@ -204,8 +280,8 @@ const checks = [
         pattern: /`2\.0\.0-beta\.3` is published on npm's `next` tag with a signed GitHub prerelease; `latest` remains on the stable v1 line/
       },
       {
-        label: 'open private-beta gate',
-        pattern: /private-beta task A4 still awaits qualifying real-user sessions/
+        label: 'open external validation gate',
+        pattern: /external validation still awaits qualifying real-user sessions/
       }
     ]
   },
@@ -259,7 +335,9 @@ const checks = [
 
 const requiredFiles = [
   'action/action.yml',
-  '.github/workflows/reliability.yml'
+  '.github/workflows/reliability.yml',
+  '.github/ISSUE_TEMPLATE/config.yml',
+  '.github/PULL_REQUEST_TEMPLATE.md'
 ];
 
 const forbiddenRefs = [];
