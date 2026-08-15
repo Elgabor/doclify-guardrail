@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage and command reference
+    url: https://github.com/Elgabor/doclify-guardrail#readme
+    about: Read the README for installation, commands, output, and Action usage.
+  - name: v1 migration guide
+    url: https://github.com/Elgabor/doclify-guardrail/blob/main/MIGRATION.md
+    about: Check the v1-to-v2 command, configuration, API, and Action mapping.
+  - name: Security vulnerability
+    url: https://github.com/Elgabor/doclify-guardrail/security/advisories/new
+    about: Report undisclosed security issues privately instead of opening an issue.

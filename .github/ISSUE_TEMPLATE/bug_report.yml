@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible problem in the CLI, API, or GitHub Action.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove tokens, API keys, private URLs, and personal data before posting.
+
+  - type: input
+    id: version
+    attributes:
+      label: Doclify version
+      description: Which package, commit, or Action tag shows the problem?
+      placeholder: "2.0.1 or action@v2.0.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or Action configuration
+      description: Paste the smallest relevant command or YAML input block.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: List the smallest local fixture and steps that reproduce the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Node.js version, and relevant CI runner details.
+      placeholder: "Ubuntu 24.04, Node 20.19.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add sanitized logs or links to a minimal public reproduction.

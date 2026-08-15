@@ -5,6 +5,15 @@ node_modules/
 doclify-report.md
 report.md
 /bench/out/
+
+# Local operator and agent control files (never published)
+/AGENTS.md
+/CLAUDE.md
+/CLAUDE.local.md
+/PLAN.md
+/TASKS.md
+# Legacy casing, kept ignored during local migrations.
+/plan.md
 /tasks.md
 
 # Local secrets and auth
@@ -15,13 +24,10 @@ report.md
 # Local --track artifacts
 .doclify-history.json
 
-# Internal docs and workflows (not public)
-CLAUDE.md
-CLAUDE.local.md
-.claude/
-.codex/
-agent-docs/
-/docs/
+# Other private agent material and workflows (not public)
+/.claude/
+/.codex/
+/agent-docs/
 /specs/
 /workflows/
 
