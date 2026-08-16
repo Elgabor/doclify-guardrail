@@ -8,6 +8,33 @@ maintainer-owned repositories, npm downloads, and GitHub activity are not user
 validation. The repository currently contains no qualifying participant
 results.
 
+## Phase A controlled precision evidence
+
+The Phase A candidate was evaluated on 300 independently frozen, repository-derived
+cases: 30 controlled contradictions and 30 valid or ambiguous negatives for each blocking
+rule. Static facts came from fixed commits and blobs in 20 public repositories; cases were
+recreated without copying repository prose or executing repository commands. Labels and
+fixtures were frozen before the candidate ran in an offline, read-only Docker profile, and
+all source checkouts remained unchanged.
+
+| Rule | Positive | Negative | TP | FP | FN | Precision | Source repositories |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `local-link` | 30 | 30 | 30 | 0 | 0 | 100% | 10 |
+| `package-script` | 30 | 30 | 30 | 0 | 0 | 100% | 10 |
+| `workspace-package` | 30 | 30 | 30 | 0 | 0 | 100% | 10 |
+| `make-target` | 30 | 30 | 30 | 0 | 0 | 100% | 10 |
+| `cli-contract` | 30 | 30 | 30 | 0 | 0 | 100% | Not applicable; public grammar permutations |
+
+All 150 positive cases had a paired repair that returned a clean result. The source set
+covered public JavaScript/TypeScript monorepos and Make-based projects, including Apollo
+Client, Redux Toolkit, Cypress, AWS SDK for JavaScript, Firebase, Socket.IO, Lerna, Gatsby,
+Parcel, Redwood, Linux, FFmpeg, Neovim, Vim, Terraform, Prometheus, Grafana, Podman, Docker
+CLI, and GitHub CLI.
+
+This is controlled technical evidence for the declared static grammar, not an estimate of
+precision on arbitrary prose or organic findings. It does not establish adoption, workflow
+replacement, or user value. Those claims remain blocked on the real-user protocol below.
+
 ## Questions
 
 The study must answer:
