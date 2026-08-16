@@ -298,6 +298,13 @@ async function runCheck(options = {}) {
   const files = [];
   const findings = [];
   const diagnostics = [...selection.diagnostics];
+  const diagnosticKeys = new Set(diagnostics.map((diagnostic) => `${diagnostic.code}\0${diagnostic.path}\0${diagnostic.message}`));
+  const addDiagnostic = (diagnostic) => {
+    const key = `${diagnostic.code}\0${diagnostic.path}\0${diagnostic.message}`;
+    if (diagnosticKeys.has(key)) return;
+    diagnosticKeys.add(key);
+    diagnostics.push(diagnostic);
+  };
   const remoteCache = new Map();
   let repositoryIndex = null;
   const getRepositoryIndex = () => {
@@ -314,7 +321,7 @@ async function runCheck(options = {}) {
     const filePath = relativePath(absolutePath, selection.workspace);
     if (getReadContainment(absolutePath, workspace) === 'outside') {
       files.push({ path: filePath, purpose: null, scanned: false, findings: null, suppressions: [] });
-      diagnostics.push({
+      addDiagnostic({
         code: 'target-outside-workspace',
         severity: 'error',
         path: filePath,
@@ -336,7 +343,7 @@ async function runCheck(options = {}) {
         : fs.readFileSync(absolutePath, 'utf8');
     } catch (error) {
       files.push({ path: filePath, purpose: null, scanned: false, findings: null, suppressions: [] });
-      diagnostics.push(stableReadDiagnostic(absolutePath, selection.workspace, error));
+      addDiagnostic(stableReadDiagnostic(absolutePath, selection.workspace, error));
       continue;
     }
 
@@ -346,8 +353,14 @@ async function runCheck(options = {}) {
     const ignored = new Set(fileOptions.ignoreRules);
     const indexPath = relativePath(absolutePath, discoveryRoot);
     const claimAnalysis = allowsRepositoryClaims(purpose) ? analyzeRepositoryClaims(content) : null;
-    const fileFindings = (claimAnalysis?.hasClaims
-      ? checkRepositoryClaims(claimAnalysis, getRepositoryIndex(), indexPath) : [])
+    const claimResult = claimAnalysis?.hasClaims
+      ? checkRepositoryClaims(claimAnalysis, getRepositoryIndex(), indexPath, {
+        // Historical/future purposes retain link and anchor checks but not current command claims.
+        allowCommandClaims: !['changelog', 'plan'].includes(purpose)
+      })
+      : { findings: [], diagnostics: [] };
+    for (const diagnostic of claimResult.diagnostics) addDiagnostic(diagnostic);
+    const fileFindings = claimResult.findings
       .filter((finding) => !ignored.has(finding.ruleId) && !suppressionMatcher.isSuppressed(finding.ruleId, finding.line))
       .map((finding) => ({ ...finding, path: filePath }));
 
@@ -359,7 +372,8 @@ async function runCheck(options = {}) {
       concurrency: fileOptions.linkConcurrency || undefined,
       remoteCache,
       checkRemote: fileOptions.externalLinks === true,
-      readBoundary: discoveryRoot
+      readBoundary: discoveryRoot,
+      isExcluded: configResolver.isExcluded
     });
     for (const finding of linkResult.findings) {
       if (finding.scope === 'local' && finding.code === 'unverifiable-root-relative-link') {
@@ -395,10 +409,10 @@ async function runCheck(options = {}) {
         continue;
       }
       if (finding.scope !== 'local' || finding.code !== 'dead-link') {
-        diagnostics.push({
+        addDiagnostic({
           code: String(finding.code),
           severity: 'error',
-          path: filePath,
+          path: finding.source ? relativePath(finding.source, discoveryRoot) : filePath,
           message: String(finding.message)
         });
         continue;

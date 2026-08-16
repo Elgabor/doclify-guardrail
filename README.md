@@ -73,22 +73,33 @@ npx doclify-guardrail check README.md --format json --output .doclify/result.jso
 
 The default rule set is intentionally small. A finding blocks only when the
 document uses a precise syntax and Doclify can show the static source that
-contradicts it. Ordinary prose and unsupported claims are left alone. A clean
-result means no supported claim in the selected documents was contradicted; it
-does not mean that every sentence was verified.
+contradicts it. Ordinary prose, dynamic syntax, and host-dependent routes are
+left alone. A clean result means no supported claim in the selected documents
+was contradicted; it does not mean that every sentence was verified. If a
+required source cannot be read or indexed completely, the result is
+`incomplete`, not a clean pass.
 
 ## Integrity Rules (5)
 
 | Rule | Verified syntax | Evidence source |
 | --- | --- | --- |
-| `local-link` | Local Markdown path or anchor | Workspace files and heading anchors |
-| `package-script` | `npm run <script>` | `package.json` scripts |
-| `workspace-package` | `npm --workspace <package> run <script>` | Workspace package manifests |
-| `make-target` | `make [options] [assignments] [targets...]` | Selected Makefile targets |
+| `local-link` | Explicit local path, or an anchor in a completely indexed Markdown file | Workspace files and ATX/Setext/static HTML anchors |
+| `package-script` | Complete static `npm run <literal>`; optional `--if-present` is respected | Applicable `package.json` scripts |
+| `workspace-package` | One static exact workspace name/path via `--workspace`/`-w`, before or after `run <literal>` | Declared workspace package manifests |
+| `make-target` | Static `make` targets with an explicit `-C`/`--directory`, or an unambiguous root context | Selected Makefile targets |
 | `cli-contract` | `doclify-guardrail <command> [options]` | Command-aware v2 CLI grammar |
 
 With `--external-links`, `external-link` reports a remote failure as advisory
 and unverified; it never turns a complete local scan into a false blocking result.
+
+For current command claims (`published`, `instructions`, and `fragment`), an
+unqualified `npm run` or `make` is checked against the root `package.json` or
+Makefile only when the selected document is directly in the discovery root.
+Documents in subdirectories require one static workspace selector or an
+explicit `-C`/`--directory` for a blocking command finding. `plan` and
+`changelog` purposes do not treat command examples as current instructions;
+`local-link` still applies to their paths and anchors. Unsupported syntax is
+not verified, and a clean result does not verify all prose.
 
 Use the built-in explanation when deciding whether to change a document or add
 a narrow suppression.
@@ -110,9 +121,11 @@ Every selected document has one purpose: `published`, `instructions`,
 `fragment`, `plan`, `changelog`, or `generated`. Configuration wins over the
 filename heuristic; the safe fallback is `fragment`. Purpose is included in
 the result for each file and does not turn generic formatting into a gate.
-In v2 the high-signal integrity rules are shared by non-generated purposes;
-`generated` skips repository-command claims so generated output is not treated
-as authored documentation.
+In v2, `generated` skips repository-command claims so generated output is not
+treated as authored documentation. `plan` and `changelog` are still selected,
+but their command examples are not treated as current command claims; local
+links and anchors continue to be checked. Purpose does not make unsupported
+syntax verified.
 
 ```json
 {
@@ -201,8 +214,15 @@ return a stable migration error. The complete mapping is in
 ## Limits
 
 Doclify does not validate Markdown style, execute code blocks, parse arbitrary
-prose as a claim, or validate MDX expressions. Remote link checks are opt-in
-and retain private-network protections.
+prose, or validate MDX expressions. Wildcards, placeholders, shell substitutions,
+implicit npm cwd, workspace parent/multiple selectors, and ambiguous nested
+Makefile contexts are unsupported rather than blocking facts. npm's implicit
+`env`, `restart`, and `start` events are not asserted absent from `scripts`.
+Unsupported is not the same as verified. Relative extensionless links are host
+routes and are not asserted
+against a guessed `.md` file. Remote link checks are opt-in and retain
+private-network protections. A clean result covers only supported claims in the
+selected documents, not all prose.
 
 ## License
 

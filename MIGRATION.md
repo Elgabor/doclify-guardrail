@@ -82,9 +82,23 @@ accepted.
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
 
-In v2 purpose is reported for every selected file. The high-signal integrity
-rules are shared by non-generated purposes; `generated` skips repository-command
-claims. This is classification, not a style preset.
+In v2 purpose is reported for every selected file. `generated` skips
+repository-command claims. `plan` and `changelog` do not treat command examples
+as current instructions, while their local paths and anchors remain subject to
+`local-link`. This is classification, not a style preset.
+
+For current command claims (`published`, `instructions`, and `fragment`), an
+unqualified `npm run` or `make` is checked against the root `package.json` or
+Makefile only when the selected document is directly in the discovery root.
+Documents in subdirectories require one static exact workspace name/path or an
+explicit `-C`/`--directory` for a blocking command finding. npm checks only
+complete static literal script keys and one exact workspace selector; wildcard,
+placeholder, shell-variable, parent/multiple-selector, and implicit-cwd forms
+are unsupported, not verified. npm's implicit `env`, `restart`, and `start`
+events are not asserted absent from `scripts`. Relative extensionless links are not mapped to
+`.md` by guesswork. A malformed or unreadable source needed by a selected claim
+produces an incomplete result rather than a clean pass. A clean result covers
+supported claims in the selected documents, not every sentence.
 
 ## GitHub Action
 
