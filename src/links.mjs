@@ -289,7 +289,24 @@ function checkLocalUrl(url, opts = {}) {
       }
     }
   }
+  const excludedPath = candidatePaths.find((candidate) => opts.isExcluded?.(candidate, { directory: false })
+    || opts.isExcluded?.(candidate, { directory: true }));
+  if (excludedPath) {
+    return {
+      code: 'evidence-source-unavailable',
+      severity: 'error',
+      operational: true,
+      source: excludedPath,
+      message: 'Evidence source is unavailable for this scan and cannot support this claim.'
+    };
+  }
   if (candidatePaths.some(candidate => fs.existsSync(candidate))) {
+    return null;
+  }
+
+  const decodedPath = decodeLocalPath(url);
+  // An absent extensionless relative path may be an HTML/wiki route; do not guess .md.
+  if (!resolved.unverifiableIfMissing && !decodedPath.startsWith('/') && !path.extname(decodedPath)) {
     return null;
   }
 
@@ -341,6 +358,7 @@ async function checkDeadLinksDetailed(content, {
   concurrency,
   remoteCache,
   readBoundary,
+  isExcluded,
   allowPrivateLinks,
   checkRemote = true,
   lookupFn,
@@ -391,7 +409,7 @@ async function checkDeadLinksDetailed(content, {
       continue;
     }
 
-    const localFinding = checkLocalUrl(url, { sourceFile, siteRoot, readBoundary });
+    const localFinding = checkLocalUrl(url, { sourceFile, siteRoot, readBoundary, isExcluded });
     if (localFinding) {
       const result = {
         code: localFinding.code,
@@ -400,7 +418,7 @@ async function checkDeadLinksDetailed(content, {
         operational: localFinding.operational === true,
         line: link.line,
         message: localFinding.message,
-        source: sourceFile
+        source: localFinding.source || sourceFile
       };
       findings.push(result);
       if (localFinding.operational) diagnostics.push(result);

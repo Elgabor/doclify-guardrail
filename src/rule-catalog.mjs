@@ -2,36 +2,36 @@ const RULE_CATALOG = [
   {
     id: 'local-link',
     severity: 'blocking',
-    purpose: 'Verify local Markdown links and anchors without network access.',
-    evidence: 'The referenced path or anchor is resolved against the selected workspace.',
+    purpose: 'Verify explicit local paths and anchors in completely indexed Markdown files without network access.',
+    evidence: 'The referenced path is resolved in the selected workspace; anchors use complete ATX, Setext, and static HTML anchor evidence.',
     remediation: 'Correct the target path or anchor, or remove the reference.'
   },
   {
     id: 'package-script',
     severity: 'blocking',
-    purpose: 'Verify explicit npm run commands against package.json scripts.',
-    evidence: 'The script name is looked up in the static package manifest index.',
+    purpose: 'Verify complete static npm run script names from a root document or one explicit workspace selector.',
+    evidence: 'The literal script name is looked up in the applicable static package manifest index.',
     remediation: 'Use an existing script name or update the documented command.'
   },
   {
     id: 'workspace-package',
     severity: 'blocking',
-    purpose: 'Verify explicit npm workspace selectors against declared workspaces.',
-    evidence: 'The package name is looked up in workspace package.json manifests.',
+    purpose: 'Verify one static exact npm --workspace or -w name/path against declared workspaces.',
+    evidence: 'The selector is matched exactly by package name or workspace path in declared workspace package.json manifests.',
     remediation: 'Use a declared workspace package name or update the documentation.'
   },
   {
     id: 'make-target',
     severity: 'blocking',
-    purpose: 'Verify explicit make targets against the repository Makefile.',
-    evidence: 'The target name is looked up in static Makefile declarations.',
+    purpose: 'Verify static make targets from a root document or an explicit -C/--directory context.',
+    evidence: 'The target name is looked up in static declarations from the selected Makefile; no make command is executed.',
     remediation: 'Use a declared Makefile target or update the documented command.'
   },
   {
     id: 'cli-contract',
     severity: 'blocking',
     purpose: 'Verify Doclify Guardrail commands and flags against its static CLI contract.',
-    evidence: 'The command and flag are compared with the in-package CLI contract; no command is executed.',
+    evidence: 'The command, flags, and positionals are compared with the in-package CLI grammar; no command is executed.',
     remediation: 'Use a documented Doclify Guardrail command or flag.'
   },
   {

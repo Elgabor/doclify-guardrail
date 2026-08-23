@@ -41,9 +41,9 @@
     { "id": "no-package-evidence", "text": "`npm run missing`", "expected": [], "withoutPackage": true },
     { "id": "no-make-evidence", "text": "`make missing`", "expected": [], "withoutMakefile": true },
     { "id": "generated-command-is-not-a-claim", "file": "notes.generated.md", "text": "`npm run missing`", "expected": [] },
-    { "id": "guide-purpose-claim", "file": "docs/guide.md", "text": "`npm run missing`", "expected": ["package-script"] },
-    { "id": "plan-purpose-claim", "file": "plan/ROADMAP.md", "text": "`npm run missing`", "expected": ["package-script"] },
-    { "id": "changelog-purpose-claim", "file": "CHANGELOG.md", "text": "`npm run missing`", "expected": ["package-script"] },
+    { "id": "guide-purpose-claim", "file": "docs/guide.md", "text": "`npm run missing`", "expected": [] },
+    { "id": "plan-purpose-claim", "file": "plan/ROADMAP.md", "text": "`npm run missing`", "expected": [] },
+    { "id": "changelog-purpose-claim", "file": "CHANGELOG.md", "text": "`npm run missing`", "expected": [] },
     { "id": "fragment-purpose-claim", "file": "note.md", "text": "`npm run missing`", "expected": ["package-script"] },
     { "id": "instructions-purpose-claim", "file": "AGENTS.md", "text": "`npm run missing`", "expected": ["package-script"] }
   ]

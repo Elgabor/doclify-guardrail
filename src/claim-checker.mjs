@@ -3,6 +3,7 @@ import path from 'node:path';
 import { analyzeFences, getFenceOpen } from './fences.mjs';
 import { parseCliInvocation } from './cli-contract.mjs';
 import { decodeLocalPath } from './local-url.mjs';
+import { isMarkdownPath } from './markdown-files.mjs';
 import { anchorFor } from './repository-index.mjs';
 
 const SHELL_FENCE_LANGUAGES = new Set(['sh', 'bash', 'shell', 'console', 'zsh', 'fish']);
@@ -17,6 +18,9 @@ const MAKE_VALUE_OPTIONS = new Set([
   '--assume-new', '--assume-old', '--directory', '--include-dir',
   '--new-file', '--old-file', '--what-if'
 ]);
+// npm treats the event name as a literal key; shell metacharacters are not static evidence.
+const NPM_DYNAMIC_MARKERS = /[*?\[\]{}$`<>]/;
+const NPM_IMPLICIT_EVENTS = new Set(['env', 'restart', 'start']);
 
 function claim(ruleId, line, message, fact, source) {
   return {
@@ -30,9 +34,72 @@ function claim(ruleId, line, message, fact, source) {
   };
 }
 
+function normalizeWorkspacePath(value) {
+  if (!value) return null;
+  const portable = value.replace(/\\/g, '/');
+  if (path.posix.isAbsolute(portable) || /^[A-Za-z]:\//.test(portable)) return null;
+  const normalized = path.posix.normalize(portable);
+  if (normalized === '..' || normalized.startsWith('../')) return null;
+  return normalized === '.' ? null : normalized;
+}
+
+function isStaticWorkspaceSelector(value) {
+  return Boolean(value && value !== '--' && !value.startsWith('-') && normalizeWorkspacePath(value));
+}
+
 function packageFor(index, workspaceName) {
-  if (!workspaceName) return index.rootPackage;
-  return index.packages.get(workspaceName) || null;
+  const selectorPath = normalizeWorkspacePath(workspaceName);
+  return (index.workspacePackages || []).find((packageInfo) => packageInfo.name === workspaceName
+    || (selectorPath && packageInfo.directory === selectorPath)) || null;
+}
+
+function isRootDocument(filePath) {
+  return path.posix.dirname(filePath) === '.';
+}
+
+function unavailableWorkspaceSource(index) {
+  const rootSource = index.packageSources?.get('package.json');
+  if (rootSource && !['available', 'absent'].includes(rootSource.state)) return rootSource;
+  return (index.workspaceSources || [])
+    .find((candidate) => !['available', 'absent'].includes(candidate.state)) || null;
+}
+
+function resolvePackageClaim(index, workspaceName, filePath) {
+  if (!workspaceName) {
+    if (!isRootDocument(filePath)) return { manifest: null, source: null, unknown: false };
+    return {
+      manifest: index.rootPackage,
+      source: index.packageSources?.get('package.json') || null,
+      unknown: false
+    };
+  }
+  const manifest = packageFor(index, workspaceName);
+  if (manifest) return { manifest, source: index.packageSources?.get(manifest.path) || null, unknown: false };
+  const selectorPath = normalizeWorkspacePath(workspaceName);
+  if (selectorPath && (index.workspacePackages || [])
+    .some((packageInfo) => packageInfo.directory.startsWith(`${selectorPath}/`))) {
+    // npm parent-directory selectors can address multiple workspaces, outside this single-source rule.
+    return { manifest: null, source: null, unknown: false };
+  }
+  if (!index.rootPackage && index.packageSources?.get('package.json')?.state === 'absent') {
+    return { manifest: null, source: null, unknown: false };
+  }
+  const matchingSource = (index.workspaceSources || []).find((source) => selectorPath && source.directory === selectorPath);
+  const source = matchingSource || unavailableWorkspaceSource(index);
+  return { manifest: null, source, unknown: !source };
+}
+
+function evidenceDiagnostic(source) {
+  if (!source || ['available', 'absent'].includes(source.state)) return null;
+  const code = source.state === 'invalid'
+    ? 'evidence-source-invalid'
+    : source.state === 'unreadable' ? 'evidence-source-unreadable' : 'evidence-source-unavailable';
+  const message = source.state === 'invalid'
+    ? 'Evidence source is malformed and cannot support this claim.'
+    : source.state === 'unreadable'
+      ? 'Evidence source cannot be read and cannot support this claim.'
+      : 'Evidence source is unavailable for this scan and cannot support this claim.';
+  return { code, severity: 'error', path: source.path, message };
 }
 
 function normalizeAnchor(value) {
@@ -75,16 +142,59 @@ function staticCommandWords(text) {
       push();
       continue;
     }
-    if (';&|'.includes(character)) {
-      push();
-      break;
-    }
+    if (';&|'.includes(character)) return null;
     if (character === '#' && word === '') break;
     word += character;
   }
   if (quote || escaped) return null;
   push();
   return words;
+}
+
+function workspaceOptionAt(words, index) {
+  const token = words[index];
+  if (token === '--workspace' || token === '-w') {
+    return { value: words[index + 1], nextIndex: index + 2 };
+  }
+  if (token?.startsWith('--workspace=')) {
+    return { value: token.slice('--workspace='.length), nextIndex: index + 1 };
+  }
+  if (token?.startsWith('-w=')) {
+    return { value: token.slice(3), nextIndex: index + 1 };
+  }
+  return null;
+}
+
+function parseStaticNpmRun(words) {
+  if (!words || words[0] !== 'npm') return null;
+  let index = 1;
+  let workspaceName = null;
+  while (index < words.length && words[index] !== 'run') {
+    const option = workspaceOptionAt(words, index);
+    if (!option || workspaceName || !isStaticWorkspaceSelector(option.value)
+      || NPM_DYNAMIC_MARKERS.test(option.value)) return null;
+    workspaceName = option.value;
+    index = option.nextIndex;
+  }
+  if (words[index] !== 'run') return null;
+  const scriptName = words[index + 1];
+  if (!scriptName || scriptName.startsWith('-') || NPM_DYNAMIC_MARKERS.test(scriptName)) return null;
+  index += 2;
+  let ifPresent = false;
+  while (index < words.length && words[index] !== '--') {
+    const option = workspaceOptionAt(words, index);
+    if (option) {
+      if (workspaceName || !isStaticWorkspaceSelector(option.value)
+        || NPM_DYNAMIC_MARKERS.test(option.value)) return null;
+      workspaceName = option.value;
+    } else if (words[index] !== '--if-present') {
+      return null;
+    } else {
+      ifPresent = true;
+    }
+    index = option ? option.nextIndex : index + 1;
+  }
+  return { workspaceName, scriptName, ifPresent };
 }
 
 function makeDirectory(current, value) {
@@ -95,6 +205,7 @@ function makeDirectory(current, value) {
 
 function parseMakeInvocation(words) {
   let directory = '.';
+  let explicitDirectory = false;
   const targets = [];
   let optionsEnded = false;
   for (let index = 1; index < words.length; index += 1) {
@@ -132,6 +243,7 @@ function parseMakeInvocation(words) {
       if (longFlag === '--directory') {
         directory = makeDirectory(directory, value);
         if (directory == null) return null;
+        explicitDirectory = true;
       }
       continue;
     }
@@ -140,6 +252,7 @@ function parseMakeInvocation(words) {
       const value = token === '-C' ? words[++index] : token.slice(2);
       directory = makeDirectory(directory, value);
       if (directory == null) return null;
+      explicitDirectory = true;
       continue;
     }
     if (token === '-f' || token.startsWith('-f')) return null;
@@ -154,7 +267,13 @@ function parseMakeInvocation(words) {
     if (/^-[bBdeikmnpqrsStvw]+$/.test(token)) continue;
     return null;
   }
-  return { directory, targets };
+  return { directory, explicitDirectory, targets };
+}
+
+function makefileContextFor(invocation, filePath) {
+  if (invocation.explicitDirectory) return { directory: invocation.directory };
+  // A Markdown path is not a shell cwd; only a root document has an observable root context.
+  return isRootDocument(filePath) ? { directory: '.' } : null;
 }
 
 function analyzeRepositoryClaims(content) {
@@ -181,20 +300,30 @@ function analyzeRepositoryClaims(content) {
       segments.push({ line: offset + 1, text: match[1] });
     }
   }
-  const hasCommand = segments.some(({ text }) => /\b(?:npm(?:\s+--workspace(?:=|\s+)[^\s]+)?\s+run|make\s+|doclify-guardrail\s+)/.test(text));
+  const hasCommand = segments.some(({ text }) => /\bnpm\b|\bmake\s+|\bdoclify-guardrail\s+/.test(text));
   const hasAnchor = lines.some((line, offset) => !fences.inFence[offset]
     && /\[[^\]]*\]\([^\s)]+#[^\s)]+\)/.test(line));
   return { lines, fences, segments, hasClaims: hasCommand || hasAnchor };
 }
 
-function checkRepositoryClaims(analysis, index, filePath) {
+function checkRepositoryClaims(analysis, index, filePath, { allowCommandClaims = true } = {}) {
   const findings = [];
+  const diagnostics = [];
   const seen = new Set();
+  const seenDiagnostics = new Set();
   const add = (finding) => {
     const key = `${finding.ruleId}\0${finding.line}\0${finding.message}`;
     if (!seen.has(key)) {
       seen.add(key);
       findings.push(finding);
+    }
+  };
+  const addDiagnostic = (diagnostic) => {
+    if (!diagnostic) return;
+    const key = `${diagnostic.code}\0${diagnostic.path}`;
+    if (!seenDiagnostics.has(key)) {
+      seenDiagnostics.add(key);
+      diagnostics.push(diagnostic);
     }
   };
 
@@ -209,7 +338,18 @@ function checkRepositoryClaims(analysis, index, filePath) {
       const targetPath = target
         ? path.posix.normalize(path.posix.join(path.posix.dirname(filePath), decodeLocalPath(target)))
         : filePath;
-      if (!index.files.has(targetPath)) continue;
+      if (!index.files.has(targetPath)) {
+        const excluded = [...(index.excludedPaths || [])].find((excludedPath) => targetPath === excludedPath
+          || targetPath.startsWith(`${excludedPath}/`));
+        if (excluded) addDiagnostic(evidenceDiagnostic({ path: targetPath, state: 'excluded' }));
+        continue;
+      }
+      if (!isMarkdownPath(targetPath)) continue;
+      const anchorSource = index.anchorSources?.get(targetPath) || { path: targetPath, state: 'unavailable' };
+      if (anchorSource.state !== 'available') {
+        addDiagnostic(evidenceDiagnostic(anchorSource));
+        continue;
+      }
       const anchors = index.anchors.get(targetPath);
       const anchor = normalizeAnchor(fragment).toLowerCase();
       if (anchor && !anchors?.has(anchor)) {
@@ -217,53 +357,57 @@ function checkRepositoryClaims(analysis, index, filePath) {
       }
     }
   }
+  if (!allowCommandClaims) return { findings, diagnostics };
+
   for (const { line: lineNumber, text: segment } of segments) {
-    const npm = /\bnpm(?:\s+--workspace(?:=|\s+)([^\s]+))?\s+run\s+([A-Za-z0-9:_-]+)/g;
-    let npmMatch;
-    while ((npmMatch = npm.exec(segment)) !== null) {
-      const workspaceName = npmMatch[1];
-      const scriptName = npmMatch[2];
-      const manifest = packageFor(index, workspaceName);
-      if (workspaceName && !manifest) {
-        add(claim('workspace-package', lineNumber, `Unknown workspace package: ${workspaceName}.`, `No workspace package named ${workspaceName} was found.`, 'workspace package.json manifests'));
+    const staticWords = staticCommandWords(segment);
+    const npm = parseStaticNpmRun(staticWords);
+    if (npm) {
+      const { workspaceName, scriptName, ifPresent } = npm;
+      const packageClaim = resolvePackageClaim(index, workspaceName, filePath);
+      addDiagnostic(evidenceDiagnostic(packageClaim.source));
+      if (packageClaim.source && packageClaim.source.state !== 'available') continue;
+      if (workspaceName && !packageClaim.manifest) {
+        if (packageClaim.unknown) {
+          add(claim('workspace-package', lineNumber, `Unknown workspace package: ${workspaceName}.`, `No workspace package named ${workspaceName} was found.`, 'workspace package.json manifests'));
+        }
         continue;
       }
-      if (!manifest) continue;
-      if (!manifest.scripts.has(scriptName)) {
-        add(claim('package-script', lineNumber, `Unknown npm script: ${scriptName}.`, `No script named ${scriptName} was found in ${manifest.path}.`, manifest.path));
+      if (!packageClaim.manifest || ifPresent) continue;
+      if (!packageClaim.manifest.scripts.has(scriptName) && !NPM_IMPLICIT_EVENTS.has(scriptName)) {
+        add(claim('package-script', lineNumber, `Unknown npm script: ${scriptName}.`, `No script named ${scriptName} was found in ${packageClaim.manifest.path}.`, packageClaim.manifest.path));
       }
     }
 
-    const make = /\bmake\b/g;
-    let makeMatch;
-    while ((makeMatch = make.exec(segment)) !== null) {
-      const words = staticCommandWords(segment.slice(makeMatch.index));
-      const invocation = words && parseMakeInvocation(words);
-      if (!invocation) continue;
-      const makefile = index.makefiles.get(invocation.directory);
-      if (!makefile) continue;
-      for (const target of invocation.targets) {
-        if (!makefile.acceptsUnknownTargets && !makefile.targets.has(target)
-          && !makefile.patterns.some((pattern) => pattern.test(target))) {
-          add(claim('make-target', lineNumber, `Unknown make target: ${target}.`, `No Makefile target named ${target} was found.`, makefile.path));
+    const invocation = staticWords?.[0] === 'make' ? parseMakeInvocation(staticWords) : null;
+    if (invocation) {
+      const makefileContext = makefileContextFor(invocation, filePath);
+      if (makefileContext) {
+        const makefile = index.makefiles.get(makefileContext.directory);
+        if (!makefile) {
+          addDiagnostic(evidenceDiagnostic(index.makeSources?.get(makefileContext.directory)));
+        } else {
+          for (const target of invocation.targets) {
+            if (!makefile.acceptsUnknownTargets && !makefile.targets.has(target)
+              && !makefile.patterns.some((pattern) => pattern.test(target))) {
+              add(claim('make-target', lineNumber, `Unknown make target: ${target}.`, `No Makefile target named ${target} was found.`, makefile.path));
+            }
+          }
         }
       }
     }
 
-    const cli = /\bdoclify-guardrail(?=\s)/g;
-    let cliMatch;
-    while ((cliMatch = cli.exec(segment)) !== null) {
-      const commandText = segment.slice(cliMatch.index);
-      if (/<[A-Za-z][^>]*>/.test(commandText)) continue;
-      const words = staticCommandWords(commandText);
-      if (!words) continue;
-      const invocation = parseCliInvocation(words.slice(1));
+    const cliIndex = staticWords?.[0] === 'doclify-guardrail'
+      ? 0
+      : staticWords?.[0] === 'npx' && staticWords[1] === 'doclify-guardrail' ? 1 : -1;
+    if (cliIndex >= 0 && staticWords.length > cliIndex + 1 && !/<[A-Za-z][^>]*>/.test(segment)) {
+      const invocation = parseCliInvocation(staticWords.slice(cliIndex + 1));
       if (!invocation.valid) {
         add(claim('cli-contract', lineNumber, 'Invalid Doclify Guardrail invocation.', invocation.message, 'src/cli-contract.mjs'));
       }
     }
   }
-  return findings;
+  return { findings, diagnostics };
 }
 
 export { analyzeRepositoryClaims, checkRepositoryClaims };
