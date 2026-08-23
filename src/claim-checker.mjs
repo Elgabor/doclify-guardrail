@@ -60,11 +60,8 @@ function isRootDocument(filePath) {
 function unavailableWorkspaceSource(index) {
   const rootSource = index.packageSources?.get('package.json');
   if (rootSource && !['available', 'absent'].includes(rootSource.state)) return rootSource;
-  const source = [...(index.workspaceSources || [])]
-    .filter((candidate) => !['available', 'absent'].includes(candidate.state))
-    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))[0];
-  if (source) return source;
-  return null;
+  return (index.workspaceSources || [])
+    .find((candidate) => !['available', 'absent'].includes(candidate.state)) || null;
 }
 
 function resolvePackageClaim(index, workspaceName, filePath) {

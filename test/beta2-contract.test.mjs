@@ -29,6 +29,15 @@ function runCli(args, cwd, input) {
   });
 }
 
+function assertSingleDiagnostic(result, code, diagnosticPath) {
+  assert.equal(result.status, 'incomplete');
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.diagnostics.map(({ code: itemCode, path: itemPath }) => ({
+    code: itemCode, path: itemPath
+  })), [{ code, path: diagnosticPath }]);
+}
+
 test('npm-style binary symlink invokes the CLI entrypoint', { skip: process.platform === 'win32' }, (t) => {
   const cwd = makeTempDir(t);
   const bin = path.join(cwd, 'doclify-guardrail');
@@ -350,12 +359,7 @@ test('required evidence failures are incomplete without inventing negatives', as
   fs.writeFileSync(path.join(malformedRoot, 'package.json'), '{ invalid json', 'utf8');
   fs.writeFileSync(path.join(malformedRoot, 'README.md'), '# Root\n\n`npm run missing`\n', 'utf8');
   const malformedRootResult = await check({ cwd: malformedRoot, paths: ['README.md'] });
-  assert.equal(malformedRootResult.status, 'incomplete');
-  assert.equal(malformedRootResult.complete, false);
-  assert.deepEqual(malformedRootResult.findings, []);
-  assert.deepEqual(malformedRootResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-    { code: 'evidence-source-invalid', path: 'package.json' }
-  ]);
+  assertSingleDiagnostic(malformedRootResult, 'evidence-source-invalid', 'package.json');
 
   const malformedWorkspace = makeTempDir(t);
   fs.mkdirSync(path.join(malformedWorkspace, 'packages', 'app'), { recursive: true });
@@ -365,11 +369,7 @@ test('required evidence failures are incomplete without inventing negatives', as
   fs.writeFileSync(path.join(malformedWorkspace, 'packages', 'app', 'package.json'), '{ invalid json', 'utf8');
   fs.writeFileSync(path.join(malformedWorkspace, 'README.md'), '# Root\n\n`npm --workspace ./packages/app run build`\n', 'utf8');
   const malformedWorkspaceResult = await check({ cwd: malformedWorkspace, paths: ['README.md'] });
-  assert.equal(malformedWorkspaceResult.status, 'incomplete');
-  assert.deepEqual(malformedWorkspaceResult.findings, []);
-  assert.deepEqual(malformedWorkspaceResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-    { code: 'evidence-source-invalid', path: 'packages/app/package.json' }
-  ]);
+  assertSingleDiagnostic(malformedWorkspaceResult, 'evidence-source-invalid', 'packages/app/package.json');
 
   const absent = makeTempDir(t);
   fs.writeFileSync(path.join(absent, 'README.md'), '# No manifest\n\n`npm run missing`\n', 'utf8');
@@ -405,11 +405,7 @@ test('required evidence failures are incomplete without inventing negatives', as
     } finally {
       fs.chmodSync(unreadableTarget, 0o600);
     }
-    assert.equal(unreadableResult.status, 'incomplete');
-    assert.deepEqual(unreadableResult.findings, []);
-    assert.deepEqual(unreadableResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-      { code: 'evidence-source-unreadable', path: 'guide.md' }
-    ]);
+    assertSingleDiagnostic(unreadableResult, 'evidence-source-unreadable', 'guide.md');
   }
 
   if (process.platform !== 'win32') {
@@ -424,22 +420,14 @@ test('required evidence failures are incomplete without inventing negatives', as
     } finally {
       fs.chmodSync(unreadableMakefile, 0o600);
     }
-    assert.equal(unreadableMakeResult.status, 'incomplete');
-    assert.deepEqual(unreadableMakeResult.findings, []);
-    assert.deepEqual(unreadableMakeResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-      { code: 'evidence-source-unreadable', path: 'Makefile' }
-    ]);
+    assertSingleDiagnostic(unreadableMakeResult, 'evidence-source-unreadable', 'Makefile');
   }
 
   const excludedAnchor = makeTempDir(t);
   fs.writeFileSync(path.join(excludedAnchor, 'README.md'), '# Root\n\n[guide](guide.md#existing)\n', 'utf8');
   fs.writeFileSync(path.join(excludedAnchor, 'guide.md'), '# Existing\n', 'utf8');
   const excludedAnchorResult = await check({ cwd: excludedAnchor, paths: ['README.md'], exclude: ['guide.md'] });
-  assert.equal(excludedAnchorResult.status, 'incomplete');
-  assert.deepEqual(excludedAnchorResult.findings, []);
-  assert.deepEqual(excludedAnchorResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-    { code: 'evidence-source-unavailable', path: 'guide.md' }
-  ]);
+  assertSingleDiagnostic(excludedAnchorResult, 'evidence-source-unavailable', 'guide.md');
 
   const excludedLocalPath = makeTempDir(t);
   fs.writeFileSync(path.join(excludedLocalPath, 'README.md'), '# Root\n\n[guide](guide.md)\n', 'utf8');
@@ -447,13 +435,7 @@ test('required evidence failures are incomplete without inventing negatives', as
   const excludedLocalPathResult = await check({
     cwd: excludedLocalPath, paths: ['README.md'], exclude: ['guide.md']
   });
-  assert.equal(excludedLocalPathResult.status, 'incomplete');
-  assert.deepEqual(excludedLocalPathResult.findings, []);
-  assert.deepEqual(excludedLocalPathResult.diagnostics.map(({ code, path: diagnosticPath }) => ({
-    code, path: diagnosticPath
-  })), [
-    { code: 'evidence-source-unavailable', path: 'guide.md' }
-  ]);
+  assertSingleDiagnostic(excludedLocalPathResult, 'evidence-source-unavailable', 'guide.md');
 
   const excludedMake = makeTempDir(t);
   fs.writeFileSync(path.join(excludedMake, 'Makefile'), 'present:\n\t@true\n', 'utf8');
@@ -461,13 +443,7 @@ test('required evidence failures are incomplete without inventing negatives', as
   const excludedMakeResult = await check({
     cwd: excludedMake, paths: ['README.md'], exclude: ['Makefile']
   });
-  assert.equal(excludedMakeResult.status, 'incomplete');
-  assert.deepEqual(excludedMakeResult.findings, []);
-  assert.deepEqual(excludedMakeResult.diagnostics.map(({ code, path: diagnosticPath }) => ({
-    code, path: diagnosticPath
-  })), [
-    { code: 'evidence-source-unavailable', path: 'Makefile' }
-  ]);
+  assertSingleDiagnostic(excludedMakeResult, 'evidence-source-unavailable', 'Makefile');
 
   if (process.platform !== 'win32') {
     const unreadableWorkspace = makeTempDir(t);
@@ -488,13 +464,7 @@ test('required evidence failures are incomplete without inventing negatives', as
     } finally {
       fs.chmodSync(unreadableDirectory, 0o700);
     }
-    assert.equal(unreadableWorkspaceResult.status, 'incomplete');
-    assert.deepEqual(unreadableWorkspaceResult.findings, []);
-    assert.deepEqual(unreadableWorkspaceResult.diagnostics.map(({ code, path: diagnosticPath }) => ({
-      code, path: diagnosticPath
-    })), [
-      { code: 'evidence-source-unreadable', path: 'packages/app' }
-    ]);
+    assertSingleDiagnostic(unreadableWorkspaceResult, 'evidence-source-unreadable', 'packages/app');
   }
 });
 
@@ -545,21 +515,13 @@ test('local links keep host routes separate from complete anchor evidence', asyn
   fs.writeFileSync(path.join(unclosedFence, 'Page.md'), '```md\n# Fenced\n', 'utf8');
   fs.writeFileSync(path.join(unclosedFence, 'README.md'), '# Links\n\n[fenced](Page.md#fenced)\n', 'utf8');
   const unclosedFenceResult = await check({ cwd: unclosedFence, paths: ['README.md'] });
-  assert.equal(unclosedFenceResult.status, 'incomplete');
-  assert.deepEqual(unclosedFenceResult.findings, []);
-  assert.deepEqual(unclosedFenceResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-    { code: 'evidence-source-unavailable', path: 'Page.md' }
-  ]);
+  assertSingleDiagnostic(unclosedFenceResult, 'evidence-source-unavailable', 'Page.md');
 
   const dynamic = makeTempDir(t);
   fs.writeFileSync(path.join(dynamic, 'Page.md'), '<div\n id={dynamic}>\n</div>\n', 'utf8');
   fs.writeFileSync(path.join(dynamic, 'README.md'), '# Links\n\n[dynamic](Page.md#missing)\n', 'utf8');
   const dynamicResult = await check({ cwd: dynamic, paths: ['README.md'] });
-  assert.equal(dynamicResult.status, 'incomplete');
-  assert.deepEqual(dynamicResult.findings, []);
-  assert.deepEqual(dynamicResult.diagnostics.map(({ code, path: diagnosticPath }) => ({ code, path: diagnosticPath })), [
-    { code: 'evidence-source-unavailable', path: 'Page.md' }
-  ]);
+  assertSingleDiagnostic(dynamicResult, 'evidence-source-unavailable', 'Page.md');
 
   const dataAttribute = makeTempDir(t);
   fs.writeFileSync(path.join(dataAttribute, 'Page.md'), '<div data-id="not-an-anchor"></div>\n', 'utf8');
@@ -579,13 +541,7 @@ test('local links keep host routes separate from complete anchor evidence', asyn
     fs.writeFileSync(path.join(ambiguousHtml, 'Page.mdx'), targetContent, 'utf8');
     fs.writeFileSync(path.join(ambiguousHtml, 'README.md'), '# Links\n\n[unknown](Page.mdx#maybe)\n', 'utf8');
     const ambiguousHtmlResult = await check({ cwd: ambiguousHtml, paths: ['README.md'] });
-    assert.equal(ambiguousHtmlResult.status, 'incomplete');
-    assert.deepEqual(ambiguousHtmlResult.findings, []);
-    assert.deepEqual(ambiguousHtmlResult.diagnostics.map(({ code, path: diagnosticPath }) => ({
-      code, path: diagnosticPath
-    })), [
-      { code: 'evidence-source-unavailable', path: 'Page.mdx' }
-    ]);
+    assertSingleDiagnostic(ambiguousHtmlResult, 'evidence-source-unavailable', 'Page.mdx');
   }
 
   for (const fencedContent of [

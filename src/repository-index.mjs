@@ -208,7 +208,6 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     workspaceSources: [],
     anchorSources: new Map(),
     makeSources: new Map(),
-    complete: true,
     excludedPaths: new Set(),
     excludedDirectories: new Set(),
     unreadableDirectories: new Set(),
@@ -222,7 +221,6 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     try {
       entries = fs.readdirSync(directory, { withFileTypes: true });
     } catch {
-      index.complete = false;
       index.unreadableDirectories.add(portable(path.relative(workspace, directory)) || '.');
       return;
     }
@@ -231,7 +229,6 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
       if (IGNORED_DIRECTORIES.has(entry.name)) continue;
       const absolutePath = path.join(directory, entry.name);
       if (isExcluded(absolutePath, { directory: entry.isDirectory() })) {
-        index.complete = false;
         const excludedPath = portable(path.relative(workspace, absolutePath));
         index.excludedPaths.add(excludedPath);
         if (entry.isDirectory()) {
@@ -271,7 +268,6 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
           } catch {
             index.makefiles.delete(directory);
             index.makeSources.set(directory, { path: relative, state: 'unreadable', priority });
-            index.complete = false;
           }
         }
       }
@@ -283,10 +279,8 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
             path: relative,
             state: anchorAnalysis.complete ? 'available' : 'unavailable'
           });
-          if (!anchorAnalysis.complete) index.complete = false;
         } catch {
           index.anchorSources.set(relative, { path: relative, state: 'unreadable' });
-          index.complete = false;
         }
       }
     }
@@ -298,7 +292,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
   if (rootCandidate) {
     rootResult = addPackage(index, rootCandidate, workspace);
   } else {
-    const rootExcluded = [...index.excludedPaths].some((excludedPath) => excludedPath === 'package.json');
+    const rootExcluded = index.excludedPaths.has('package.json');
     const state = rootExcluded ? 'excluded' : 'absent';
     index.packageSources.set('package.json', { path: 'package.json', state });
   }
@@ -333,6 +327,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     });
     if (result?.packageInfo) index.workspacePackages.push(result.packageInfo);
   }
+  index.workspaceSources.sort((left, right) => compareText(left.path, right.path));
   return index;
 }
 
