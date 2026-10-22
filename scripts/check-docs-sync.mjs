@@ -171,16 +171,16 @@ const checks = [
         pattern: /permissions:\s*\n\s+contents: read/
       },
       {
-        label: 'current checkout action',
-        pattern: /uses: actions\/checkout@v5\.0\.1/
+        label: 'immutable checkout action',
+        pattern: /uses: actions\/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd/
       },
       {
         label: 'non-persisted checkout credentials',
         pattern: /persist-credentials: false/
       },
       {
-        label: 'current setup-node action',
-        pattern: /uses: actions\/setup-node@v6\.4\.0/
+        label: 'immutable setup-node action',
+        pattern: /uses: actions\/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e/
       },
       {
         label: 'examples trigger',
@@ -211,16 +211,16 @@ const checks = [
         pattern: /DOCLIFY_STATUS[\s\S]*?DOCLIFY_COMPLETE[\s\S]*?DOCLIFY_BLOCKING/
       },
       {
-        label: 'immutable Action release pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@ad98fb4efc0744360c305747767070d0549c764f/
+        label: 'immutable security-fixed Action pin',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@4d84618dec4568cff757e721d37399df8655c3fc/
       },
       {
         label: 'immutable Action caller-workspace proof',
         pattern: /path: docs\/validation-protocol\.md[\s\S]*?DOCLIFY_FILES/
       },
       {
-        label: 'Action v2 major reference smoke',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\s/
+        label: 'patched CI Node runtime',
+        pattern: /node-version: '22\.23\.4'/
       },
       {
         label: 'docs sync step',
