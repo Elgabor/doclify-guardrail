@@ -30,6 +30,7 @@ report.md
 /agent-docs/
 /specs/
 /workflows/
+/docs/codebase-map.html
 
 # Build artifacts
 /dist/
