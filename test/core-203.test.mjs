@@ -34,25 +34,70 @@ test('link-free input stays within a bounded scanner budget in all three grammar
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('repeated local evidence checks stay within a bounded filesystem budget', (t) => {
+test('local evidence metadata calls grow with distinct paths instead of repeated links', (t) => {
   const root = temp(t);
-  fs.mkdirSync(path.join(root, 'docs'));
-  fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({ exclude: ['private/**'] }));
-  fs.writeFileSync(path.join(root, 'README.md'), '[target](docs/target.md)\n'.repeat(80000));
-  fs.writeFileSync(path.join(root, 'docs', 'target.md'), '# Target\n');
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { syncBuiltinESMExports } from 'node:module';
     import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
-    const result = await check({ cwd: process.cwd(), paths: ['README.md'] });
-    assert.equal(result.complete, true);
-    assert.deepEqual(result.findings, []);
-    assert.deepEqual(result.diagnostics, []);
+    const root = process.cwd();
+    const targets = Array.from({ length: 8 }, (_, index) => 'docs/target-' + index + '/guide.md');
+    const parents = new Set();
+    for (const target of targets) {
+      const directory = path.dirname(path.join(root, target));
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(root, target), '# Target\\n');
+      parents.add(directory);
+      parents.add(fs.realpathSync(directory));
+    }
+    fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({ exclude: ['private/**'] }));
+    const methods = ['realpathSync', 'lstatSync', 'statSync', 'existsSync'];
+    const originals = Object.fromEntries(methods.map(name => [name, fs[name]]));
+    let counts;
+    for (const name of methods) {
+      fs[name] = function (...args) {
+        // Count directory resolution; per-link containment still inspects each target file.
+        if (counts && typeof args[0] === 'string' && parents.has(path.resolve(args[0]))) counts[name] += 1;
+        return Reflect.apply(originals[name], this, args);
+      };
+    }
+    syncBuiltinESMExports();
+    async function measure(paths, repetitions) {
+      fs.writeFileSync(path.join(root, 'README.md'), paths.map(target => '[target](' + target + ')\\n').join('').repeat(repetitions));
+      counts = Object.fromEntries(methods.map(name => [name, 0]));
+      const result = await check({ cwd: root, paths: ['README.md'] });
+      assert.equal(result.complete, true);
+      assert.equal(result.summary.filesScanned, 1);
+      assert.deepEqual(result.findings, []);
+      assert.deepEqual(result.diagnostics, []);
+      return counts;
+    }
+    try {
+      const single = await measure(targets.slice(0, 1), 1);
+      const repeated = await measure(targets.slice(0, 1), 64);
+      const distinct = await measure(targets, 1);
+      const repeatedDistinct = await measure(targets, 64);
+      process.stdout.write(JSON.stringify({ single, repeated, distinct, repeatedDistinct }));
+    } finally {
+      Object.assign(fs, originals);
+      syncBuiltinESMExports();
+    }
   `], {
-    cwd: root, encoding: 'utf8', timeout: 5000,
+    cwd: root, encoding: 'utf8', timeout: 60000,
     env: { PATH: process.env.PATH || '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
   });
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
+  const { single, repeated, distinct, repeatedDistinct } = JSON.parse(result.stdout);
+  t.diagnostic(JSON.stringify({ single, repeated, distinct, repeatedDistinct }));
+  assert.deepEqual(repeated, single, 'Repeating one link must not repeat parent directory resolution.');
+  assert.deepEqual(repeatedDistinct, distinct, 'Repeating several links must not repeat parent directory resolution.');
+  const total = counts => Object.values(counts).reduce((sum, count) => sum + count, 0);
+  assert.ok(total(single) > 0, 'The scan must inspect the evidence parent directory.');
+  assert.ok(total(distinct) > total(single), 'New evidence directories must be inspected.');
+  assert.ok(total(distinct) <= 8 * total(single), 'Directory resolution must grow with distinct paths.');
 });
 
 test('filesystem and exclusion memoization never survives an API scan', async (t) => {
