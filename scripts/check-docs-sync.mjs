@@ -191,6 +191,10 @@ const checks = [
         pattern: /'docs\/\*\*'/
       },
       {
+        label: 'release verifier trigger and regression gate',
+        pattern: /'\.github\/scripts\/\*\*'[\s\S]*?run: node --test \.github\/scripts\/verify-release\.test\.mjs/
+      },
+      {
         label: 'action npm ci step',
         pattern: /run: npm ci --no-audit --no-fund --ignore-scripts/
       },
@@ -249,6 +253,35 @@ const checks = [
       {
         label: 'README-only docs gate',
         pattern: /run: node \.\/src\/index\.mjs check README\.md --format compact/
+      }
+    ]
+  },
+  {
+    file: '.github/workflows/release.yml',
+    expectations: [
+      {
+        label: 'manual dispatch with explicit tag',
+        pattern: /on:\n  workflow_dispatch:\n    inputs:\n      tag:/
+      },
+      {
+        label: 'test job without publishing privileges',
+        pattern: /  test:\n[\s\S]*?permissions:\n      contents: read\n    outputs:/
+      },
+      {
+        label: 'protected publish job with scoped OIDC permission',
+        pattern: /  publish:\n    needs: test\n    if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'\n[\s\S]*?environment: npm\n    permissions:\n      contents: read\n      id-token: write/
+      },
+      {
+        label: 'revalidation of tested commit and annotated tag',
+        pattern: /EXPECTED_COMMIT: \$\{\{ needs\.test\.outputs\.commit \}\}[\s\S]*?EXPECTED_TAG_OBJECT: \$\{\{ needs\.test\.outputs\.tag-object \}\}[\s\S]*?run: node \.github\/scripts\/verify-release\.mjs/
+      },
+      {
+        label: 'exact publishing runtime and npm minimum',
+        pattern: /node-version: '26\.13\.0'[\s\S]*?npm >= 11\.5\.1/
+      },
+      {
+        label: 'test and package inspection before publish',
+        pattern: /npm test[\s\S]*?npm pack --dry-run --json --ignore-scripts[\s\S]*?npm publish --access public --ignore-scripts --registry https:\/\/registry\.npmjs\.org/
       }
     ]
   },
@@ -348,6 +381,8 @@ const checks = [
 const requiredFiles = [
   'action/action.yml',
   '.github/workflows/reliability.yml',
+  '.github/workflows/release.yml',
+  '.github/scripts/verify-release.mjs',
   '.github/ISSUE_TEMPLATE/config.yml',
   '.github/PULL_REQUEST_TEMPLATE.md'
 ];
@@ -369,6 +404,14 @@ const remoteActions = new Set(['actions/checkout', 'actions/setup-node', 'Elgabo
 for (const file of fs.readdirSync(path.join(rootDir, '.github', 'workflows'))) {
   if (!/\.ya?ml$/.test(file)) continue;
   const content = fs.readFileSync(path.join(rootDir, '.github', 'workflows', file), 'utf8');
+  if (file === 'release.yml') {
+    const testJob = content.split('\n  test:\n')[1]?.split('\n  publish:\n')[0] || '';
+    if (/id-token:|environment:/.test(testJob) || (content.match(/id-token: write/g) || []).length !== 1
+      || /^\s*(?:push|pull_request|pull_request_target):/m.test(content)
+      || /(?:NODE_AUTH_TOKEN|NPM_TOKEN|secrets\.)/.test(content)) {
+      failures.push('release.yml: publishing privileges must remain isolated, manual and token-free');
+    }
+  }
   for (const [, reference] of content.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)) {
     if (reference === './action') continue;
     const [, repository, revision] = /^([^@]+)@([^@]+)$/.exec(reference) || [];

@@ -13,6 +13,7 @@ on:
       - '.editorconfig'
       - '.gitignore'
       - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -28,6 +29,7 @@ on:
       - '.editorconfig'
       - '.gitignore'
       - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -98,6 +100,8 @@ jobs:
           }
       - name: Verify docs sync
         run: npm run docs:sync-check
+      - name: Verify release authorization boundaries without publishing
+        run: node --test .github/scripts/verify-release.test.mjs
       - name: Verify npm package contents
         run: npm pack --dry-run
       - name: Docs integrity gate
