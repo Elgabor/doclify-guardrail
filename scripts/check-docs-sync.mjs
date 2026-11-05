@@ -220,7 +220,7 @@ const checks = [
       },
       {
         label: 'patched CI Node runtime',
-        pattern: /node-version: '22\.23\.4'/
+        pattern: /node-version: '24\.22\.2'\n\s+check-latest: true/
       },
       {
         label: 'docs sync step',
@@ -236,7 +236,7 @@ const checks = [
       },
       {
         label: 'explicit catastrophic performance regression gate',
-        pattern: /- name: Reject catastrophic performance regressions\n\s+run: npm run test:performance/
+        pattern: /- name: Reject catastrophic performance regressions\n\s+run: \|\n\s+npm run test:performance \|\| \{[\s\S]*?node scripts\/perf-corpus\.mjs --measure[\s\S]*?exit "\$status"/
       },
       {
         label: 'labeled correctness transition gate',
@@ -323,11 +323,23 @@ const checks = [
       },
       {
         label: 'separate enforced performance job',
-        pattern: /\n  performance:\n[\s\S]*?run: npm run test:performance/
+        pattern: /\n  performance:\n[\s\S]*?npm run test:performance/
       },
       {
         label: 'labeled correctness gate',
         pattern: /run: npm run test:labeled/
+      },
+      {
+        label: 'exact compatibility and maintained runtime matrix',
+        pattern: /correctness:\n[\s\S]*?node: \['20\.20\.2', '22\.23\.4', '24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
+      },
+      {
+        label: 'exact network runtime matrix',
+        pattern: /network:\n[\s\S]*?node: \['24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
+      },
+      {
+        label: 'exact performance runtime and failed-gate measurement',
+        pattern: /performance:\n[\s\S]*?node-version: '24\.22\.2'\n\s+check-latest: true[\s\S]*?npm run test:performance \|\| \{[\s\S]*?node scripts\/perf-corpus\.mjs --measure[\s\S]*?exit "\$status"/
       }
     ]
   }
@@ -352,6 +364,19 @@ const forbiddenActionInputs = [
 ];
 
 const failures = [];
+
+const remoteActions = new Set(['actions/checkout', 'actions/setup-node', 'Elgabor/doclify-guardrail/action']);
+for (const file of fs.readdirSync(path.join(rootDir, '.github', 'workflows'))) {
+  if (!/\.ya?ml$/.test(file)) continue;
+  const content = fs.readFileSync(path.join(rootDir, '.github', 'workflows', file), 'utf8');
+  for (const [, reference] of content.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)) {
+    if (reference === './action') continue;
+    const [, repository, revision] = /^([^@]+)@([^@]+)$/.exec(reference) || [];
+    if (!remoteActions.has(repository) || !/^[a-f0-9]{40}$/.test(revision || '')) {
+      failures.push(`.github/workflows/${file}: unreviewed owner/repository or non-SHA Action reference (${reference})`);
+    }
+  }
+}
 
 function runPublicCommand(args, options = {}) {
   return spawnSync(process.execPath, [path.join(rootDir, 'src', 'index.mjs'), ...args], {
