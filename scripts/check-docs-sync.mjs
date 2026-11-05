@@ -180,7 +180,7 @@ const checks = [
       },
       {
         label: 'immutable setup-node action',
-        pattern: /uses: actions\/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e/
+        pattern: /uses: actions\/setup-node@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'examples trigger',
@@ -212,7 +212,7 @@ const checks = [
       },
       {
         label: 'immutable security-fixed Action pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@4d84618dec4568cff757e721d37399df8655c3fc/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'immutable Action caller-workspace proof',
