@@ -10,6 +10,8 @@ import { compileWildcard } from '../src/wildcard.mjs';
 import { scanInlineLinks } from '../src/inline-links.mjs';
 import { checkDeadLinksDetailed } from '../src/links.mjs';
 import { buildRepositoryIndex } from '../src/repository-index.mjs';
+import { createResult } from '../src/result.mjs';
+import { renderResult } from '../src/result-renderers.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-security-'));
@@ -297,4 +299,20 @@ test('SEC-06 aliases do not add support for manifest or Makefile symlinks', { sk
   const index = buildRepositoryIndex(root);
   assert.equal(index.rootPackage, null);
   assert.equal(index.makefiles.size, 0);
+});
+
+test('SEC-07 JUnit emits only XML 1.0 characters while retaining markup escaping', () => {
+  const invalid = '\u0000\u0001\u0008\u000b\u000c\u001f\ufffe\uffff\ud800X\udfff';
+  const valid = '\t\n\r café 😀 𐐀';
+  const value = `&<>"'${invalid}${valid}`;
+  const result = createResult({
+    toolVersion: '2.0.1',
+    files: [{path:value,scanned:true,suppressions:[]}],
+    findings: [{path:value,ruleId:'local-link',severity:'blocking',message:value}],
+    diagnostics: [{path:'orphan',code:'unavailable',message:value}]
+  });
+  const xml = renderResult(result, {format:'junit'});
+  assert.doesNotMatch(xml, /[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/u);
+  assert.ok(xml.includes('&amp;&lt;&gt;&quot;&apos;X'+valid));
+  assert.equal(xml.includes('\ufffe'), false);
 });
