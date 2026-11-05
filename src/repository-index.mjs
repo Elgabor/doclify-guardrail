@@ -52,7 +52,7 @@ function anchorsFor(content) {
   const fences = analyzeFences(lines);
   const visibleText = lines.filter((line, index) => !fences.inFence[index]).join('\n');
   const hasHtmlAnchor = /<[^>\r\n]*[\s/](?:id|name)\s*=/i.test(visibleText);
-  const hasMultilineHtmlAnchor = /<[^>\r\n]*\r?\n[^>]*(?:\bid|\bname)\s*=/i.test(visibleText);
+  const hasMultilineHtmlAnchor = /<[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])[^<>\r\n]*\r?\n[^<>]*(?:\bid|\bname)\s*=/i.test(visibleText);
   const hasDynamicTag = lines.some((line, index) => !fences.inFence[index]
     && /<[A-Za-z][^>\r\n]*\{[^>\r\n]*>/i.test(line));
   const hasUnclosedTag = lines.some((line, index) => !fences.inFence[index]

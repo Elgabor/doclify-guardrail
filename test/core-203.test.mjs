@@ -69,3 +69,30 @@ test('filesystem and exclusion memoization never survives an API scan', async (t
   fs.writeFileSync(configPath, JSON.stringify({ exclude: ['private/**'] }));
   assert.equal((await check({ cwd: root, paths: ['README.md'] })).status, 'pass');
 });
+
+test('literal less-than prose cannot consume a later HTML anchor as an incomplete tag', async (t) => {
+  for (const newline of ['\n', '\r\n']) {
+    const root = temp(t);
+    fs.writeFileSync(path.join(root, 'README.md'), '[support](guide.md#drop-old-node)\n');
+    fs.writeFileSync(path.join(root, 'guide.md'), [
+      '# Guide', '', 'Node.js < v20.19 is unsupported.', '',
+      '## <a name="drop-old-node"></a> Node support', ''
+    ].join(newline));
+    const result = await check({ cwd: root, paths: ['README.md'] });
+    assert.equal(result.complete, true);
+    assert.deepEqual(result.findings, []);
+    assert.deepEqual(result.diagnostics, []);
+  }
+});
+
+test('real multiline and unclosed HTML anchors still leave evidence incomplete', async (t) => {
+  for (const content of ['<a\n name="present">\n</a>\n', '<a name="present"\n', '<Component\n id={dynamic}>\n']) {
+    const root = temp(t);
+    fs.writeFileSync(path.join(root, 'README.md'), '[anchor](guide.md#missing)\n');
+    fs.writeFileSync(path.join(root, 'guide.md'), content);
+    const result = await check({ cwd: root, paths: ['README.md'] });
+    assert.equal(result.complete, false);
+    assert.deepEqual(result.findings, []);
+    assert.deepEqual(result.diagnostics.map(({ code }) => code), ['evidence-source-unavailable']);
+  }
+});
