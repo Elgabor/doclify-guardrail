@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { PURPOSES } from './document-purpose.mjs';
 import { isDescendantOrSame } from './workspace-path.mjs';
+import { compileWildcard } from './wildcard.mjs';
 
 const CONFIG_NAME = '.doclify-guardrail.json';
 const ALLOWED_KEYS = new Set([
@@ -198,23 +199,17 @@ function mergeOverrides(current, overrides, workspace) {
   return next;
 }
 
-function wildcardPattern(pattern) {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*/g, '\u0000')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\u0000/g, '.*');
-  return new RegExp(`^${escaped}$`);
-}
-
-function matchesExclusion(candidate, exclusion) {
+function matchesExclusion(candidate, exclusion, matchers) {
   const parent = canonicalDirectory(path.dirname(candidate));
   const comparableCandidate = path.join(parent, path.basename(candidate));
   const relative = path.relative(exclusion.baseDir, comparableCandidate).split(path.sep).join('/');
   if (relative.startsWith('..') || path.isAbsolute(relative)) return false;
   const pattern = exclusion.pattern;
   if (!pattern || pattern === '.') return pattern === '.' && relative === '';
-  if (pattern.includes('*')) return wildcardPattern(pattern).test(relative);
+  if (pattern.includes('*')) {
+    if (!matchers.has(pattern)) matchers.set(pattern, compileWildcard(pattern, 'exclusion'));
+    return matchers.get(pattern)(relative);
+  }
   return relative === pattern || relative.startsWith(`${pattern}/`);
 }
 
@@ -224,6 +219,7 @@ function createV2ConfigResolver(options) {
   const overrides = options.overrides || {};
   const directoryCache = new Map();
   const fileCache = new Map();
+  const matchers = new Map();
   let explicitConfig = null;
 
   if (options.config != null) {
@@ -278,7 +274,7 @@ function createV2ConfigResolver(options) {
     } else {
       resolved = forPath(targetPath, optionsForPath);
     }
-    return resolved.exclusions.some((exclusion) => matchesExclusion(targetPath, exclusion));
+    return resolved.exclusions.some((exclusion) => matchesExclusion(targetPath, exclusion, matchers));
   }
 
   return {

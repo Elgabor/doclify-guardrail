@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isMarkdownPath } from './markdown-files.mjs';
+import { compileWildcard } from './wildcard.mjs';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -72,14 +73,10 @@ function miniGlob(pattern, basePath) {
 
   const entries = fs.readdirSync(searchDir, { recursive: hasRecursive, withFileTypes: true });
 
-  // Convert filePattern to regex: *.md → /^.*\.md$/
-  const regexStr = '^' + filePattern
-    .replace(/\./g, '\\.')
-    .replace(/\*/g, '.*') + '$';
-  const fileRx = new RegExp(regexStr);
+  const matchesFile = compileWildcard(filePattern, 'filename');
 
   return entries
-    .filter(e => e.isFile() && (matchAnyMarkdownFile ? isMarkdownPath(e.name) : fileRx.test(e.name)))
+    .filter(e => e.isFile() && (matchAnyMarkdownFile ? isMarkdownPath(e.name) : matchesFile(e.name)))
     .map(e => path.join(e.parentPath || e.path, e.name))
     .filter(f => !isIgnoredPath(path.relative(searchDir, f)));
 }

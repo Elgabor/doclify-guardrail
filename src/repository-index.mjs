@@ -4,6 +4,7 @@ import path from 'node:path';
 import { analyzeFences } from './fences.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
+import { compileWildcard } from './wildcard.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
 const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
@@ -159,30 +160,13 @@ function workspacePatterns(manifest) {
     ? manifest.workspaces
     : Array.isArray(manifest?.workspaces?.packages) ? manifest.workspaces.packages : [];
   return raw.filter((value) => typeof value === 'string' && value.length > 0)
-    .map((value) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, ''));
-}
-
-function workspacePatternMatches(directory, pattern) {
-  let expression = '^';
-  for (let index = 0; index < pattern.length; index += 1) {
-    if (pattern.startsWith('**/', index)) {
-      expression += '(?:.*/)?';
-      index += 2;
-    } else if (pattern.startsWith('**', index)) {
-      expression += '.*';
-      index += 1;
-    } else if (pattern[index] === '*') {
-      expression += '[^/]*';
-    } else {
-      expression += pattern[index].replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp(`${expression}$`).test(directory);
+    .map((value) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, ''))
+    .map((pattern) => ({ pattern, matches: compileWildcard(pattern, 'workspace') }));
 }
 
 function matchesWorkspaceManifest(relativePath, patterns) {
   const directory = path.posix.dirname(relativePath);
-  return patterns.some((pattern) => workspacePatternMatches(directory, pattern));
+  return patterns.some(({ matches }) => matches(directory));
 }
 
 function excludedPathMayContainWorkspace(relativePath, patterns) {
@@ -190,7 +174,7 @@ function excludedPathMayContainWorkspace(relativePath, patterns) {
     ? path.posix.dirname(relativePath)
     : relativePath;
   if (matchesWorkspaceManifest(`${directory}/package.json`, patterns)) return true;
-  return patterns.some((pattern) => {
+  return patterns.some(({ pattern }) => {
     const prefix = pattern.split('*', 1)[0].replace(/\/+$/, '');
     return prefix && (directory === prefix
       || directory.startsWith(`${prefix}/`)
