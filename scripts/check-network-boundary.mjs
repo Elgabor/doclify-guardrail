@@ -72,7 +72,55 @@ async function run() {
     clearTimeout(watchdog);
     await close(server);
   }
+  await checkResponseLifecycle();
   process.stdout.write('network-boundary: pass | SSRF block, allow-list, HTTP failure, timeout\n');
+}
+
+async function checkResponseLifecycle() {
+  const sockets = new Set();
+  const responses = new Set();
+  const socketClosures = [];
+  let peak = 0;
+  const server = http.createServer((request, response) => {
+    if (request.method === 'HEAD') {
+      response.writeHead(405).end();
+      return;
+    }
+    responses.add(response);
+    peak = Math.max(peak, responses.size);
+    response.on('close', () => responses.delete(response));
+    response.writeHead(request.url.startsWith('/redirect') ? 302 : 200, { location: '/stream' });
+    response.flushHeaders();
+    const timer = setInterval(() => response.write(Buffer.alloc(4096)), 5);
+    response.on('close', () => clearInterval(timer));
+  });
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socketClosures.push(new Promise((resolve) => socket.once('close', resolve)));
+    socket.on('close', () => sockets.delete(socket));
+  });
+  const port = await listen(server);
+  let expired = false;
+  const watchdog = setTimeout(() => {
+    expired = true;
+    server.closeAllConnections();
+  }, 5000);
+  try {
+    const content = Array.from({ length: 8 }, (_, index) => `[x](http://127.0.0.1:${port}/${index % 2 ? 'redirect' : 'stream'}/${index})`).join('\n');
+    const result = await checkDeadLinksDetailed(content, {
+      sourceFile: 'README.md', concurrency: 1, timeoutMs: 1000, allowPrivateLinks: true
+    });
+    assert.deepEqual(result.findings, []);
+    assert.ok(peak <= 1, `response concurrency exceeded: ${peak}`);
+    // A TCP peer observes the client's completed close asynchronously.
+    await Promise.all(socketClosures);
+    assert.equal(expired, false, 'response cleanup exceeded the watchdog');
+    assert.equal(responses.size, 0, 'response streams remain active');
+    assert.equal(sockets.size, 0, 'HTTP sockets remain active');
+  } finally {
+    clearTimeout(watchdog);
+    await close(server);
+  }
 }
 
 run().catch((error) => {

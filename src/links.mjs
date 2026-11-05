@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
+import { lookup } from 'node:dns/promises';
 import { decodeLocalPath } from './local-url.mjs';
 import { stripCodeBlocks, stripInlineCode } from './markdown-content.mjs';
 import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
@@ -10,11 +11,66 @@ import {
   getBlockedRemoteUrlReason
 } from './network-guard.mjs';
 import { getReadContainment } from './workspace-path.mjs';
+import { scanInlineLinks } from './inline-links.mjs';
 
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
 const MAX_REDIRECTS = 5;
 const HEAD_FALLBACK_STATUSES = new Set([403, 404, 405, 501]);
+
+function remainingMs(budget) {
+  const remaining = budget.deadline - performance.now();
+  if (remaining <= 0) throw budget.error;
+  return remaining;
+}
+
+async function beforeDeadline(operation, budget) {
+  const remaining = remainingMs(budget);
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        remainingMs(budget);
+        return operation();
+      }).then((value) => {
+        remainingMs(budget);
+        return value;
+      }),
+      new Promise((resolve, reject) => { timer = setTimeout(() => reject(budget.error), remaining); })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function createBoundedLookup(lookupFn, limit) {
+  let active = 0;
+  const waiters = new Set();
+  return async (hostname, options, budget) => {
+    while (active >= limit) {
+      let wake;
+      const available = new Promise((resolve) => { wake = resolve; waiters.add(wake); });
+      try {
+        await beforeDeadline(() => available, budget);
+      } finally {
+        waiters.delete(wake);
+      }
+    }
+    remainingMs(budget);
+    active += 1;
+    // An OS lookup cannot be cancelled. Keep its slot until it really settles.
+    const pending = Promise.resolve().then(() => {
+      remainingMs(budget);
+      return lookupFn(hostname, options);
+    });
+    const release = () => {
+      active -= 1;
+      for (const wake of waiters) wake();
+    };
+    pending.then(release, release);
+    return beforeDeadline(() => pending, budget);
+  };
+}
 
 function sanitizeCapturedUrl(url, kind) {
   let normalized = url.trim().replace(/[>*_`]+$/g, '');
@@ -44,10 +100,8 @@ function extractLinks(content) {
     const line = stripInlineCode(lines[idx]);
     const lineNumber = idx + 1;
 
-    const inlineRx = /\[[^\]]*\]\(([^()\s]*(?:\([^)]*\)[^()\s]*)*)\)/g;
-    let inline;
-    while ((inline = inlineRx.exec(line)) !== null) {
-      links.push({ url: inline[1].trim(), line: lineNumber, kind: 'inline' });
+    for (const inline of scanInlineLinks(line, 'link')) {
+      links.push({ url: inline.url.trim(), line: lineNumber, kind: 'inline' });
     }
 
     const refDefRx = /^\[[^\]]+\]:\s*(\S+)/;
@@ -102,9 +156,10 @@ function getHeader(headers, name) {
   return value ?? null;
 }
 
-async function fetchWithTimeout(url, opts, timeoutMs) {
+async function fetchWithTimeout(url, opts, budget) {
+  const timeoutMs = remainingMs(budget);
   if (typeof opts.requestFn === 'function') {
-    return opts.requestFn(url, opts, timeoutMs);
+    return beforeDeadline(() => opts.requestFn(url, opts, timeoutMs), budget);
   }
 
   const parsed = new URL(url);
@@ -114,26 +169,54 @@ async function fetchWithTimeout(url, opts, timeoutMs) {
   }
 
   return new Promise((resolve, reject) => {
-    const timeoutError = new Error(`Timeout (${timeoutMs / 1000}s)`);
-    timeoutError.name = 'AbortError';
+    const timeoutError = budget.error;
+    let response;
+    let failure;
+    let requestClosed = false;
+    let responseClosed = true;
+    let socketClosed = true;
+    const finish = () => {
+      if (!requestClosed || !responseClosed || !socketClosed) return;
+      clearTimeout(timer);
+      if (failure) reject(failure);
+      else resolve(response);
+    };
     const req = client.request(parsed, {
       method: opts.method,
       lookup: opts.lookup
     }, (res) => {
-      res.resume();
-      resolve({
+      response = {
         status: res.statusCode ?? 0,
         headers: {
           get: (name) => getHeader(res.headers, name)
         }
+      };
+      responseClosed = false;
+      res.once('close', () => {
+        responseClosed = true;
+        finish();
       });
+      res.on('error', () => {}); // Destroying an unused body is intentional.
+      res.destroy();
+      req.destroy();
     });
     const timer = setTimeout(() => {
+      failure = timeoutError;
       req.destroy(timeoutError);
     }, timeoutMs);
-    req.on('error', reject);
+    req.on('error', (error) => {
+      if (!response) failure = error;
+    });
+    req.on('socket', (socket) => {
+      socketClosed = false;
+      socket.once('close', () => {
+        socketClosed = true;
+        finish();
+      });
+    });
     req.on('close', () => {
-      clearTimeout(timer);
+      requestClosed = true;
+      finish();
     });
     req.end();
   });
@@ -143,12 +226,12 @@ function isRedirectStatus(status) {
   return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
-async function fetchFollowingRedirects(url, { method, timeoutMs, allowPrivateLinks, dnsCache, lookupFn, requestFn }) {
+async function fetchFollowingRedirects(url, { method, budget, allowPrivateLinks, dnsCache, lookupFn, requestFn }) {
   let currentUrl = url;
 
   for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
     if (!allowPrivateLinks) {
-      const blocked = await getBlockedRemoteUrlReason(currentUrl, { dnsCache, lookupFn });
+      const blocked = await beforeDeadline(() => getBlockedRemoteUrlReason(currentUrl, { dnsCache, lookupFn }), budget);
       if (blocked) {
         return { error: blocked };
       }
@@ -158,7 +241,8 @@ async function fetchFollowingRedirects(url, { method, timeoutMs, allowPrivateLin
       method,
       lookup: allowPrivateLinks ? undefined : createPrivateNetworkBlockingLookup({ lookupFn }),
       requestFn
-    }, timeoutMs);
+    }, budget);
+    remainingMs(budget);
     if (!isRedirectStatus(response.status)) {
       return { response };
     }
@@ -188,11 +272,13 @@ async function checkRemoteUrl(url, opts = {}) {
   const dnsCache = opts.dnsCache instanceof Map ? opts.dnsCache : new Map();
   const lookupFn = opts.lookupFn;
   const requestFn = opts.requestFn;
+  const budget = opts.budget;
 
   try {
+    remainingMs(budget);
     const headResult = await fetchFollowingRedirects(url, {
       method: 'HEAD',
-      timeoutMs,
+      budget,
       allowPrivateLinks,
       dnsCache,
       lookupFn,
@@ -210,7 +296,7 @@ async function checkRemoteUrl(url, opts = {}) {
     if (HEAD_FALLBACK_STATUSES.has(headRes.status)) {
       const getResult = await fetchFollowingRedirects(url, {
         method: 'GET',
-        timeoutMs,
+        budget,
         allowPrivateLinks,
         dnsCache,
         lookupFn,
@@ -375,6 +461,8 @@ async function checkDeadLinksDetailed(content, {
     ? concurrency
     : DEFAULT_LINK_CONCURRENCY;
   const stats = buildEmptyStats();
+  const timeout = Number.isInteger(timeoutMs) ? timeoutMs : DEFAULT_LINK_TIMEOUT_MS;
+  const boundedLookup = createBoundedLookup(lookupFn || lookup, concurrencyLimit);
 
   // Local links first (sync, fast)
   const remoteChecks = new Map(); // URL -> first link occurrence
@@ -389,23 +477,11 @@ async function checkDeadLinksDetailed(content, {
 
     if (url.startsWith('http://') || url.startsWith('https://')) {
       if (!checkRemote) continue;
-      if (remoteChecks.has(url)) continue;
-      if (!allowPrivate) {
-        const blocked = await getBlockedRemoteUrlReason(url, { dnsCache, lookupFn });
-        if (blocked) {
-          findings.push({
-            code: 'dead-link',
-            scope: 'remote',
-            severity: 'error',
-            line: link.line,
-            message: `Dead link: ${url} (${blocked})`,
-            source: sourceFile
-          });
-          continue;
-        }
+      if (remoteChecks.has(url)) {
+        remoteChecks.get(url).occurrences.push(link);
+        continue;
       }
-      if (isAllowListed(url, linkAllowList)) continue;
-      remoteChecks.set(url, link);
+      remoteChecks.set(url, { link, occurrences: [link] });
       continue;
     }
 
@@ -428,11 +504,28 @@ async function checkDeadLinksDetailed(content, {
   // Remote links in parallel with concurrency limit
   if (remoteChecks.size > 0) {
     const entries = Array.from(remoteChecks.entries());
-    const tasks = entries.map(([url, link]) => async () => {
+    const tasks = entries.map(([url, { link, occurrences }]) => async () => {
+      const timeoutError = new Error(`Timeout (${timeout / 1000}s)`);
+      timeoutError.name = 'AbortError';
+      const budget = { deadline: performance.now() + timeout, error: timeoutError };
       let error;
+      const urlLookup = (hostname, options) => boundedLookup(hostname, options, budget);
+      try {
+        remainingMs(budget);
+        // Recheck the private-network boundary even for allow-listed/cached URLs.
+        if (!allowPrivate) {
+          const blocked = await beforeDeadline(() => getBlockedRemoteUrlReason(url, { dnsCache, lookupFn: urlLookup }), budget);
+          if (blocked) return { url, occurrences, error: blocked };
+        }
+        if (isAllowListed(url, linkAllowList)) return { url, link, error: null };
+      } catch (failure) {
+        error = failure.name === 'AbortError' ? budget.error.message : failure.message;
+      }
       const cacheKey = `${timeoutMs || DEFAULT_LINK_TIMEOUT_MS}\0${url}`;
       stats.remoteLinksChecked += 1;
-      if (cache.has(cacheKey)) {
+      if (error) {
+        stats.remoteCacheMisses += 1;
+      } else if (cache.has(cacheKey)) {
         error = cache.get(cacheKey);
         stats.remoteCacheHits += 1;
       } else if (timeoutMs == null && cache.has(url)) {
@@ -446,8 +539,9 @@ async function checkDeadLinksDetailed(content, {
           timeoutMs,
           allowPrivateLinks: allowPrivate,
           dnsCache,
-          lookupFn,
-          requestFn
+          lookupFn: urlLookup,
+          requestFn,
+          budget
         });
         cache.set(cacheKey, error);
       }
@@ -458,16 +552,18 @@ async function checkDeadLinksDetailed(content, {
     });
 
     const results = await runWithConcurrency(tasks, concurrencyLimit);
-    for (const { url, link, error } of results) {
+    for (const { url, link, occurrences, error } of results) {
       if (error) {
-        findings.push({
-          code: 'dead-link',
-          scope: 'remote',
-          severity: 'error',
-          line: link.line,
-          message: `Dead link: ${url} (${error})`,
-          source: sourceFile
-        });
+        for (const occurrence of occurrences || [link]) {
+          findings.push({
+            code: 'dead-link',
+            scope: 'remote',
+            severity: 'error',
+            line: occurrence.line,
+            message: `Dead link: ${url} (${error})`,
+            source: sourceFile
+          });
+        }
       }
     }
   }

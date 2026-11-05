@@ -12,6 +12,7 @@ function terminalText(value) {
 function xmlText(value) {
   return String(value ?? '')
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, '')
+    .replace(/[\ud800-\udfff\ufffe\uffff]/gu, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

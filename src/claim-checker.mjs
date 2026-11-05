@@ -5,6 +5,7 @@ import { parseCliInvocation } from './cli-contract.mjs';
 import { decodeLocalPath } from './local-url.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { anchorFor } from './repository-index.mjs';
+import { scanInlineLinks } from './inline-links.mjs';
 
 const SHELL_FENCE_LANGUAGES = new Set(['sh', 'bash', 'shell', 'console', 'zsh', 'fish']);
 const MAKE_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?::|\+|\?|!)?=.*/;
@@ -301,9 +302,12 @@ function analyzeRepositoryClaims(content) {
     }
   }
   const hasCommand = segments.some(({ text }) => /\bnpm\b|\bmake\s+|\bdoclify-guardrail\s+/.test(text));
-  const hasAnchor = lines.some((line, offset) => !fences.inFence[offset]
-    && /\[[^\]]*\]\([^\s)]+#[^\s)]+\)/.test(line));
-  return { lines, fences, segments, hasClaims: hasCommand || hasAnchor };
+  const anchorLinks = lines.map((line, offset) => fences.inFence[offset] ? [] : scanInlineLinks(line, 'claim'));
+  const hasAnchor = anchorLinks.some((links) => links.some(({ url }) => {
+    const hash = url.indexOf('#', 1);
+    return hash >= 1 && hash < url.length - 1;
+  }));
+  return { lines, fences, segments, anchorLinks, hasClaims: hasCommand || hasAnchor };
 }
 
 function checkRepositoryClaims(analysis, index, filePath, { allowCommandClaims = true } = {}) {
@@ -327,18 +331,20 @@ function checkRepositoryClaims(analysis, index, filePath, { allowCommandClaims =
     }
   };
 
-  const { lines, fences, segments } = analysis;
+  const { lines, fences, segments, anchorLinks } = analysis;
   for (const [offset, line] of lines.entries()) {
     const lineNumber = offset + 1;
     if (fences.inFence[offset]) continue;
-    for (const linkMatch of line.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)) {
-      const url = linkMatch[1];
+    for (const { url } of anchorLinks[offset]) {
       if (!url.includes('#') || /^(?:https?:|mailto:|tel:|data:|javascript:|\/)/i.test(url)) continue;
       const [target, fragment] = url.split('#', 2);
       const targetPath = target
         ? path.posix.normalize(path.posix.join(path.posix.dirname(filePath), decodeLocalPath(target)))
         : filePath;
       if (!index.files.has(targetPath)) {
+        const symlink = [...(index.unavailableSymlinks?.values() || [])].find((source) => targetPath === source.path
+          || targetPath.startsWith(`${source.path}/`));
+        if (symlink && isMarkdownPath(targetPath)) addDiagnostic(evidenceDiagnostic({ path: targetPath, state: symlink.state }));
         const excluded = [...(index.excludedPaths || [])].find((excludedPath) => targetPath === excludedPath
           || targetPath.startsWith(`${excludedPath}/`));
         if (excluded) addDiagnostic(evidenceDiagnostic({ path: targetPath, state: 'excluded' }));
