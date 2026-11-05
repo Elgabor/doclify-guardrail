@@ -363,6 +363,49 @@ function resolveLocalUrl(url, { sourceFile, siteRoot } = {}) {
   return { targetPath: path.resolve(path.dirname(sourceFile), withoutAnchor) };
 }
 
+function unavailableRouteCompanion(source, unreadable = false) {
+  return {
+    code: unreadable ? 'evidence-source-unreadable' : 'evidence-source-unavailable',
+    severity: 'error',
+    operational: true,
+    source,
+    message: unreadable
+      ? 'Evidence source cannot be read and cannot support this claim.'
+      : 'Evidence source is unavailable for this scan and cannot support this claim.'
+  };
+}
+
+function checkRouteCompanion(companion, opts) {
+  if (opts.readBoundary) {
+    const containment = getReadContainment(companion, opts.readBoundary);
+    if (containment === 'outside') return false;
+    if (containment !== 'inside') return unavailableRouteCompanion(companion, true);
+  }
+  try {
+    if (!fs.statSync(companion).isFile()) return false;
+    const canonical = fs.realpathSync(companion);
+    for (const candidate of new Set([companion, canonical])) {
+      if (opts.isExcluded?.(candidate, { directory: false }) || opts.isExcluded?.(candidate, { directory: true })) {
+        return unavailableRouteCompanion(companion);
+      }
+    }
+    const boundary = opts.readBoundary ? fs.realpathSync(opts.readBoundary) : path.parse(canonical).root;
+    for (let directory = path.dirname(canonical); directory !== boundary; directory = path.dirname(directory)) {
+      if (opts.isExcluded?.(directory, { directory: true })) return unavailableRouteCompanion(companion);
+      if (path.dirname(directory) === directory) break;
+    }
+    const descriptor = fs.openSync(canonical, 'r');
+    try {
+      return fs.fstatSync(descriptor).isFile();
+    } finally {
+      fs.closeSync(descriptor);
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return false;
+    return unavailableRouteCompanion(companion, true);
+  }
+}
+
 function checkLocalUrl(url, opts = {}) {
   const resolved = resolveLocalUrl(url, opts);
   if (!resolved) return null;
@@ -407,8 +450,9 @@ function checkLocalUrl(url, opts = {}) {
   if (!isMarkdownPath(decodedPath)) {
     for (const extension of MARKDOWN_EXTENSIONS) {
       const companion = resolved.targetPath + extension;
-      if ((!opts.readBoundary || getReadContainment(companion, opts.readBoundary) === 'inside')
-        && fs.existsSync(companion)) return null;
+      const availability = checkRouteCompanion(companion, opts);
+      if (availability === true) return null;
+      if (availability) return availability;
     }
   }
 

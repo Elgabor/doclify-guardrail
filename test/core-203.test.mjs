@@ -314,3 +314,64 @@ test('sequential HTML headings on one line preserve static text and explicit IDs
   assert.deepEqual(result.diagnostics, []);
   assert.deepEqual(result.findings.map(({ message }) => message), ['Missing local anchor: #absent.']);
 });
+
+test('host route companions must be regular available files', async (t) => {
+  for (const extension of ['.md', '.mdx']) {
+    const root = temp(t);
+    const companion = path.join(root, 'source.1' + extension);
+    fs.writeFileSync(path.join(root, 'README.md'), '[route](source.1)\n');
+    fs.writeFileSync(companion, '# Existing\n');
+    const available = await check({ cwd: root, paths: ['README.md'] });
+    assert.equal(available.status, 'pass');
+    const excluded = await check({ cwd: root, paths: ['README.md'], exclude: ['source.1' + extension] });
+    assert.equal(excluded.complete, false);
+    assert.deepEqual(excluded.findings, []);
+    assert.deepEqual(excluded.diagnostics.map(({ code, path }) => ({ code, path })), [
+      { code: 'evidence-source-unavailable', path: 'source.1' + extension }
+    ]);
+  }
+});
+
+test('unreadable host route companions produce operational diagnostics', { skip: process.platform === 'win32' }, async (t) => {
+  const root = temp(t);
+  const companion = path.join(root, 'source.1.md');
+  fs.writeFileSync(path.join(root, 'README.md'), '[route](source.1)\n');
+  fs.writeFileSync(companion, '# Existing\n');
+  fs.chmodSync(companion, 0);
+  try {
+    const result = await check({ cwd: root, paths: ['README.md'] });
+    assert.equal(result.complete, false);
+    assert.deepEqual(result.findings, []);
+    assert.deepEqual(result.diagnostics.map(({ code, path }) => ({ code, path })), [
+      { code: 'evidence-source-unreadable', path: 'source.1.md' }
+    ]);
+  } finally {
+    fs.chmodSync(companion, 0o600);
+  }
+});
+
+test('directories cannot supply Markdown companion evidence for host routes', async (t) => {
+  const root = temp(t);
+  fs.mkdirSync(path.join(root, 'directory.1.md'));
+  fs.writeFileSync(path.join(root, 'README.md'), '[directory](directory.1) [absent](absent.1)\n');
+  const result = await check({ cwd: root, paths: ['README.md'] });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.findings.map(({ message }) => message), [
+    'Dead link: absent.1 (Target not found)', 'Dead link: directory.1 (Target not found)'
+  ]);
+});
+
+test('host route companions cannot use symlinks into excluded evidence', { skip: process.platform === 'win32' }, async (t) => {
+  const root = temp(t);
+  fs.mkdirSync(path.join(root, 'private'));
+  fs.writeFileSync(path.join(root, 'private', 'hidden.md'), '# Existing\n');
+  fs.symlinkSync('private/hidden.md', path.join(root, 'source.1.md'));
+  fs.writeFileSync(path.join(root, 'README.md'), '[route](source.1)\n');
+  const result = await check({ cwd: root, paths: ['README.md'], exclude: ['private/**'] });
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.findings, []);
+  assert.deepEqual(result.diagnostics.map(({ code, path }) => ({ code, path })), [
+    { code: 'evidence-source-unavailable', path: 'source.1.md' }
+  ]);
+});
