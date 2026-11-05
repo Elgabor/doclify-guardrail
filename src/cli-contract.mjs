@@ -14,7 +14,7 @@ const COMMON_SCAN_OPTIONS = [
   ['--site-root', ' <path>', { value: true }],
   ['--external-links', ''],
   ['--link-allow-list', ' <url,...>', { value: true }],
-  ['--link-timeout-ms', ' <n>', { positiveInteger: true }],
+  ['--link-timeout-ms', ' <n>                       Per URL: DNS, redirects and HEAD/GET', { positiveInteger: true }],
   ['--link-concurrency', ' <n>', { positiveInteger: true }],
   ['--no-color', '                         Accepted; human output is always color-free']
 ];

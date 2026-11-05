@@ -31,15 +31,15 @@ const checks = [
       },
       {
         label: 'release-specific Action v2 example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.1/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
       },
       {
         label: 'Action v2 offline default',
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'stable npm release',
-        pattern: /Version `2\.0\.1` is the current stable npm release/
+        label: 'stable release version',
+        pattern: /Version `2\.0\.2` is the current stable release/
       },
       {
         label: 'changed Markdown-only boundary',
@@ -140,8 +140,12 @@ const checks = [
     file: 'MIGRATION.md',
     expectations: [
       {
-        label: 'stable migration release',
-        pattern: /Version `2\.0\.1` is the current stable npm release/
+        label: 'documented migration version',
+        pattern: /This guide covers version `2\.0\.2`/
+      },
+      {
+        label: 'release-specific Action example',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
       }
     ]
   },
@@ -150,7 +154,7 @@ const checks = [
     expectations: [
       {
         label: 'stable package version',
-        pattern: /"version": "2\.0\.1"/
+        pattern: /"version": "2\.0\.2"/
       }
     ]
   },
@@ -159,7 +163,7 @@ const checks = [
     expectations: [
       {
         label: 'stable Action package version',
-        pattern: /"version": "2\.0\.1"/
+        pattern: /"version": "2\.0\.2"/
       }
     ]
   },
@@ -171,16 +175,16 @@ const checks = [
         pattern: /permissions:\s*\n\s+contents: read/
       },
       {
-        label: 'current checkout action',
-        pattern: /uses: actions\/checkout@v5\.0\.1/
+        label: 'immutable checkout action',
+        pattern: /uses: actions\/checkout@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'non-persisted checkout credentials',
         pattern: /persist-credentials: false/
       },
       {
-        label: 'current setup-node action',
-        pattern: /uses: actions\/setup-node@v6\.4\.0/
+        label: 'immutable setup-node action',
+        pattern: /uses: actions\/setup-node@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'examples trigger',
@@ -189,6 +193,10 @@ const checks = [
       {
         label: 'public docs trigger',
         pattern: /'docs\/\*\*'/
+      },
+      {
+        label: 'release verifier trigger and regression gate',
+        pattern: /'\.github\/scripts\/\*\*'[\s\S]*?run: node --test \.github\/scripts\/verify-release\.test\.mjs/
       },
       {
         label: 'action npm ci step',
@@ -211,16 +219,16 @@ const checks = [
         pattern: /DOCLIFY_STATUS[\s\S]*?DOCLIFY_COMPLETE[\s\S]*?DOCLIFY_BLOCKING/
       },
       {
-        label: 'immutable Action release pin',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@ad98fb4efc0744360c305747767070d0549c764f/
+        label: 'immutable security-fixed Action pin',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'immutable Action caller-workspace proof',
         pattern: /path: docs\/validation-protocol\.md[\s\S]*?DOCLIFY_FILES/
       },
       {
-        label: 'Action v2 major reference smoke',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\s/
+        label: 'patched CI Node runtime',
+        pattern: /node-version: '24\.22\.2'\n\s+check-latest: true/
       },
       {
         label: 'docs sync step',
@@ -236,7 +244,7 @@ const checks = [
       },
       {
         label: 'explicit catastrophic performance regression gate',
-        pattern: /- name: Reject catastrophic performance regressions\n\s+run: npm run test:performance/
+        pattern: /- name: Reject catastrophic performance regressions\n\s+run: \|\n\s+npm run test:performance \|\| \{[\s\S]*?node scripts\/perf-corpus\.mjs --measure[\s\S]*?exit "\$status"/
       },
       {
         label: 'labeled correctness transition gate',
@@ -253,8 +261,41 @@ const checks = [
     ]
   },
   {
+    file: '.github/workflows/release.yml',
+    expectations: [
+      {
+        label: 'manual dispatch with explicit tag',
+        pattern: /on:\n  workflow_dispatch:\n    inputs:\n      tag:/
+      },
+      {
+        label: 'test job without publishing privileges',
+        pattern: /  test:\n[\s\S]*?permissions:\n      contents: read\n    outputs:/
+      },
+      {
+        label: 'protected publish job with scoped OIDC permission',
+        pattern: /  publish:\n    needs: test\n    if: github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'\n[\s\S]*?environment: npm\n    permissions:\n      contents: read\n      id-token: write/
+      },
+      {
+        label: 'revalidation of tested commit and annotated tag',
+        pattern: /EXPECTED_COMMIT: \$\{\{ needs\.test\.outputs\.commit \}\}[\s\S]*?EXPECTED_TAG_OBJECT: \$\{\{ needs\.test\.outputs\.tag-object \}\}[\s\S]*?run: node \.github\/scripts\/verify-release\.mjs/
+      },
+      {
+        label: 'exact publishing runtime and npm minimum',
+        pattern: /node-version: '26\.13\.0'[\s\S]*?npm >= 11\.5\.1/
+      },
+      {
+        label: 'test and package inspection before publish',
+        pattern: /npm test[\s\S]*?npm pack --dry-run --json --ignore-scripts[\s\S]*?npm publish --access public --ignore-scripts --registry https:\/\/registry\.npmjs\.org/
+      }
+    ]
+  },
+  {
     file: 'CHANGELOG.md',
     expectations: [
+      {
+        label: '2.0.2 security, fixes and maintenance entry',
+        pattern: /## \[2\.0\.2\] - 2026-11-05\n[\s\S]*?### Security[\s\S]*?XML 1\.0[\s\S]*?### Fixed[\s\S]*?### Changed[\s\S]*?### Notes/
+      },
       {
         label: 'patch release entry',
         pattern: /## \[2\.0\.1\] - 2026-08-14/
@@ -305,6 +346,10 @@ const checks = [
         pattern: /external-links:\s*[\s\S]*?default: 'false'/
       },
       {
+        label: 'per-URL Action timeout description',
+        pattern: /Per-URL milliseconds from worker start, including DNS, redirects and HEAD-to-GET fallback/
+      },
+      {
         label: 'v2 status output',
         pattern: /outputs:\s*[\s\S]*?status:/
       }
@@ -323,19 +368,61 @@ const checks = [
       },
       {
         label: 'separate enforced performance job',
-        pattern: /\n  performance:\n[\s\S]*?run: npm run test:performance/
+        pattern: /\n  performance:\n[\s\S]*?npm run test:performance/
       },
       {
         label: 'labeled correctness gate',
         pattern: /run: npm run test:labeled/
+      },
+      {
+        label: 'exact compatibility and maintained runtime matrix',
+        pattern: /correctness:\n[\s\S]*?node: \['20\.20\.2', '22\.23\.4', '24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
+      },
+      {
+        label: 'exact network runtime matrix',
+        pattern: /network:\n[\s\S]*?node: \['24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
+      },
+      {
+        label: 'exact performance runtime and failed-gate measurement',
+        pattern: /performance:\n[\s\S]*?node-version: '24\.22\.2'\n\s+check-latest: true[\s\S]*?npm run test:performance \|\| \{[\s\S]*?node scripts\/perf-corpus\.mjs --measure[\s\S]*?exit "\$status"/
       }
     ]
   }
 ];
 
+for (const file of ['README.md', 'MIGRATION.md']) {
+  checks.push({
+    file,
+    expectations: [
+      {
+        label: 'generated anchor and command exemption with local paths preserved',
+        pattern: /Generated documents skip\s+anchor and command claims; local path checks still\s+apply\./
+      },
+      {
+        label: 'per-URL deadline starts after the worker queue',
+        pattern: /The timeout\s+starts when a URL leaves\s+the worker queue and covers DNS preflight, redirects,\s+and HEAD-to-GET fallback\./
+      },
+      {
+        label: 'canonical symlink evidence and directory boundary',
+        pattern: /Markdown file symlinks are checked through contained canonical targets,\s+respecting exclusions\. Unavailable symlink evidence makes a requested anchor\s+check incomplete\. Directory symlinks are not traversed\./
+      },
+      {
+        label: 'Node 20 EOL compatibility boundary and maintained LTS recommendation',
+        pattern: /`engines: >=20`[\s\S]*?Node\.js 20 reached end of life on\s+2026-04-30 and is still accepted for compatibility[\s\S]*?Node\.js 22, 24, or 26/
+      },
+      {
+        label: 'tested exact Node runtime matrix',
+        pattern: /20\.20\.2,\s+22\.23\.4, 24\.22\.2,\s+and 26\.13\.0/
+      }
+    ]
+  });
+}
+
 const requiredFiles = [
   'action/action.yml',
   '.github/workflows/reliability.yml',
+  '.github/workflows/release.yml',
+  '.github/scripts/verify-release.mjs',
   '.github/ISSUE_TEMPLATE/config.yml',
   '.github/PULL_REQUEST_TEMPLATE.md'
 ];
@@ -352,6 +439,33 @@ const forbiddenActionInputs = [
 ];
 
 const failures = [];
+
+const packageVersion = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version;
+const actionLock = JSON.parse(fs.readFileSync(path.join(rootDir, 'action', 'package-lock.json'), 'utf8'));
+if (actionLock.version !== packageVersion || actionLock.packages?.['']?.version !== packageVersion) {
+  failures.push('action/package-lock.json: package and root lock versions must match the release version');
+}
+
+const remoteActions = new Set(['actions/checkout', 'actions/setup-node', 'Elgabor/doclify-guardrail/action']);
+for (const file of fs.readdirSync(path.join(rootDir, '.github', 'workflows'))) {
+  if (!/\.ya?ml$/.test(file)) continue;
+  const content = fs.readFileSync(path.join(rootDir, '.github', 'workflows', file), 'utf8');
+  if (file === 'release.yml') {
+    const testJob = content.split('\n  test:\n')[1]?.split('\n  publish:\n')[0] || '';
+    if (/id-token:|environment:/.test(testJob) || (content.match(/id-token: write/g) || []).length !== 1
+      || /^\s*(?:push|pull_request|pull_request_target):/m.test(content)
+      || /(?:NODE_AUTH_TOKEN|NPM_TOKEN|secrets\.)/.test(content)) {
+      failures.push('release.yml: publishing privileges must remain isolated, manual and token-free');
+    }
+  }
+  for (const [, reference] of content.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)) {
+    if (reference === './action') continue;
+    const [, repository, revision] = /^([^@]+)@([^@]+)$/.exec(reference) || [];
+    if (!remoteActions.has(repository) || !/^[a-f0-9]{40}$/.test(revision || '')) {
+      failures.push(`.github/workflows/${file}: unreviewed owner/repository or non-SHA Action reference (${reference})`);
+    }
+  }
+}
 
 function runPublicCommand(args, options = {}) {
   return spawnSync(process.execPath, [path.join(rootDir, 'src', 'index.mjs'), ...args], {
@@ -415,6 +529,9 @@ try {
   for (const command of commands) {
     const run = runPublicCommand(command.args, command);
     if (run.status !== command.status) failures.push(`public command failed: ${command.label} (${run.stderr || run.stdout})`);
+    if (command.label === 'check --help' && !/Per URL: DNS, redirects and HEAD\/GET/.test(run.stdout)) {
+      failures.push('check --help: per-URL timeout contract is missing');
+    }
   }
 } finally {
   fs.rmSync(initDirectory, { recursive: true, force: true });

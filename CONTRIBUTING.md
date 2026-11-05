@@ -24,7 +24,10 @@ repository.
 
 ## Local checks
 
-The project requires Node.js 20 or newer. From the repository root, run:
+The package keeps `engines: >=20`; Node.js 20 reached end of life on
+2026-04-30 and remains accepted for compatibility. Use a maintained Node.js
+22, 24, or 26 LTS release. The correctness CI matrix is pinned to 20.20.2,
+22.23.4, 24.22.2, and 26.13.0; performance and docs checks use exactly 24.22.2.
 
 The root package has no runtime dependencies. The full suite also exercises the
 Action source, so install its locked dependencies without lifecycle scripts:
@@ -32,7 +35,10 @@ Action source, so install its locked dependencies without lifecycle scripts:
 ```sh
 npm --prefix action ci --no-audit --no-fund --ignore-scripts
 npm test
+npm run test:network
+npm run test:performance
 npm run docs:sync-check
+node --test .github/scripts/verify-release.test.mjs
 git diff --check
 npm pack --dry-run --json
 ```
@@ -51,6 +57,23 @@ npm --prefix action audit --omit=dev
 
 The committed `action/dist/` files must match the source build. A bundle
 rebuild is not a release or publication.
+
+## Release preparation
+
+The manual `.github/workflows/release.yml` workflow is prepared for
+[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/).
+Before dispatch, a maintainer must configure the GitHub environment `npm`
+with required approval and main-only deployment protection, and the npm
+Trusted Publisher for owner `Elgabor`, repository `doclify-guardrail`, workflow
+filename `release.yml`, and environment `npm`, allowing `npm publish`.
+
+Dispatch only from `main` with an existing annotated `v<major>.<minor>.<patch>`
+tag. The workflow checks that its commit is an ancestor of `origin/main` and
+that the package version matches the tag. Tests and pack inspection run in a
+job with read-only permissions. The separate publish job rechecks the tested
+commit and tag object, uses Node.js 26.13.0 with npm >=11.5.1, and has OIDC
+permission only there. It requires no npm token. Preparing or merging the
+workflow does not authorize dispatch or publication.
 
 ## Documentation
 

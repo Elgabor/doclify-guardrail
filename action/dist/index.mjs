@@ -28599,6 +28599,9 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("util");
 /******/ }
 /******/
 /************************************************************************/
+/******/ /* webpack/runtime/asset-relocator-loader */
+/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = decodeURIComponent(new URL('.', import.meta.url).pathname).slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
+/******/
 /******/ /* webpack/runtime/create fake namespace object */
 /******/ (() => {
 /******/ 	var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
@@ -28656,10 +28659,6 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("util");
 /******/ 		Object.defineProperty(exports, '__esModule', { value: true });
 /******/ 	};
 /******/ })();
-/******/
-/******/ /* webpack/runtime/compat */
-/******/
-/******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = new URL('.', import.meta.url).pathname.slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
 /******/
 /************************************************************************/
 var __webpack_exports__ = {};
@@ -31707,9 +31706,32 @@ function resolveCliPath() {
   throw new Error('Doclify Action could not locate the v2 CLI in this immutable checkout.');
 }
 
+function literalPath(value) {
+  return value.startsWith('-') ? `./${value}` : value;
+}
+
 function appendInput(args, name, flag) {
-  const value = getInput(name);
-  if (value) args.push(flag, value);
+  let value = getInput(name);
+  if (!value) return;
+  if (/[\r\n\0]/.test(value)) {
+    throw new Error(`Action input "${name}" must be a single CLI value.`);
+  }
+  if (name === 'config' || name === 'site-root') {
+    value = literalPath(value);
+  } else if (name === 'exclude') {
+    value = value.split(',').map((item) => literalPath(item.trim())).filter(Boolean).join(',');
+    if (!value) return;
+  } else {
+    const values = name === 'ignore-rules' || name === 'link-allow-list' ? value.split(',') : [value];
+    if (values.some((item) => item.trim().startsWith('-'))) {
+      throw new Error(`Action input "${name}" must not contain an option token.`);
+    }
+    if ((name === 'link-timeout-ms' || name === 'link-concurrency')
+      && (!Number.isInteger(Number(value)) || Number(value) <= 0)) {
+      throw new Error(`Action input "${name}" must be a positive integer.`);
+    }
+  }
+  args.push(flag, value);
 }
 
 function buildCliArgs() {
@@ -31718,10 +31740,10 @@ function buildCliArgs() {
   let args;
   if (mode === 'check') {
     const target = getInput('path') || '.';
-    if (/[\r\n]/.test(target)) {
+    if (/[\r\n\0]/.test(target)) {
       throw new Error('Action input "path" must be one file, directory, or glob target.');
     }
-    args = [cli, 'check', target];
+    args = [cli, 'check', literalPath(target)];
   } else if (mode === 'changed') {
     args = [cli, 'changed'];
     appendInput(args, 'base', '--base');

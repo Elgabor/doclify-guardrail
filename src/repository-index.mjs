@@ -4,6 +4,9 @@ import path from 'node:path';
 import { analyzeFences } from './fences.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
+import { compileWildcard } from './wildcard.mjs';
+import { scanInlineLinks } from './inline-links.mjs';
+import { getReadContainment } from './workspace-path.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
 const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
@@ -16,9 +19,15 @@ function portable(value) {
 }
 
 function anchorFor(heading) {
-  return heading
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  const text = heading.replace(/`([^`]+)`/g, '$1');
+  const parts = [];
+  let offset = 0;
+  for (const link of scanInlineLinks(text, 'heading')) {
+    parts.push(text.slice(offset, link.index), link.label);
+    offset = link.end;
+  }
+  parts.push(text.slice(offset));
+  return parts.join('')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .trim()
@@ -159,30 +168,13 @@ function workspacePatterns(manifest) {
     ? manifest.workspaces
     : Array.isArray(manifest?.workspaces?.packages) ? manifest.workspaces.packages : [];
   return raw.filter((value) => typeof value === 'string' && value.length > 0)
-    .map((value) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, ''));
-}
-
-function workspacePatternMatches(directory, pattern) {
-  let expression = '^';
-  for (let index = 0; index < pattern.length; index += 1) {
-    if (pattern.startsWith('**/', index)) {
-      expression += '(?:.*/)?';
-      index += 2;
-    } else if (pattern.startsWith('**', index)) {
-      expression += '.*';
-      index += 1;
-    } else if (pattern[index] === '*') {
-      expression += '[^/]*';
-    } else {
-      expression += pattern[index].replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    }
-  }
-  return new RegExp(`${expression}$`).test(directory);
+    .map((value) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, ''))
+    .map((pattern) => ({ pattern, matches: compileWildcard(pattern, 'workspace') }));
 }
 
 function matchesWorkspaceManifest(relativePath, patterns) {
   const directory = path.posix.dirname(relativePath);
-  return patterns.some((pattern) => workspacePatternMatches(directory, pattern));
+  return patterns.some(({ matches }) => matches(directory));
 }
 
 function excludedPathMayContainWorkspace(relativePath, patterns) {
@@ -190,7 +182,7 @@ function excludedPathMayContainWorkspace(relativePath, patterns) {
     ? path.posix.dirname(relativePath)
     : relativePath;
   if (matchesWorkspaceManifest(`${directory}/package.json`, patterns)) return true;
-  return patterns.some((pattern) => {
+  return patterns.some(({ pattern }) => {
     const prefix = pattern.split('*', 1)[0].replace(/\/+$/, '');
     return prefix && (directory === prefix
       || directory.startsWith(`${prefix}/`)
@@ -199,6 +191,7 @@ function excludedPathMayContainWorkspace(relativePath, patterns) {
 }
 
 function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
+  const canonicalWorkspace = fs.realpathSync(workspace);
   const index = {
     files: new Set(),
     anchors: new Map(),
@@ -207,6 +200,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     packageSources: new Map(),
     workspaceSources: [],
     anchorSources: new Map(),
+    unavailableSymlinks: new Map(),
     makeSources: new Map(),
     excludedPaths: new Set(),
     excludedDirectories: new Set(),
@@ -216,6 +210,56 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
   };
 
   const packageCandidates = [];
+  const anchorCache = new Map();
+  function addAnchors(sourcePath, relative) {
+    if (!anchorCache.has(sourcePath)) {
+      try {
+        anchorCache.set(sourcePath, anchorsFor(fs.readFileSync(sourcePath, 'utf8')));
+      } catch {
+        anchorCache.set(sourcePath, null);
+      }
+    }
+    const analysis = anchorCache.get(sourcePath);
+    if (analysis) index.anchors.set(relative, analysis.anchors);
+    index.anchorSources.set(relative, {
+      path: relative,
+      state: analysis ? analysis.complete ? 'available' : 'unavailable' : 'unreadable'
+    });
+  }
+
+  function canonicalSourceExcluded(sourcePath) {
+    const relative = portable(path.relative(canonicalWorkspace, sourcePath));
+    if (relative.split('/').some((part) => IGNORED_DIRECTORIES.has(part))) return true;
+    if (isExcluded(sourcePath, { directory: false })) return true;
+    for (let directory = path.dirname(sourcePath); directory !== canonicalWorkspace; directory = path.dirname(directory)) {
+      if (isExcluded(directory, { directory: true })) return true;
+      if (path.dirname(directory) === directory) break;
+    }
+    return false;
+  }
+
+  function addSymlink(absolutePath, name) {
+    const relative = portable(path.relative(workspace, absolutePath));
+    const source = { path: relative, state: 'unavailable' };
+    index.unavailableSymlinks.set(relative, source);
+    // Resolve regular files only; directory links never expand the walk.
+    if (getReadContainment(absolutePath, workspace) !== 'inside') return;
+    let canonical;
+    try {
+      canonical = fs.realpathSync(absolutePath);
+      if (!fs.statSync(canonical).isFile()) return;
+    } catch {
+      return;
+    }
+    if (canonicalSourceExcluded(canonical)) {
+      source.state = 'excluded';
+      return;
+    }
+    index.unavailableSymlinks.delete(relative);
+    index.files.add(relative);
+    if (isMarkdownPath(name)) addAnchors(canonical, relative);
+    // Manifest and Makefile symlinks retain their previous unsupported behavior.
+  }
   function walk(directory) {
     let entries;
     try {
@@ -250,6 +294,10 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
         walk(absolutePath);
         continue;
       }
+      if (entry.isSymbolicLink()) {
+        addSymlink(absolutePath, entry.name);
+        continue;
+      }
       if (!entry.isFile()) continue;
       const relative = portable(path.relative(workspace, absolutePath));
       index.files.add(relative);
@@ -272,16 +320,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
         }
       }
       if (isMarkdownPath(entry.name)) {
-        try {
-          const anchorAnalysis = anchorsFor(fs.readFileSync(absolutePath, 'utf8'));
-          index.anchors.set(relative, anchorAnalysis.anchors);
-          index.anchorSources.set(relative, {
-            path: relative,
-            state: anchorAnalysis.complete ? 'available' : 'unavailable'
-          });
-        } catch {
-          index.anchorSources.set(relative, { path: relative, state: 'unreadable' });
-        }
+        addAnchors(absolutePath, relative);
       }
     }
   }

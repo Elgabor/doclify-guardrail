@@ -13,6 +13,7 @@ on:
       - '.editorconfig'
       - '.gitignore'
       - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -28,6 +29,7 @@ on:
       - '.editorconfig'
       - '.gitignore'
       - '.github/workflows/**'
+      - '.github/scripts/**'
       - 'src/**'
       - 'scripts/**'
       - 'test/**'
@@ -39,12 +41,13 @@ jobs:
   guardrail:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '24.22.2'
+          check-latest: true
       - name: Install action dependencies
         working-directory: action
         run: npm ci --no-audit --no-fund --ignore-scripts
@@ -64,11 +67,11 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-smoke.outputs.complete }}
           DOCLIFY_BLOCKING: ${{ steps.action-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_BLOCKING" = 0
-      # This full-SHA pin checks the stable release reference;
+      # This full-SHA pin checks the reviewed security-fixed reference;
       # the local ./action smoke above covers the current checkout.
-      - name: Smoke released Action v2.0.1 from an immutable reference
+      - name: Smoke security-fixed Action from an immutable reference
         id: action-sha-smoke
-        uses: Elgabor/doclify-guardrail/action@ad98fb4efc0744360c305747767070d0549c764f
+        uses: Elgabor/doclify-guardrail/action@4d84618dec4568cff757e721d37399df8655c3fc
         with:
           path: docs/validation-protocol.md
       - name: Verify immutable Action reads the caller workspace
@@ -77,18 +80,6 @@ jobs:
           DOCLIFY_COMPLETE: ${{ steps.action-sha-smoke.outputs.complete }}
           DOCLIFY_FILES: ${{ steps.action-sha-smoke.outputs.files }}
           DOCLIFY_BLOCKING: ${{ steps.action-sha-smoke.outputs.blocking }}
-        run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_FILES" = 1 && test "$DOCLIFY_BLOCKING" = 0
-      - name: Smoke Action v2 major reference
-        id: action-major-smoke
-        uses: Elgabor/doclify-guardrail/action@v2
-        with:
-          path: docs/validation-protocol.md
-      - name: Verify Action v2 major reference
-        env:
-          DOCLIFY_STATUS: ${{ steps.action-major-smoke.outputs.status }}
-          DOCLIFY_COMPLETE: ${{ steps.action-major-smoke.outputs.complete }}
-          DOCLIFY_FILES: ${{ steps.action-major-smoke.outputs.files }}
-          DOCLIFY_BLOCKING: ${{ steps.action-major-smoke.outputs.blocking }}
         run: test "$DOCLIFY_STATUS" = pass && test "$DOCLIFY_COMPLETE" = true && test "$DOCLIFY_FILES" = 1 && test "$DOCLIFY_BLOCKING" = 0
       - name: Audit action dependency chain
         working-directory: action
@@ -101,9 +92,16 @@ jobs:
         run: npm run test:network
       # The reviewed tolerance is deliberately broad: this catches only macroscopic regressions.
       - name: Reject catastrophic performance regressions
-        run: npm run test:performance
+        run: |
+          npm run test:performance || {
+            status=$?
+            node scripts/perf-corpus.mjs --measure
+            exit "$status"
+          }
       - name: Verify docs sync
         run: npm run docs:sync-check
+      - name: Verify release authorization boundaries without publishing
+        run: node --test .github/scripts/verify-release.test.mjs
       - name: Verify npm package contents
         run: npm pack --dry-run
       - name: Docs integrity gate

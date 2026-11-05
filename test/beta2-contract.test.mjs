@@ -65,6 +65,26 @@ function writeRepository(root) {
   fs.writeFileSync(path.join(root, 'guide.md'), '# Guide\n\n## Existing\n', 'utf8');
 }
 
+test('generated documents keep local path checks and skip anchor and command claims', async (t) => {
+  const cwd = makeTempDir(t);
+  writeRepository(cwd);
+  for (const fragment of ['existing', 'missing']) {
+    fs.writeFileSync(path.join(cwd, 'README.md'), `[anchor](guide.md#${fragment})\n\n\`npm run absent\`\n\`make absent\`\n\`doclify-guardrail absent\`\n`);
+    const generated = await check({ cwd, paths: ['README.md'], purpose: 'generated' });
+    assert.equal(generated.status, 'pass');
+    assert.equal(generated.complete, true);
+    assert.deepEqual(generated.findings, []);
+    const published = await check({ cwd, paths: ['README.md'], purpose: 'published' });
+    assert.equal(published.findings.some((finding) => finding.ruleId === 'local-link'), fragment === 'missing');
+    assert.ok(published.findings.some((finding) => finding.ruleId === 'package-script'));
+  }
+  fs.writeFileSync(path.join(cwd, 'README.md'), '[path](absent.md#missing)\n');
+  const missingPath = await check({ cwd, paths: ['README.md'], purpose: 'generated' });
+  assert.equal(missingPath.status, 'fail');
+  assert.equal(missingPath.complete, true);
+  assert.deepEqual(missingPath.findings.map((finding) => finding.ruleId), ['local-link']);
+});
+
 test('beta.2 classifies all document purposes with config taking precedence', async (t) => {
   const cwd = makeTempDir(t);
   writeRepository(cwd);

@@ -58,6 +58,92 @@ function runAction(t, content, inputs = {}, entrypoint = ACTION_SOURCE, prepare)
   return { ...run, outputs: parseOutputs(fs.readFileSync(outputFile, 'utf8')) };
 }
 
+function withInputs(inputs, callback) {
+  const original = new Map([...ACTION_INPUTS].map((name) => {
+    const key = `INPUT_${name.toUpperCase()}`;
+    return [key, process.env[key]];
+  }));
+  try {
+    for (const key of original.keys()) delete process.env[key];
+    for (const [name, value] of Object.entries(inputs)) process.env[`INPUT_${name.toUpperCase()}`] = value;
+    return callback();
+  } finally {
+    for (const [key, value] of original) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test('Action v2 treats flag-shaped paths as literal targets in source and bundle', (t) => {
+  for (const entrypoint of [ACTION_SOURCE, ACTION_BUNDLE]) {
+    for (const target of ['--external-links', '--help', '--all', '-', './--x', '--external-links.md']) {
+      const run = runAction(t, '# Root\n\n[missing](missing.md)\n[remote](http://127.0.0.1:1/)\n', {
+        path: target, 'external-links': 'false'
+      }, entrypoint, (cwd) => {
+        const absolute = path.join(cwd, target);
+        if (target.endsWith('.md')) fs.writeFileSync(absolute, '# Literal target\n');
+        else {
+          fs.mkdirSync(absolute);
+          fs.writeFileSync(path.join(absolute, 'target.md'), '# Literal target\n');
+        }
+      });
+      assert.equal(run.status, 0, `${entrypoint}: ${target}: ${run.stdout} ${run.stderr}`);
+      assert.deepEqual(run.outputs, {
+        status: 'pass', complete: 'true', files: '1', blocking: '0', advisory: '0', diagnostics: '0'
+      });
+    }
+  }
+});
+
+test('Action v2 reads flag-shaped config and site-root paths in source and bundle', (t) => {
+  for (const entrypoint of [ACTION_SOURCE, ACTION_BUNDLE]) {
+    const run = runAction(t, '# Root\n\n[guide](/guide.md)\n', {
+      config: '--help', 'site-root': '--site', exclude: '--drafts'
+    }, entrypoint, (cwd) => {
+      fs.writeFileSync(path.join(cwd, '--help'), '{}\n');
+      fs.mkdirSync(path.join(cwd, '--site'));
+      fs.writeFileSync(path.join(cwd, '--site', 'guide.md'), '# Guide\n');
+    });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    assert.equal(run.outputs.advisory, '0');
+    assert.equal(run.outputs.files, '1');
+  }
+});
+
+test('Action v2 normalizes path-valued options without introducing CLI flags', () => {
+  withInputs({
+    path: '--external-links', config: '--help', 'site-root': '-', exclude: '--all,docs, ./--x,-drafts'
+  }, () => assert.deepEqual(buildCliArgs().slice(1), [
+    'check', './--external-links', '--format', 'json', '--config', './--help',
+    '--exclude', './--all,docs,./--x,./-drafts', '--site-root', './-'
+  ]));
+});
+
+test('Action v2 rejects flag-shaped refs, lists and invalid numeric values before scanning', (t) => {
+  const invalid = [
+    { mode: 'changed', base: '--external-links' },
+    { 'ignore-rules': '--help' },
+    { 'ignore-rules': 'local-link,--external-links' },
+    { 'link-allow-list': '--external-links' },
+    { 'link-allow-list': 'example.com,--help' },
+    { 'link-timeout-ms': '--external-links' },
+    { 'link-timeout-ms': '0' },
+    { 'link-timeout-ms': '1.5' },
+    { 'link-concurrency': '-1' },
+    { 'link-concurrency': 'Infinity' }
+  ];
+  for (const inputs of invalid) {
+    withInputs(inputs, () => assert.throws(() => buildCliArgs(), /Action input/));
+    for (const entrypoint of [ACTION_SOURCE, ACTION_BUNDLE]) {
+      const run = runAction(t, '# Readme\n', inputs, entrypoint);
+      assert.equal(run.status, 1, `${entrypoint}: ${JSON.stringify(inputs)}`);
+      assert.deepEqual(run.outputs, {});
+      assert.match(run.stdout, /Action input/);
+    }
+  }
+});
+
 test('Action v2 is token-free and offline by default', (t) => {
   const metadata = fs.readFileSync(path.join(ROOT, 'action', 'action.yml'), 'utf8');
   const declaredInputs = [...metadata.slice(metadata.indexOf('inputs:'), metadata.indexOf('outputs:'))
@@ -166,7 +252,7 @@ test('Action v2 annotates incomplete scans before failing the step', (t) => {
 });
 
 test('Action v2 distinguishes invalid invocation from integrity failure', (t) => {
-  const run = runAction(t, '# Readme\n', { path: '-' });
+  const run = runAction(t, '# Readme\n', { 'ignore-rules': 'not-a-rule' });
   assert.equal(run.status, 1);
   assert.match(run.stdout, /Doclify could not start the requested scan/);
   assert.deepEqual(run.outputs, {});

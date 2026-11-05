@@ -1,7 +1,12 @@
 # Migrating to Doclify Guardrail v2
 
-Version `2.0.1` is the current stable npm release. The v2 core is local and
-read-only by default.
+This guide covers version `2.0.2`. The v2 core is local and read-only by
+default.
+
+The package keeps `engines: >=20`. Node.js 20 reached end of life on
+2026-04-30 and is still accepted for compatibility. Use a maintained LTS
+release: Node.js 22, 24, or 26. CI tests correctness on exactly 20.20.2,
+22.23.4, 24.22.2, and 26.13.0; the JavaScript Action runs on `node24`.
 
 ## Command changes
 
@@ -82,8 +87,9 @@ accepted.
 MDX is classified as the limited `fragment` purpose unless configuration assigns
 another supported purpose. V2 does not evaluate MDX expressions.
 
-In v2 purpose is reported for every selected file. `generated` skips
-repository-command claims. `plan` and `changelog` do not treat command examples
+In v2 purpose is reported for every selected file. Generated documents skip
+anchor and command claims; local path checks still apply.
+`plan` and `changelog` do not treat command examples
 as current instructions, while their local paths and anchors remain subject to
 `local-link`. This is classification, not a style preset.
 
@@ -100,12 +106,20 @@ events are not asserted absent from `scripts`. Relative extensionless links are 
 produces an incomplete result rather than a clean pass. A clean result covers
 supported claims in the selected documents, not every sentence.
 
+Markdown file symlinks are checked through contained canonical targets,
+respecting exclusions. Unavailable symlink evidence makes a requested anchor
+check incomplete. Directory symlinks are not traversed.
+
+For opt-in remote checks, `--link-timeout-ms` sets a per-URL budget. The timeout
+starts when a URL leaves the worker queue and covers DNS preflight, redirects,
+and HEAD-to-GET fallback.
+
 ## GitHub Action
 
 `Elgabor/doclify-guardrail/action@v1` remains on its own v1 contract. The v2
 release does not change or retag that Action.
 
-The stable v2 Action adapter is published under the signed tag `v2.0.1`.
+The release-specific v2 Action reference for this version is `@v2.0.2`.
 It maps `mode`, `path`, `base`, `staged`,
 `config`, `ignore-rules`, `exclude`, `site-root`, and the opt-in external-link
 settings directly to the v2 CLI. `mode: changed` requires exactly one of `base`
@@ -117,13 +131,14 @@ If the scan cannot start because the invocation or configuration is invalid,
 the step fails before those result outputs exist.
 
 ```yaml
-- uses: Elgabor/doclify-guardrail/action@v2.0.1
+- uses: Elgabor/doclify-guardrail/action@v2.0.2
   with:
     path: README.md
 ```
 
 The v1 Action's SARIF and score outputs have no v2 Action equivalent. SARIF
 remains available from the CLI with `--format sarif --output <path>`. Use
-`Elgabor/doclify-guardrail/action@v2` for compatible v2 updates, the signed
-`v2.0.1` tag for the specific release, or its full commit SHA for an immutable
-reference.
+`Elgabor/doclify-guardrail/action@v2` for compatible v2 updates, `v2.0.2` for
+this release, or its full commit SHA for an immutable reference. Path inputs
+that start with `-` remain literal relative paths, including `path: '-'`;
+stdin is available through the CLI.
