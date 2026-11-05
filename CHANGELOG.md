@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.2] - 2026-11-05
+
+### Security
+
+- keep Action path inputs literal and validate option values before invoking the CLI (SEC-01)
+- replace backtracking wildcard matching with bounded matching for file, exclusion, and workspace patterns (SEC-02)
+- scan Markdown link delimiters without repeated suffix scans, including heading anchors (SEC-03)
+- close HTTP response streams and sockets before releasing a network worker slot (SEC-04)
+- apply one per-URL timeout to DNS preflight, redirects, and HEAD-to-GET fallback, with bounded pending lookups (SEC-05)
+- resolve contained Markdown file symlinks for anchor evidence and report unavailable requested evidence as incomplete (SEC-06)
+- omit code points forbidden by XML 1.0 from JUnit reports while preserving markup escaping (SEC-07)
+
+### Fixed
+
+- respect canonical-target exclusions when resolving Markdown file symlink evidence
+- document and regression-test the existing generated-document exemption: anchor and command claims are skipped, while local paths remain checked
+
+### Changed
+
+- test correctness on Node.js 20.20.2, 22.23.4, 24.22.2, and 26.13.0; run controlled network checks on 24.22.2 and 26.13.0
+- pin performance and docs checks to Node.js 24.22.2, with a Linux CI baseline measured before the core fixes and unchanged tolerances
+- upgrade pinned checkout and setup-node Actions to v7.0.1 and v7.1.0, and rebuild the Action with ncc 0.45.0
+- prepare a manual npm Trusted Publishing workflow with separate test and publish jobs, annotated-tag validation, and publish-only OIDC permission
+- keep `engines: >=20`, document Node.js 20 EOL, and recommend maintained LTS releases
+
+### Notes
+
+- npm publication, Action tags, and the GitHub Release remain separate maintainer steps
+
 ## [2.0.1] - 2026-08-14
 
 ### Changed

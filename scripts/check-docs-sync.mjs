@@ -31,15 +31,15 @@ const checks = [
       },
       {
         label: 'release-specific Action v2 example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.1/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
       },
       {
         label: 'Action v2 offline default',
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'stable npm release',
-        pattern: /Version `2\.0\.1` is the current stable npm release/
+        label: 'documented package version without premature publication claim',
+        pattern: /This guide covers version `2\.0\.2`[\s\S]*?npm publication and Action tags are separate/
       },
       {
         label: 'changed Markdown-only boundary',
@@ -140,8 +140,12 @@ const checks = [
     file: 'MIGRATION.md',
     expectations: [
       {
-        label: 'stable migration release',
-        pattern: /Version `2\.0\.1` is the current stable npm release/
+        label: 'documented migration version',
+        pattern: /This guide covers version `2\.0\.2`/
+      },
+      {
+        label: 'release-specific Action example',
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
       }
     ]
   },
@@ -150,7 +154,7 @@ const checks = [
     expectations: [
       {
         label: 'stable package version',
-        pattern: /"version": "2\.0\.1"/
+        pattern: /"version": "2\.0\.2"/
       }
     ]
   },
@@ -159,7 +163,7 @@ const checks = [
     expectations: [
       {
         label: 'stable Action package version',
-        pattern: /"version": "2\.0\.1"/
+        pattern: /"version": "2\.0\.2"/
       }
     ]
   },
@@ -289,6 +293,10 @@ const checks = [
     file: 'CHANGELOG.md',
     expectations: [
       {
+        label: '2.0.2 security, fixes and maintenance entry',
+        pattern: /## \[2\.0\.2\] - 2026-11-05\n[\s\S]*?### Security[\s\S]*?SEC-07[\s\S]*?### Fixed[\s\S]*?### Changed[\s\S]*?### Notes/
+      },
+      {
         label: 'patch release entry',
         pattern: /## \[2\.0\.1\] - 2026-08-14/
       },
@@ -338,6 +346,10 @@ const checks = [
         pattern: /external-links:\s*[\s\S]*?default: 'false'/
       },
       {
+        label: 'per-URL Action timeout description',
+        pattern: /Per-URL milliseconds from worker start, including DNS, redirects and HEAD-to-GET fallback/
+      },
+      {
         label: 'v2 status output',
         pattern: /outputs:\s*[\s\S]*?status:/
       }
@@ -378,6 +390,34 @@ const checks = [
   }
 ];
 
+for (const file of ['README.md', 'MIGRATION.md']) {
+  checks.push({
+    file,
+    expectations: [
+      {
+        label: 'generated anchor and command exemption with local paths preserved',
+        pattern: /Generated documents skip\s+anchor and command claims; local path checks still\s+apply\./
+      },
+      {
+        label: 'per-URL deadline starts after the worker queue',
+        pattern: /The timeout\s+starts when a URL leaves\s+the worker queue and covers DNS preflight, redirects,\s+and HEAD-to-GET fallback\./
+      },
+      {
+        label: 'canonical symlink evidence and directory boundary',
+        pattern: /Markdown file symlinks are checked through contained canonical targets,\s+respecting exclusions\. Unavailable symlink evidence makes a requested anchor\s+check incomplete\. Directory symlinks are not traversed\./
+      },
+      {
+        label: 'Node 20 EOL compatibility boundary and maintained LTS recommendation',
+        pattern: /`engines: >=20`[\s\S]*?Node\.js 20 reached end of life on\s+2026-04-30 and is still accepted for compatibility[\s\S]*?Node\.js 22, 24, or 26/
+      },
+      {
+        label: 'tested exact Node runtime matrix',
+        pattern: /20\.20\.2,\s+22\.23\.4, 24\.22\.2,\s+and 26\.13\.0/
+      }
+    ]
+  });
+}
+
 const requiredFiles = [
   'action/action.yml',
   '.github/workflows/reliability.yml',
@@ -399,6 +439,12 @@ const forbiddenActionInputs = [
 ];
 
 const failures = [];
+
+const packageVersion = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')).version;
+const actionLock = JSON.parse(fs.readFileSync(path.join(rootDir, 'action', 'package-lock.json'), 'utf8'));
+if (actionLock.version !== packageVersion || actionLock.packages?.['']?.version !== packageVersion) {
+  failures.push('action/package-lock.json: package and root lock versions must match the release version');
+}
 
 const remoteActions = new Set(['actions/checkout', 'actions/setup-node', 'Elgabor/doclify-guardrail/action']);
 for (const file of fs.readdirSync(path.join(rootDir, '.github', 'workflows'))) {
@@ -483,6 +529,9 @@ try {
   for (const command of commands) {
     const run = runPublicCommand(command.args, command);
     if (run.status !== command.status) failures.push(`public command failed: ${command.label} (${run.stderr || run.stdout})`);
+    if (command.label === 'check --help' && !/Per URL: DNS, redirects and HEAD\/GET/.test(run.stdout)) {
+      failures.push('check --help: per-URL timeout contract is missing');
+    }
   }
 } finally {
   fs.rmSync(initDirectory, { recursive: true, force: true });

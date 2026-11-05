@@ -37,7 +37,7 @@ inputs:
     description: 'Comma-separated remote URL or hostname allow list'
     default: ''
   link-timeout-ms:
-    description: 'Positive remote-link timeout in milliseconds'
+    description: 'Per-URL milliseconds from worker start, including DNS, redirects and HEAD-to-GET fallback'
     default: ''
   link-concurrency:
     description: 'Positive remote-link concurrency limit'

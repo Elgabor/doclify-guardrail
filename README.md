@@ -10,11 +10,11 @@ It checks Markdown and MDX against facts already present in the repository. It
 runs locally, does not execute documented commands, and does not contact the
 network unless `--external-links` is passed.
 
-Version `2.0.1` is the current stable npm release. The `2.0.0-beta.3`
-prerelease is on `next`. The supported v1 Action remains frozen at
+This guide covers version `2.0.2`. npm publication and Action tags are separate
+maintainer release steps. The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
-This repository documents shipped behavior and reproducible checks.
+This repository documents implemented behavior and reproducible checks.
 
 ## Repository guide
 
@@ -32,6 +32,16 @@ Use the
 for a focused proposal. Report vulnerabilities through the
 [security policy](https://github.com/Elgabor/doclify-guardrail/blob/main/SECURITY.md),
 not a public issue.
+
+## Runtime support
+
+The package keeps `engines: >=20`. Node.js 20 reached end of life on
+2026-04-30 and is still accepted for compatibility. Use a maintained LTS
+release: Node.js 22, 24, or 26; Node.js 26 LTS is recommended for new setups.
+
+CI tests correctness and labeled cases on Node.js 20.20.2, 22.23.4, 24.22.2,
+and 26.13.0. Controlled network tests run on 24.22.2 and 26.13.0. Performance
+and docs checks use exactly 24.22.2; the JavaScript Action runs on `node24`.
 
 ## Start
 
@@ -83,7 +93,7 @@ required source cannot be read or indexed completely, the result is
 
 | Rule | Verified syntax | Evidence source |
 | --- | --- | --- |
-| `local-link` | Explicit local path, or an anchor in a completely indexed Markdown file | Workspace files and ATX/Setext/static HTML anchors |
+| `local-link` | Explicit local path, or an anchor in a completely indexed Markdown file; generated documents skip anchors | Workspace files and ATX/Setext/static HTML anchors |
 | `package-script` | Complete static `npm run <literal>`; optional `--if-present` is respected | Applicable `package.json` scripts |
 | `workspace-package` | One static exact workspace name/path via `--workspace`/`-w`, before or after `run <literal>` | Declared workspace package manifests |
 | `make-target` | Static `make` targets with an explicit `-C`/`--directory`, or an unambiguous root context | Selected Makefile targets |
@@ -91,6 +101,12 @@ required source cannot be read or indexed completely, the result is
 
 With `--external-links`, `external-link` reports a remote failure as advisory
 and unverified; it never turns a complete local scan into a false blocking result.
+`--link-timeout-ms` sets a per-URL budget. The timeout starts when a URL leaves
+the worker queue and covers DNS preflight, redirects, and HEAD-to-GET fallback.
+
+Markdown file symlinks are checked through contained canonical targets,
+respecting exclusions. Unavailable symlink evidence makes a requested anchor
+check incomplete. Directory symlinks are not traversed.
 
 For current command claims (`published`, `instructions`, and `fragment`), an
 unqualified `npm run` or `make` is checked against the root `package.json` or
@@ -121,8 +137,8 @@ Every selected document has one purpose: `published`, `instructions`,
 `fragment`, `plan`, `changelog`, or `generated`. Configuration wins over the
 filename heuristic; the safe fallback is `fragment`. Purpose is included in
 the result for each file and does not turn generic formatting into a gate.
-In v2, `generated` skips repository-command claims so generated output is not
-treated as authored documentation. `plan` and `changelog` are still selected,
+Generated documents skip anchor and command claims; local path checks still
+apply. `plan` and `changelog` are still selected,
 but their command examples are not treated as current command claims; local
 links and anchors continue to be checked. Purpose does not make unsupported
 syntax verified.
@@ -180,17 +196,17 @@ permissions:
   contents: read
 
 steps:
-  - uses: actions/checkout@v5.0.1
+  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
       persist-credentials: false
-  - uses: Elgabor/doclify-guardrail/action@v2.0.1
+  - uses: Elgabor/doclify-guardrail/action@v2.0.2
     with:
       path: README.md
 ```
 
-The release tag `v2.0.1` is signed. Use `Elgabor/doclify-guardrail/action@v2`
-to follow the latest compatible v2 release, or pin the full commit SHA from the
-release page when the workflow requires an immutable reference.
+The release-specific Action reference for this version is `@v2.0.2`. Use
+`Elgabor/doclify-guardrail/action@v2` to follow compatible v2 releases, or pin
+the full commit SHA from the corresponding release page for an immutable reference.
 
 Use `mode: changed` with exactly one of `base` or `staged: 'true'` to delegate
 Git selection to the v2 `changed` command. A base comparison needs the requested
@@ -202,6 +218,8 @@ Inputs map directly to v2 CLI options: `mode`, `path`, `base`, `staged`,
 `files`, `blocking`, `advisory`, and `diagnostics`. The Action emits at most 50
 annotations while the outputs retain complete counts. The released v1 Action
 is unchanged and remains on its existing `@v1` tag.
+Path inputs that start with `-` remain literal relative paths. In the Action,
+`path: '-'` names a literal target; stdin is available through the CLI.
 
 ## Migration from v1
 
