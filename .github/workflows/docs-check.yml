@@ -5,6 +5,7 @@ permissions:
 
 on:
   push:
+    branches: [main]
     paths:
       - 'examples/**'
       - 'docs/**'
@@ -18,7 +19,7 @@ on:
       - 'scripts/**'
       - 'test/**'
       - 'action/**'
-      - 'bench/baselines/perf-300.json'
+      - 'bench/**'
       - 'package.json'
   pull_request:
     paths:
@@ -34,8 +35,12 @@ on:
       - 'scripts/**'
       - 'test/**'
       - 'action/**'
-      - 'bench/baselines/perf-300.json'
+      - 'bench/**'
       - 'package.json'
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   guardrail:
