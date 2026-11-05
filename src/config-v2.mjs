@@ -199,9 +199,7 @@ function mergeOverrides(current, overrides, workspace) {
   return next;
 }
 
-function matchesExclusion(candidate, exclusion, matchers) {
-  const parent = canonicalDirectory(path.dirname(candidate));
-  const comparableCandidate = path.join(parent, path.basename(candidate));
+function matchesExclusion(comparableCandidate, exclusion, matchers) {
   const relative = path.relative(exclusion.baseDir, comparableCandidate).split(path.sep).join('/');
   if (relative.startsWith('..') || path.isAbsolute(relative)) return false;
   const pattern = exclusion.pattern;
@@ -214,10 +212,20 @@ function matchesExclusion(candidate, exclusion, matchers) {
 }
 
 function createV2ConfigResolver(options) {
-  const workspace = canonicalDirectory(options.workspace);
-  const discoveryRoot = canonicalDirectory(options.discoveryRoot || workspace);
+  const canonicalDirectories = new Map();
+  function resolveCanonicalDirectory(rawDirectory) {
+    const directory = path.resolve(rawDirectory);
+    if (!canonicalDirectories.has(directory)) {
+      canonicalDirectories.set(directory, canonicalDirectory(directory));
+    }
+    return canonicalDirectories.get(directory);
+  }
+  const workspace = resolveCanonicalDirectory(options.workspace);
+  const discoveryRoot = resolveCanonicalDirectory(options.discoveryRoot || workspace);
   const overrides = options.overrides || {};
   const directoryCache = new Map();
+  const overriddenDirectoryCache = new Map();
+  const exclusionCache = new Map();
   const fileCache = new Map();
   const matchers = new Map();
   let explicitConfig = null;
@@ -243,9 +251,13 @@ function createV2ConfigResolver(options) {
 
   function resolveDirectory(rawDirectory) {
     if (explicitConfig) return explicitConfig;
-    const directory = canonicalDirectory(rawDirectory);
-    if (!isDescendantOrSame(directory, discoveryRoot)) return emptyConfig();
+    const directory = resolveCanonicalDirectory(rawDirectory);
     if (directoryCache.has(directory)) return directoryCache.get(directory);
+    if (!isDescendantOrSame(directory, discoveryRoot)) {
+      const resolved = emptyConfig();
+      directoryCache.set(directory, resolved);
+      return resolved;
+    }
 
     let resolved;
     if (directory === discoveryRoot) {
@@ -261,20 +273,32 @@ function createV2ConfigResolver(options) {
   }
 
   function forPath(targetPath, optionsForPath = {}) {
-    const directory = optionsForPath.directory === true ? targetPath : path.dirname(targetPath);
-    return mergeOverrides(resolveDirectory(directory), overrides, workspace);
+    const directory = resolveCanonicalDirectory(optionsForPath.directory === true ? targetPath : path.dirname(targetPath));
+    if (!overriddenDirectoryCache.has(directory)) {
+      overriddenDirectoryCache.set(directory, mergeOverrides(resolveDirectory(directory), overrides, workspace));
+    }
+    return overriddenDirectoryCache.get(directory);
   }
 
   function isExcluded(targetPath, optionsForPath = {}) {
+    const key = `${optionsForPath.directory === true ? 'directory' : 'file'}\0${path.resolve(targetPath)}`;
+    if (exclusionCache.has(key)) return exclusionCache.get(key);
     let resolved;
     if (optionsForPath.directory === true && !explicitConfig) {
-      const directory = canonicalDirectory(targetPath);
+      const directory = resolveCanonicalDirectory(targetPath);
       if (directory === discoveryRoot) return false;
-      resolved = mergeOverrides(resolveDirectory(path.dirname(directory)), overrides, workspace);
+      resolved = forPath(path.dirname(directory), { directory: true });
     } else {
       resolved = forPath(targetPath, optionsForPath);
     }
-    return resolved.exclusions.some((exclusion) => matchesExclusion(targetPath, exclusion, matchers));
+    let excluded = false;
+    if (resolved.exclusions.length > 0) {
+      const parent = resolveCanonicalDirectory(path.dirname(targetPath));
+      const comparableCandidate = path.join(parent, path.basename(targetPath));
+      excluded = resolved.exclusions.some((exclusion) => matchesExclusion(comparableCandidate, exclusion, matchers));
+    }
+    exclusionCache.set(key, excluded);
+    return excluded;
   }
 
   return {
