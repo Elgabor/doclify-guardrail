@@ -51,11 +51,11 @@ async function beforeDeadline(operation, budget) {
   }
 }
 
-function createBoundedLookup(lookupFn, limit) {
+function createBoundedLookup({ lookupFn = lookup, concurrency = DEFAULT_LINK_CONCURRENCY } = {}) {
   let active = 0;
   const waiters = new Set();
   return async (hostname, options, budget) => {
-    while (active >= limit) {
+    while (active >= concurrency) {
       let wake;
       const available = new Promise((resolve) => { wake = resolve; waiters.add(wake); });
       try {
@@ -452,6 +452,7 @@ async function checkDeadLinksDetailed(content, {
   timeoutMs,
   concurrency,
   remoteCache,
+  lookupLimiter,
   readBoundary,
   isExcluded,
   allowPrivateLinks,
@@ -471,7 +472,7 @@ async function checkDeadLinksDetailed(content, {
     : DEFAULT_LINK_CONCURRENCY;
   const stats = buildEmptyStats();
   const timeout = Number.isInteger(timeoutMs) ? timeoutMs : DEFAULT_LINK_TIMEOUT_MS;
-  const boundedLookup = createBoundedLookup(lookupFn || lookup, concurrencyLimit);
+  const boundedLookup = lookupLimiter || createBoundedLookup({ lookupFn: lookupFn || lookup, concurrency: concurrencyLimit });
 
   // Local links first (sync, fast)
   const remoteChecks = new Map(); // URL -> first link occurrence
@@ -580,5 +581,5 @@ async function checkDeadLinksDetailed(content, {
   return { findings, diagnostics, stats };
 }
 
-export { checkDeadLinksDetailed };
+export { checkDeadLinksDetailed, createBoundedLookup };
 export { DEFAULT_LINK_TIMEOUT_MS, DEFAULT_LINK_CONCURRENCY };

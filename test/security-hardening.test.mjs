@@ -186,6 +186,69 @@ test('SEC-05 DNS deadlines return without late requests or unbounded abandoned l
   `, temp(t));
 });
 
+test('SEC-05 public API bounds pending DNS per scan and concurrency policy across documents', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import dns from 'node:dns/promises';
+    import http from 'node:http';
+    import https from 'node:https';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
+    let currentRun;
+    let requests = 0;
+    const releases = [];
+    dns.lookup = () => {
+      const run = currentRun;
+      run.calls++;
+      run.active++;
+      run.peak = Math.max(run.peak, run.active);
+      return new Promise(resolve => releases.push(() => {
+        run.active--;
+        resolve([{ address: '127.0.0.1', family: 4 }]);
+      }));
+    };
+    http.request = https.request = () => { requests++; throw new Error('request after deadline'); };
+    syncBuiltinESMExports();
+    function fixture(name, files, hierarchical = false) {
+      const root = process.cwd() + '/' + name;
+      fs.mkdirSync(root);
+      fs.writeFileSync(root + '/.doclify-guardrail.json', JSON.stringify({ linkConcurrency: 2 }));
+      for (let file = 0; file < files; file++) {
+        const directory = hierarchical && file >= files / 2 ? root + '/nested' : root;
+        fs.mkdirSync(directory, { recursive: true });
+        fs.writeFileSync(directory + '/doc' + file + '.md', '[x](https://one' + file + '.invalid/a)\\n[x](https://two' + file + '.invalid/b)');
+      }
+      if (hierarchical) fs.writeFileSync(root + '/nested/.doclify-guardrail.json', JSON.stringify({ linkConcurrency: 3 }));
+      return root;
+    }
+    async function run(root, files, limit) {
+      const metrics = { calls: 0, active: 0, peak: 0 };
+      currentRun = metrics;
+      const result = await check({ cwd: root, paths: ['.'], externalLinks: true, links: { timeoutMs: 10 } });
+      assert.equal(result.summary.filesScanned, files);
+      assert.equal(result.findings.length, files * 2);
+      assert.ok(result.findings.every(finding => finding.message.includes('Timeout (0.01s)')));
+      assert.equal(metrics.calls, limit, JSON.stringify({ files, limit, ...metrics }));
+      assert.ok(metrics.peak <= limit);
+      assert.equal(metrics.active, limit);
+      assert.equal(requests, 0);
+      return { result, metrics };
+    }
+    const single = await run(fixture('single', 1), 1, 2);
+    const multiRoot = fixture('multiple', 8);
+    const multiple = await run(multiRoot, 8, 2);
+    // A second run gets its own limiter even while the first run's OS lookups remain pending.
+    const repeated = await run(multiRoot, 8, 2);
+    assert.deepEqual(repeated.result, multiple.result);
+    const hierarchy = await run(fixture('hierarchical', 8, true), 8, 2 + 3);
+    for (const release of releases) release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(requests, 0);
+    for (const run of [single, multiple, repeated, hierarchy]) assert.equal(run.metrics.active, 0);
+  `, temp(t));
+});
+
 test('SEC-05 early deadline timers prevent late requests even before the clock deadline', (t) => {
   child(`
     import assert from 'node:assert/strict';
