@@ -40,28 +40,36 @@ function anchorsFor(content) {
   const lines = text.split(/\r?\n/);
   const anchors = new Set();
   const counts = new Map();
-  const addAnchor = (value) => {
+  const emphasisCounts = new Map();
+  const addAnchor = (value, counter = counts) => {
     const base = anchorFor(value);
     if (!base) return;
-    const count = counts.get(base) || 0;
-    counts.set(base, count + 1);
+    const count = counter.get(base) || 0;
+    counter.set(base, count + 1);
     anchors.add(count === 0 ? base : `${base}-${count}`);
+  };
+  const addHeading = (value) => {
+    addAnchor(value);
+    const withoutEmphasis = value.replace(/`[^`]*`|(^|[^\p{L}\p{N}_])(_{1,3})(?=\S)((?:[^_]|(?<=[\p{L}\p{N}])_(?=[\p{L}\p{N}]))+?)(?<=\S)\2(?=$|[^\p{L}\p{N}_])/gu,
+      (match, prefix, delimiter, body) => body == null ? match : prefix + body);
+    addAnchor(withoutEmphasis, emphasisCounts);
   };
   const hasFence = /(^|\r?\n)[ \t]{0,3}(?:`{3,}|~{3,})/.test(text);
   const hasSetext = /(^|\r?\n)[^\r\n]+\r?\n[ \t]*(?:=+|-+)[ \t]*(?:\r?\n|$)/.test(text);
   const fences = analyzeFences(lines);
   const visibleText = lines.filter((line, index) => !fences.inFence[index]).join('\n');
   const hasHtmlAnchor = /<[^>\r\n]*[\s/](?:id|name)\s*=/i.test(visibleText);
-  const hasMultilineHtmlAnchor = /<[^>\r\n]*\r?\n[^>]*(?:\bid|\bname)\s*=/i.test(visibleText);
+  const hasHtmlHeading = /<h[1-6](?:\s[^<>]*)?>/i.test(visibleText);
+  const hasMultilineHtmlAnchor = /<[A-Za-z][A-Za-z0-9:-]*(?=[\s/>])[^<>\r\n]*\r?\n[^<>]*(?:\bid|\bname)\s*=/i.test(visibleText);
   const hasDynamicTag = lines.some((line, index) => !fences.inFence[index]
     && /<[A-Za-z][^>\r\n]*\{[^>\r\n]*>/i.test(line));
   const hasUnclosedTag = lines.some((line, index) => !fences.inFence[index]
     && /<[A-Za-z][^>]*$/.test(line));
-  if (!hasFence && !hasSetext && !hasHtmlAnchor && !hasMultilineHtmlAnchor
+  if (!hasFence && !hasSetext && !hasHtmlAnchor && !hasHtmlHeading && !hasMultilineHtmlAnchor
     && !hasDynamicTag && !hasUnclosedTag) {
     for (const line of lines) {
       const atx = line.match(/^#{1,6}\s+(.+)$/);
-      if (atx) addAnchor(atx[1]);
+      if (atx) addHeading(atx[1]);
     }
     return { anchors, complete: true };
   }
@@ -72,9 +80,32 @@ function anchorsFor(content) {
     if (fences.inFence[index]) continue;
     const line = lines[index];
     const atx = line.match(/^#{1,6}\s+(.+)$/);
-    if (atx) addAnchor(atx[1]);
+    if (atx) addHeading(atx[1]);
     const setext = lines[index + 1]?.match(/^\s*(?:=+|-+)\s*$/);
-    if (line.trim() && setext && !fences.inFence[index + 1]) addAnchor(line.trim());
+    if (line.trim() && setext && !fences.inFence[index + 1]) addHeading(line.trim());
+
+    let headingLevel = null;
+    let headingStart = 0;
+    let explicitHeading = false;
+    for (const tag of line.matchAll(/<(\/?)h([1-6])(?=[\s>])([^<>]*)>/gi)) {
+      if (!tag[1]) {
+        if (headingLevel != null) complete = false;
+        headingLevel = tag[2];
+        headingStart = tag.index + tag[0].length;
+        explicitHeading = /(?:^|[\s/])(?:id|name)\s*=/i.test(tag[3]);
+        continue;
+      }
+      if (headingLevel == null) continue;
+      if (tag[2] !== headingLevel || tag[3].trim()) {
+        complete = false;
+      } else if (!explicitHeading) {
+        const text = line.slice(headingStart, tag.index).replace(/<[^<>]*>/g, '');
+        if (/[{}<>]|&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(text)) complete = false;
+        else addHeading(text);
+      }
+      headingLevel = null;
+    }
+    if (headingLevel != null && !explicitHeading) complete = false;
 
     for (const tagMatch of line.matchAll(/<[^>]*>/g)) {
       const tag = tagMatch[0];

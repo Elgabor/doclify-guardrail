@@ -1,6 +1,17 @@
+const NO_LINKS = Object.freeze([]);
+
+function isWhitespace(code) {
+  return code === 0x20 || (code >= 0x09 && code <= 0x0d)
+    || code === 0xa0 || code === 0x1680 || (code >= 0x2000 && code <= 0x200a)
+    || code === 0x2028 || code === 0x2029 || code === 0x202f || code === 0x205f
+    || code === 0x3000 || code === 0xfeff;
+}
+
 // The three consumers deliberately recognize different URL grammars.
 function scanInlineLinks(text, mode) {
-  if (!['link', 'claim', 'heading'].includes(mode)) throw new Error('Unknown inline link mode.');
+  if (mode !== 'link' && mode !== 'claim' && mode !== 'heading') throw new Error('Unknown inline link mode.');
+  const opening = text.indexOf('[');
+  if (opening < 0 || text.indexOf('](', opening) < 0) return NO_LINKS;
   const ends = new Int32Array(text.length + 1).fill(-1);
   let nextClose = -1;
   for (let offset = text.length - 1; offset >= 0; offset -= 1) {
@@ -13,7 +24,7 @@ function scanInlineLinks(text, mode) {
     } else if (mode === 'link' && character === '(') {
       // A parenthesized group accepts anything up to its first closing paren.
       ends[offset] = nextClose < 0 ? -1 : ends[nextClose + 1];
-    } else if (!/\s/.test(character)) {
+    } else if (!isWhitespace(text.charCodeAt(offset))) {
       ends[offset] = ends[offset + 1];
     }
   }

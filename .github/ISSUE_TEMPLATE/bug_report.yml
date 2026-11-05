@@ -12,7 +12,7 @@ body:
     attributes:
       label: Doclify version
       description: Which package, commit, or Action tag shows the problem?
-      placeholder: "2.0.1 or action@v2.0.1"
+      placeholder: "2.0.3 or action@v2.0.3"
     validations:
       required: true
 

@@ -10,7 +10,7 @@ It checks Markdown and MDX against facts already present in the repository. It
 runs locally, does not execute documented commands, and does not contact the
 network unless `--external-links` is passed.
 
-Version `2.0.2` is the current stable release.
+Version `2.0.3` is the current stable release.
 The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
@@ -108,6 +108,22 @@ Markdown file symlinks are checked through contained canonical targets,
 respecting exclusions. Unavailable symlink evidence makes a requested anchor
 check incomplete. Directory symlinks are not traversed.
 
+Missing local routes with an available `.md` or `.mdx` source companion are
+treated as host routes, including versioned names such as
+`migrating-to-5.0.0`. This abstention does not verify that the generated site
+serves the route. Explicit Markdown files and their anchors remain checked.
+A companion must be a contained, readable regular file allowed by the active
+exclusions, including its canonical symlink source. Excluded or unreadable
+companions produce operational diagnostics; directories and absent companions
+do not establish route evidence.
+
+Heading anchors accept possible slugs with underscore emphasis delimiters
+removed, while retaining internal underscores such as `snake_case` and
+previously accepted slugs. Static single-line HTML headings without an explicit
+`id` or `name` also contribute possible text-derived anchors. For these HTML
+headings, multiline text, encoded entities, dynamic expressions, or nested or
+malformed headings leave anchor evidence incomplete.
+
 For current command claims (`published`, `instructions`, and `fragment`), an
 unqualified `npm run` or `make` is checked against the root `package.json` or
 Makefile only when the selected document is directly in the discovery root.
@@ -166,6 +182,10 @@ npx doclify-guardrail init --write
 Findings include severity, confidence, and an evidence object. Operational
 diagnostics stay on stderr, so JSON, SARIF, and JUnit stdout remain parseable.
 
+JUnit emits an error for a testcase with diagnostics or an unscanned file;
+that error takes precedence over a blocking finding in the same testcase.
+Failure and error totals count the elements actually emitted.
+
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Complete scan with no blocking findings |
@@ -199,12 +219,12 @@ steps:
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     with:
       persist-credentials: false
-  - uses: Elgabor/doclify-guardrail/action@v2.0.2
+  - uses: Elgabor/doclify-guardrail/action@v2.0.3
     with:
       path: README.md
 ```
 
-The release-specific Action reference for this version is `@v2.0.2`. Use
+The release-specific Action reference for this version is `@v2.0.3`. Use
 `Elgabor/doclify-guardrail/action@v2` to follow compatible v2 releases, or pin
 the full commit SHA from the corresponding release page for an immutable reference.
 

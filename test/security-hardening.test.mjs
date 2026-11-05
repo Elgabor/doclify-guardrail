@@ -133,6 +133,9 @@ test('SEC-03 scanners are differential-equivalent to the three previous link gra
     heading: /\[([^\]]+)\]\([^)]*\)/g
   };
   const inputs = ['[a [b](guide.md#missing)', '[](a)', '[x]()', '[x](a(b)c)', '[x](a( b)c)', '[x](a((b)c)', '[x](a b) [y](c)', '[[[](a)', '[x](#[a])', '[x](a#b#c)', '[x](a\n)'];
+  for (let code = 0; code <= 0xffff; code += 1) {
+    inputs.push(`[x](a${String.fromCharCode(code)}b)`);
+  }
   let seed = 7;
   const alphabet = '[]()ab# \t';
   for (let sample = 0; sample < 4000; sample += 1) {
