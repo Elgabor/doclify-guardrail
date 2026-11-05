@@ -6,13 +6,13 @@ All notable changes to this project are documented in this file.
 
 ### Security
 
-- keep Action path inputs literal and validate option values before invoking the CLI (SEC-01)
-- replace backtracking wildcard matching with bounded matching for file, exclusion, and workspace patterns (SEC-02)
-- scan Markdown link delimiters without repeated suffix scans, including heading anchors (SEC-03)
-- close HTTP response streams and sockets before releasing a network worker slot (SEC-04)
-- apply one per-URL timeout to DNS preflight, redirects, and HEAD-to-GET fallback, with bounded pending lookups (SEC-05)
-- resolve contained Markdown file symlinks for anchor evidence and report unavailable requested evidence as incomplete (SEC-06)
-- omit code points forbidden by XML 1.0 from JUnit reports while preserving markup escaping (SEC-07)
+- keep Action path inputs literal and validate option values before invoking the CLI
+- replace backtracking wildcard matching with bounded matching for file, exclusion, and workspace patterns
+- scan Markdown link delimiters without repeated suffix scans, including heading anchors
+- close HTTP response streams and sockets before releasing a network worker slot
+- apply one per-URL timeout to DNS preflight, redirects, and HEAD-to-GET fallback, with bounded pending lookups
+- resolve contained Markdown file symlinks for anchor evidence and report unavailable requested evidence as incomplete
+- omit code points forbidden by XML 1.0 from JUnit reports while preserving markup escaping
 
 ### Fixed
 

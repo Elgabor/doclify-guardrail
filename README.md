@@ -10,11 +10,11 @@ It checks Markdown and MDX against facts already present in the repository. It
 runs locally, does not execute documented commands, and does not contact the
 network unless `--external-links` is passed.
 
-This guide covers version `2.0.2`. npm publication and Action tags are separate
-maintainer release steps. The supported v1 Action remains frozen at
+Version `2.0.2` is the current stable release.
+The supported v1 Action remains frozen at
 `Elgabor/doclify-guardrail/action@v1`.
 
-This repository documents implemented behavior and reproducible checks.
+This repository documents shipped behavior and reproducible checks.
 
 ## Repository guide
 

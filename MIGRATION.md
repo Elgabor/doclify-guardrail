@@ -1,7 +1,7 @@
 # Migrating to Doclify Guardrail v2
 
 This guide covers version `2.0.2`. The v2 core is local and read-only by
-default. npm publication and Action tags are separate maintainer release steps.
+default.
 
 The package keeps `engines: >=20`. Node.js 20 reached end of life on
 2026-04-30 and is still accepted for compatibility. Use a maintained LTS

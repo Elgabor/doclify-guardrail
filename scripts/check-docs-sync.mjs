@@ -38,8 +38,8 @@ const checks = [
         pattern: /stays offline unless\s+`external-links: 'true'`/
       },
       {
-        label: 'documented package version without premature publication claim',
-        pattern: /This guide covers version `2\.0\.2`[\s\S]*?npm publication and Action tags are separate/
+        label: 'stable release version',
+        pattern: /Version `2\.0\.2` is the current stable release/
       },
       {
         label: 'changed Markdown-only boundary',
@@ -294,7 +294,7 @@ const checks = [
     expectations: [
       {
         label: '2.0.2 security, fixes and maintenance entry',
-        pattern: /## \[2\.0\.2\] - 2026-11-05\n[\s\S]*?### Security[\s\S]*?SEC-07[\s\S]*?### Fixed[\s\S]*?### Changed[\s\S]*?### Notes/
+        pattern: /## \[2\.0\.2\] - 2026-11-05\n[\s\S]*?### Security[\s\S]*?XML 1\.0[\s\S]*?### Fixed[\s\S]*?### Changed[\s\S]*?### Notes/
       },
       {
         label: 'patch release entry',
