@@ -172,7 +172,7 @@ const checks = [
       },
       {
         label: 'immutable checkout action',
-        pattern: /uses: actions\/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd/
+        pattern: /uses: actions\/checkout@[a-f0-9]{40}(?=\s|$)/
       },
       {
         label: 'non-persisted checkout credentials',
