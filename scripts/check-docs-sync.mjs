@@ -404,11 +404,15 @@ for (const file of ['README.md', 'MIGRATION.md']) {
     expectations: [
       {
         label: 'versioned host-route abstention with Markdown source companions',
-        pattern: /Missing local routes with an existing `\.md` or `\.mdx` source companion[\s\S]*?`migrating-to-5\.0\.0`[\s\S]*?does not verify that the generated site\s+serves the route/
+        pattern: /Missing local routes with an available `\.md` or `\.mdx` source companion[\s\S]*?`migrating-to-5\.0\.0`[\s\S]*?does not verify that the generated site\s+serves the route/
+      },
+      {
+        label: 'route companions respect containment, readability, type and exclusions',
+        pattern: /A companion must be a contained, readable regular file[\s\S]*?canonical symlink source[\s\S]*?Excluded or unreadable\s+companions produce operational diagnostics; directories and absent companions\s+do not establish route evidence/
       },
       {
         label: 'possible emphasis and HTML heading anchors with incomplete fallback',
-        pattern: /underscore emphasis delimiters\s+removed[\s\S]*?`snake_case`[\s\S]*?Static single-line HTML headings[\s\S]*?multiline text, encoded entities, or dynamic expressions leave anchor\s+evidence incomplete/
+        pattern: /underscore emphasis delimiters\s+removed[\s\S]*?`snake_case`[\s\S]*?Static single-line HTML headings[\s\S]*?multiline text, encoded entities, dynamic expressions, or nested or\s+malformed headings leave anchor evidence incomplete/
       },
       {
         label: 'JUnit totals and diagnostic error precedence',

@@ -110,17 +110,21 @@ Markdown file symlinks are checked through contained canonical targets,
 respecting exclusions. Unavailable symlink evidence makes a requested anchor
 check incomplete. Directory symlinks are not traversed.
 
-Missing local routes with an existing `.md` or `.mdx` source companion are
+Missing local routes with an available `.md` or `.mdx` source companion are
 treated as host routes, including versioned names such as
 `migrating-to-5.0.0`. This abstention does not verify that the generated site
 serves the route. Explicit Markdown files and their anchors remain checked.
+A companion must be a contained, readable regular file allowed by the active
+exclusions, including its canonical symlink source. Excluded or unreadable
+companions produce operational diagnostics; directories and absent companions
+do not establish route evidence.
 
 Heading anchors accept possible slugs with underscore emphasis delimiters
 removed, while retaining internal underscores such as `snake_case` and
 previously accepted slugs. Static single-line HTML headings without an explicit
 `id` or `name` also contribute possible text-derived anchors. For these HTML
-headings, multiline text, encoded entities, or dynamic expressions leave anchor
-evidence incomplete.
+headings, multiline text, encoded entities, dynamic expressions, or nested or
+malformed headings leave anchor evidence incomplete.
 
 JUnit emits an error for a testcase with diagnostics or an unscanned file;
 that error takes precedence over a blocking finding in the same testcase.

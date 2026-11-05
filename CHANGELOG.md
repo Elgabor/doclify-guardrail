@@ -7,8 +7,10 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - avoid false incomplete results when a literal less-than sign in prose precedes a later HTML anchor; keep indeterminate HTML evidence incomplete
+- scan HTML heading tags linearly; leave nested or malformed headings incomplete
 - make JUnit failure and error totals match the emitted elements, retaining error precedence for a testcase with both diagnostics and blocking findings
 - avoid blocking findings for versioned host routes with Markdown source companions and possible heading anchors from underscore emphasis or static HTML
+- require a contained, readable regular file allowed by exclusions for source-companion route abstention; report excluded or unreadable companions as diagnostics, and reject directories as route evidence
 
 ### Changed
 
