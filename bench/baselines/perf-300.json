@@ -93,6 +93,38 @@
         "p95Ms": 83.116
       },
       "deterministic": true
+    },
+    "linux-x64-node24-fs16914836": {
+      "source": {
+        "commit": "3f43d658fa6706bf03cfa8ca6ca08a953ba29703",
+        "tree": "e911ead2f43a69b16f70c10b8abc20ef15cdbca2",
+        "run": "https://github.com/Elgabor/doclify-guardrail/actions/runs/42011119171",
+        "command": "node scripts/perf-corpus.mjs --measure"
+      },
+      "environment": {
+        "class": "linux-x64-node24-fs16914836",
+        "node": "v24.22.2",
+        "platform": "linux",
+        "arch": "x64",
+        "filesystemType": "16914836",
+        "cpuModel": "Intel(R) Xeon(R) 6975P-C",
+        "cpuCount": 4,
+        "totalMemoryMb": 15701,
+        "ci": true
+      },
+      "cold": {
+        "runs": 3,
+        "samplesMs": [117.285, 108.851, 114.051],
+        "p50Ms": 114.051,
+        "p95Ms": 116.962
+      },
+      "warm": {
+        "runs": 10,
+        "samplesMs": [39.369, 35.694, 35.943, 32.717, 32.923, 37.326, 35.178, 37.375, 33.051, 33.731],
+        "p50Ms": 35.436,
+        "p95Ms": 38.472
+      },
+      "deterministic": true
     }
   },
   "tolerance": {
