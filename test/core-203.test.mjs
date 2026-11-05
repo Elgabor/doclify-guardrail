@@ -281,3 +281,36 @@ test('HTML heading text that cannot be statically derived never proves an anchor
     assert.deepEqual(result.diagnostics.map(({ code }) => code), ['evidence-source-unavailable']);
   }
 });
+
+test('HTML heading analysis handles a MiB of repeated openers with a generous watchdog', (t) => {
+  const root = temp(t);
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
+    const openers = '<h1>'.repeat(262144);
+    fs.writeFileSync('README.md', '[anchor](guide.md#missing)\\n');
+    for (const content of [openers, openers + '</h1>']) {
+      fs.writeFileSync('guide.md', content);
+      const result = await check({ cwd: process.cwd(), paths: ['README.md'] });
+      assert.equal(result.complete, false);
+      assert.deepEqual(result.findings, []);
+      assert.deepEqual(result.diagnostics.map(({ code }) => code), ['evidence-source-unavailable']);
+    }
+  `], {
+    cwd: root, encoding: 'utf8', timeout: 60000,
+    env: { PATH: process.env.PATH || '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('sequential HTML headings on one line preserve static text and explicit IDs', async (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'guide.md'), '<h1>One</h1><h2>Two <em>Words</em></h2><h3 id="chosen">Explicit</h3>\n');
+  fs.writeFileSync(path.join(root, 'README.md'), '[one](guide.md#one) [two](guide.md#two-words) [id](guide.md#chosen) [missing](guide.md#absent)\n');
+  const result = await check({ cwd: root, paths: ['README.md'] });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.findings.map(({ message }) => message), ['Missing local anchor: #absent.']);
+});
