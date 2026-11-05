@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file.
 - replace backtracking wildcard matching with bounded matching for file, exclusion, and workspace patterns
 - scan Markdown link delimiters without repeated suffix scans, including heading anchors
 - close HTTP response streams and sockets before releasing a network worker slot
-- apply one per-URL timeout to DNS preflight, redirects, and HEAD-to-GET fallback, with bounded pending lookups
+- apply one per-URL timeout to DNS preflight, redirects, and HEAD-to-GET fallback, with pending DNS lookups bounded per scan
 - resolve contained Markdown file symlinks for anchor evidence and report unavailable requested evidence as incomplete
 - omit code points forbidden by XML 1.0 from JUnit reports while preserving markup escaping
 
