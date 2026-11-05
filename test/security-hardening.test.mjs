@@ -195,6 +195,14 @@ test('SEC-05 public API bounds pending DNS per scan and concurrency policy acros
     import https from 'node:https';
     import { syncBuiltinESMExports } from 'node:module';
     import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
+    const timers = new Set();
+    Object.defineProperty(performance, 'now', { value: () => 0 });
+    globalThis.setTimeout = (callback) => {
+      const timer = { callback };
+      timers.add(timer);
+      return timer;
+    };
+    globalThis.clearTimeout = timer => { timers.delete(timer); };
     let currentRun;
     let requests = 0;
     const releases = [];
@@ -225,10 +233,24 @@ test('SEC-05 public API bounds pending DNS per scan and concurrency policy acros
     async function run(root, files, limit) {
       const metrics = { calls: 0, active: 0, peak: 0 };
       currentRun = metrics;
-      const result = await check({ cwd: root, paths: ['.'], externalLinks: true, links: { timeoutMs: 10 } });
+      let settled = false;
+      let result;
+      let failure;
+      check({ cwd: root, paths: ['.'], externalLinks: true, links: { timeoutMs: 1000 } }).then(
+        value => { result = value; settled = true; },
+        error => { failure = error; settled = true; }
+      );
+      while (!settled) {
+        // Drain promise continuations so DNS acquires its slots before expiring the file's URLs.
+        await new Promise(resolve => setImmediate(resolve));
+        for (const timer of [...timers]) {
+          if (timers.delete(timer)) timer.callback();
+        }
+      }
+      if (failure) throw failure;
       assert.equal(result.summary.filesScanned, files);
       assert.equal(result.findings.length, files * 2);
-      assert.ok(result.findings.every(finding => finding.message.includes('Timeout (0.01s)')));
+      assert.ok(result.findings.every(finding => finding.message.includes('Timeout (1s)')));
       assert.equal(metrics.calls, limit, JSON.stringify({ files, limit, ...metrics }));
       assert.ok(metrics.peak <= limit);
       assert.equal(metrics.active, limit);
@@ -246,6 +268,7 @@ test('SEC-05 public API bounds pending DNS per scan and concurrency policy acros
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(requests, 0);
     for (const run of [single, multiple, repeated, hierarchy]) assert.equal(run.metrics.active, 0);
+    assert.equal(timers.size, 0);
   `, temp(t));
 });
 
