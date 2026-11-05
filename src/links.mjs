@@ -20,7 +20,10 @@ const HEAD_FALLBACK_STATUSES = new Set([403, 404, 405, 501]);
 
 function remainingMs(budget) {
   const remaining = budget.deadline - performance.now();
-  if (remaining <= 0) throw budget.error;
+  if (budget.expired || remaining <= 0) {
+    budget.expired = true;
+    throw budget.error;
+  }
   return remaining;
 }
 
@@ -36,7 +39,12 @@ async function beforeDeadline(operation, budget) {
         remainingMs(budget);
         return value;
       }),
-      new Promise((resolve, reject) => { timer = setTimeout(() => reject(budget.error), remaining); })
+      new Promise((resolve, reject) => {
+        timer = setTimeout(() => {
+          budget.expired = true;
+          reject(budget.error);
+        }, remaining);
+      })
     ]);
   } finally {
     clearTimeout(timer);
@@ -201,6 +209,7 @@ async function fetchWithTimeout(url, opts, budget) {
       req.destroy();
     });
     const timer = setTimeout(() => {
+      budget.expired = true;
       failure = timeoutError;
       req.destroy(timeoutError);
     }, timeoutMs);
@@ -507,7 +516,7 @@ async function checkDeadLinksDetailed(content, {
     const tasks = entries.map(([url, { link, occurrences }]) => async () => {
       const timeoutError = new Error(`Timeout (${timeout / 1000}s)`);
       timeoutError.name = 'AbortError';
-      const budget = { deadline: performance.now() + timeout, error: timeoutError };
+      const budget = { deadline: performance.now() + timeout, error: timeoutError, expired: false };
       let error;
       const urlLookup = (hostname, options) => boundedLookup(hostname, options, budget);
       try {

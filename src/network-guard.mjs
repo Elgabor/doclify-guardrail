@@ -132,7 +132,13 @@ async function resolveAddresses(hostname, dnsCache, lookupFn = lookup) {
 
   const promise = lookupFn(host, { all: true, verbatim: true })
     .then((entries) => entries.map((entry) => normalizeDnsEntry(entry)?.address).filter(Boolean))
-    .catch(() => []);
+    .catch((error) => {
+      if (error?.name === 'AbortError') {
+        if (dnsCache?.get(host) === promise) dnsCache.delete(host);
+        throw error;
+      }
+      return [];
+    });
   dnsCache?.set(host, promise);
   return promise;
 }

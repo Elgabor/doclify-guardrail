@@ -12,6 +12,7 @@ import { checkDeadLinksDetailed } from '../src/links.mjs';
 import { buildRepositoryIndex } from '../src/repository-index.mjs';
 import { createResult } from '../src/result.mjs';
 import { renderResult } from '../src/result-renderers.mjs';
+import { getBlockedRemoteUrlReason } from '../src/network-guard.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-security-'));
@@ -183,6 +184,118 @@ test('SEC-05 DNS deadlines return without late requests or unbounded abandoned l
     assert.ok(lookups<=2, 'too many abandoned DNS lookups: '+lookups);
     clearTimeout(watchdog);
   `, temp(t));
+});
+
+test('SEC-05 early deadline timers prevent late requests even before the clock deadline', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import { checkDeadLinksDetailed } from ${JSON.stringify(new URL('../src/links.mjs', import.meta.url).href)};
+    const nativeSetTimeout = globalThis.setTimeout;
+    const nativeClearTimeout = globalThis.clearTimeout;
+    const watchdog = nativeSetTimeout(() => { throw new Error('deadline regression stalled'); }, 2000);
+    const timers = [];
+    Object.defineProperty(performance, 'now', { value: () => 0 });
+    globalThis.setTimeout = (callback) => {
+      const timer = { callback, cleared: false };
+      timers.push(timer);
+      return timer;
+    };
+    globalThis.clearTimeout = (timer) => { timer.cleared = true; };
+    try {
+      let release;
+      let requests = 0;
+      let lookups = 0;
+      const pending = checkDeadLinksDetailed('[x](https://slow.invalid)', {
+        sourceFile: 'README.md', timeoutMs: 50,
+        lookupFn: () => { lookups++; return new Promise(resolve => { release = resolve; }); },
+        requestFn: async () => { requests++; return { status: 200, headers: { get: () => null } }; }
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(lookups, 1);
+      // Fire the lookup deadline first while the outer preflight timer is pending.
+      timers.at(-1).callback();
+      const result = await pending;
+      assert.equal(requests, 0, 'request started after a deadline timer fired');
+      assert.equal(result.findings.length, 1);
+      assert.match(result.findings[0].message, /Timeout \\(0\\.05s\\)/);
+      release([{ address: '8.8.8.8', family: 4 }]);
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(requests, 0);
+      assert.equal(lookups, 1);
+      assert.ok(timers.every(timer => timer.cleared));
+    } finally {
+      globalThis.setTimeout = nativeSetTimeout;
+      globalThis.clearTimeout = nativeClearTimeout;
+      nativeClearTimeout(watchdog);
+    }
+  `, temp(t));
+});
+
+test('SEC-05 DNS preflight propagates aborts without poisoning the host cache', async () => {
+  const dnsCache = new Map();
+  const abort = new Error('Timeout (0.05s)');
+  abort.name = 'AbortError';
+  let lookups = 0;
+  const lookupFn = async () => {
+    lookups += 1;
+    if (lookups === 1) throw abort;
+    return [{ address: '127.0.0.1', family: 4 }];
+  };
+  await assert.rejects(
+    getBlockedRemoteUrlReason('https://same.invalid/first', { dnsCache, lookupFn }),
+    (error) => error === abort
+  );
+  assert.equal(dnsCache.has('same.invalid'), false);
+  const reason = await getBlockedRemoteUrlReason('https://same.invalid/second', { dnsCache, lookupFn });
+  assert.match(reason, /Blocked private host\/IP/);
+  assert.equal(lookups, 2);
+  assert.equal(await getBlockedRemoteUrlReason('https://same.invalid/third', { dnsCache, lookupFn }), reason);
+  assert.equal(lookups, 2);
+});
+
+test('SEC-05 a fired deadline prevents lookup work that has not started yet', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import { checkDeadLinksDetailed } from ${JSON.stringify(new URL('../src/links.mjs', import.meta.url).href)};
+    const timers = [];
+    Object.defineProperty(performance, 'now', { value: () => 0 });
+    globalThis.setTimeout = (callback) => {
+      const timer = { callback, cleared: false };
+      timers.push(timer);
+      return timer;
+    };
+    globalThis.clearTimeout = timer => { timer.cleared = true; };
+    let lookups = 0;
+    let requests = 0;
+    const pending = checkDeadLinksDetailed('[x](https://slow.invalid)', {
+      sourceFile: 'README.md', timeoutMs: 50,
+      lookupFn: () => { lookups++; return new Promise(() => {}); },
+      requestFn: async () => { requests++; throw new Error('request after deadline'); }
+    });
+    // Expire the preflight before its queued promise continuation can start DNS.
+    timers.at(-1).callback();
+    const result = await pending;
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(lookups, 0, 'lookup started after a deadline timer fired');
+    assert.equal(requests, 0);
+    assert.equal(result.findings.length, 1);
+    assert.match(result.findings[0].message, /Timeout \\(0\\.05s\\)/);
+    assert.ok(timers.every(timer => timer.cleared));
+  `, temp(t));
+});
+
+test('SEC-05 ordinary DNS errors retain the previous empty cached result', async () => {
+  const dnsCache = new Map();
+  let lookups = 0;
+  const lookupFn = async () => {
+    lookups += 1;
+    throw new Error('EAI_AGAIN');
+  };
+  for (const suffix of ['first', 'second']) {
+    assert.equal(await getBlockedRemoteUrlReason(`https://same.invalid/${suffix}`, { dnsCache, lookupFn }), null);
+  }
+  assert.equal(dnsCache.has('same.invalid'), true);
+  assert.equal(lookups, 1);
 });
 
 test('SEC-05 one URL budget covers redirects and HEAD to GET fallback', (t) => {
