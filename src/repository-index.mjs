@@ -5,6 +5,7 @@ import { analyzeFences } from './fences.mjs';
 import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
 import { compileWildcard } from './wildcard.mjs';
+import { scanInlineLinks } from './inline-links.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
 const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
@@ -17,9 +18,15 @@ function portable(value) {
 }
 
 function anchorFor(heading) {
-  return heading
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+  const text = heading.replace(/`([^`]+)`/g, '$1');
+  const parts = [];
+  let offset = 0;
+  for (const link of scanInlineLinks(text, 'heading')) {
+    parts.push(text.slice(offset, link.index), link.label);
+    offset = link.end;
+  }
+  parts.push(text.slice(offset));
+  return parts.join('')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .trim()

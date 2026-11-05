@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { check } from '../src/api.mjs';
 import { compileWildcard } from '../src/wildcard.mjs';
+import { scanInlineLinks } from '../src/inline-links.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-security-'));
@@ -87,6 +88,66 @@ test('SEC-02 wildcard modes preserve their previous supported grammars', () => {
       const matches = compileWildcard(`*${literal}`, mode);
       assert.equal(matches(`x${literal}`), true);
       assert.equal(matches('xaaab'), false);
+    }
+  }
+});
+
+test('SEC-03 API handles 64 KiB delimiter runs including heading anchors', (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'README.md'), '['.repeat(65536));
+  child(`
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
+    import { anchorFor } from ${JSON.stringify(new URL('../src/repository-index.mjs', import.meta.url).href)};
+    const result = await check({cwd: process.cwd(), paths: ['README.md']});
+    assert.equal(result.complete, true);
+    assert.deepEqual(result.findings, []);
+    assert.equal(anchorFor('['.repeat(65536)), '');
+    fs.writeFileSync('README.md', '# ' + '['.repeat(65536) + '\\n[x](README.md#missing)');
+    const heading = await check({cwd: process.cwd(), paths: ['README.md']});
+    assert.equal(heading.findings.length, 1);
+  `, root);
+});
+
+test('SEC-03 CLI handles 64 KiB delimiter runs without skipping recognized claims', (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'README.md'), '['.repeat(65536));
+  const result = spawnSync(process.execPath, [new URL('../src/index.mjs', import.meta.url).pathname, 'check', 'README.md', '--format', 'json'], {
+    cwd: root, encoding: 'utf8', timeout: 8000, env: { PATH: process.env.PATH || '' }
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).complete, true);
+});
+
+test('SEC-03 scanners are differential-equivalent to the three previous link grammars', () => {
+  const grammars = {
+    link: /\[[^\]]*\]\(([^()\s]*(?:\([^)]*\)[^()\s]*)*)\)/g,
+    claim: /\[[^\]]*\]\(([^)\s]+)\)/g,
+    heading: /\[([^\]]+)\]\([^)]*\)/g
+  };
+  const inputs = ['[a [b](guide.md#missing)', '[](a)', '[x]()', '[x](a(b)c)', '[x](a( b)c)', '[x](a((b)c)', '[x](a b) [y](c)', '[[[](a)', '[x](#[a])', '[x](a#b#c)', '[x](a\n)'];
+  let seed = 7;
+  const alphabet = '[]()ab# \t';
+  for (let sample = 0; sample < 4000; sample += 1) {
+    let value = '';
+    for (let index = 0; index < 40; index += 1) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      value += alphabet[seed % alphabet.length];
+    }
+    inputs.push(value);
+  }
+  for (const [mode, grammar] of Object.entries(grammars)) {
+    for (const input of inputs) {
+      const previous = [...input.matchAll(grammar)].map((match) => ({
+        index: match.index, end: match.index + match[0].length,
+        value: match[1]
+      }));
+      const current = scanInlineLinks(input, mode).map((link) => ({
+        index: link.index, end: link.end, value: mode === 'heading' ? link.label : link.url
+      }));
+      assert.deepEqual(current, previous, `${mode}:${JSON.stringify(input)}`);
     }
   }
 });

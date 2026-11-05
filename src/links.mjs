@@ -10,6 +10,7 @@ import {
   getBlockedRemoteUrlReason
 } from './network-guard.mjs';
 import { getReadContainment } from './workspace-path.mjs';
+import { scanInlineLinks } from './inline-links.mjs';
 
 const DEFAULT_LINK_TIMEOUT_MS = 8000;
 const DEFAULT_LINK_CONCURRENCY = 5;
@@ -44,10 +45,8 @@ function extractLinks(content) {
     const line = stripInlineCode(lines[idx]);
     const lineNumber = idx + 1;
 
-    const inlineRx = /\[[^\]]*\]\(([^()\s]*(?:\([^)]*\)[^()\s]*)*)\)/g;
-    let inline;
-    while ((inline = inlineRx.exec(line)) !== null) {
-      links.push({ url: inline[1].trim(), line: lineNumber, kind: 'inline' });
+    for (const inline of scanInlineLinks(line, 'link')) {
+      links.push({ url: inline.url.trim(), line: lineNumber, kind: 'inline' });
     }
 
     const refDefRx = /^\[[^\]]+\]:\s*(\S+)/;
