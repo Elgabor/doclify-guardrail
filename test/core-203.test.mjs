@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
 import { check } from '../src/api.mjs';
+import { createResult } from '../src/result.mjs';
+import { renderResult } from '../src/result-renderers.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-core-203-'));
@@ -95,4 +97,27 @@ test('real multiline and unclosed HTML anchors still leave evidence incomplete',
     assert.deepEqual(result.findings, []);
     assert.deepEqual(result.diagnostics.map(({ code }) => code), ['evidence-source-unavailable']);
   }
+});
+
+test('JUnit totals count emitted errors and failures when a file has both kinds of evidence', () => {
+  const result = createResult({
+    toolVersion: '2.0.2',
+    files: [
+      { path: 'both.md', scanned: true },
+      { path: 'blocking.md', scanned: true },
+      { path: 'unscanned.md', scanned: false },
+      { path: 'diagnostics.md', scanned: true }
+    ],
+    findings: ['both.md', 'blocking.md', 'unscanned.md'].map(file => ({
+      path: file, ruleId: 'local-link', severity: 'blocking', message: 'Missing local file.'
+    })),
+    diagnostics: ['both.md', 'diagnostics.md', 'diagnostics.md', 'orphan.md'].map(file => ({
+      path: file, code: 'evidence-source-unavailable', severity: 'error', message: 'Incomplete source.'
+    }))
+  });
+  const xml = renderResult(result, { format: 'junit' });
+  assert.match(xml, /tests="5" failures="1" errors="4"/);
+  assert.equal([...xml.matchAll(/<testcase\b/g)].length, 5);
+  assert.equal([...xml.matchAll(/<failure\b/g)].length, 1);
+  assert.equal([...xml.matchAll(/<error\b/g)].length, 4);
 });

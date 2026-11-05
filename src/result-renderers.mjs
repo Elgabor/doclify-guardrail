@@ -211,7 +211,8 @@ function renderJunit(result) {
   const orphanDiagnostics = result.diagnostics.filter(
     (diagnostic) => !result.files.some((file) => file.path === diagnostic.path)
   );
-  const failures = result.files.filter((file) => findingsForPath(result.findings, file.path).some((finding) => finding.severity === 'blocking')).length;
+  const failures = result.files.filter((file) => file.scanned && diagnosticsForPath(result, file.path).length === 0
+    && findingsForPath(result.findings, file.path).some((finding) => finding.severity === 'blocking')).length;
   const errors = result.files.filter((file) => !file.scanned || diagnosticsForPath(result, file.path).length > 0).length + orphanDiagnostics.length;
   const tests = result.files.length + orphanDiagnostics.length;
   const lines = [
