@@ -84,18 +84,28 @@ function anchorsFor(content) {
     const setext = lines[index + 1]?.match(/^\s*(?:=+|-+)\s*$/);
     if (line.trim() && setext && !fences.inFence[index + 1]) addHeading(line.trim());
 
-    for (const heading of line.matchAll(/<h([1-6])(?=[\s>])([^<>]*)>/gi)) {
-      if (/(?:^|[\s/])(?:id|name)\s*=/i.test(heading[2])) continue;
-      const start = heading.index + heading[0].length;
-      const rest = line.slice(start);
-      const closing = rest.match(new RegExp(`</h${heading[1]}\\s*>`, 'i'));
-      const text = closing ? rest.slice(0, closing.index).replace(/<[^>]*>/g, '') : null;
-      if (text == null || /[{}]|&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(text)) {
-        complete = false;
-      } else {
-        addHeading(text);
+    let headingLevel = null;
+    let headingStart = 0;
+    let explicitHeading = false;
+    for (const tag of line.matchAll(/<(\/?)h([1-6])(?=[\s>])([^<>]*)>/gi)) {
+      if (!tag[1]) {
+        if (headingLevel != null) complete = false;
+        headingLevel = tag[2];
+        headingStart = tag.index + tag[0].length;
+        explicitHeading = /(?:^|[\s/])(?:id|name)\s*=/i.test(tag[3]);
+        continue;
       }
+      if (headingLevel == null) continue;
+      if (tag[2] !== headingLevel || tag[3].trim()) {
+        complete = false;
+      } else if (!explicitHeading) {
+        const text = line.slice(headingStart, tag.index).replace(/<[^<>]*>/g, '');
+        if (/[{}<>]|&(?:#\d+|#x[\da-f]+|[a-z]+);/i.test(text)) complete = false;
+        else addHeading(text);
+      }
+      headingLevel = null;
     }
+    if (headingLevel != null && !explicitHeading) complete = false;
 
     for (const tagMatch of line.matchAll(/<[^>]*>/g)) {
       const tag = tagMatch[0];
