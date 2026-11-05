@@ -115,24 +115,53 @@ async function fetchWithTimeout(url, opts, timeoutMs) {
   return new Promise((resolve, reject) => {
     const timeoutError = new Error(`Timeout (${timeoutMs / 1000}s)`);
     timeoutError.name = 'AbortError';
+    let response;
+    let failure;
+    let requestClosed = false;
+    let responseClosed = true;
+    let socketClosed = true;
+    const finish = () => {
+      if (!requestClosed || !responseClosed || !socketClosed) return;
+      clearTimeout(timer);
+      if (failure) reject(failure);
+      else resolve(response);
+    };
     const req = client.request(parsed, {
       method: opts.method,
       lookup: opts.lookup
     }, (res) => {
-      res.resume();
-      resolve({
+      response = {
         status: res.statusCode ?? 0,
         headers: {
           get: (name) => getHeader(res.headers, name)
         }
+      };
+      responseClosed = false;
+      res.once('close', () => {
+        responseClosed = true;
+        finish();
       });
+      res.on('error', () => {}); // Destroying an unused body is intentional.
+      res.destroy();
+      req.destroy();
     });
     const timer = setTimeout(() => {
+      failure = timeoutError;
       req.destroy(timeoutError);
     }, timeoutMs);
-    req.on('error', reject);
+    req.on('error', (error) => {
+      if (!response) failure = error;
+    });
+    req.on('socket', (socket) => {
+      socketClosed = false;
+      socket.once('close', () => {
+        socketClosed = true;
+        finish();
+      });
+    });
     req.on('close', () => {
-      clearTimeout(timer);
+      requestClosed = true;
+      finish();
     });
     req.end();
   });
