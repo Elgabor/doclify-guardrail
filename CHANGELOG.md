@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [2.0.2] - 2026-11-05
 
+2.0.2 is the first npm release to include the precision changes developed after
+2.0.1: ambiguous npm/Make claims, command examples in plans/changelogs, and
+host-dependent routes no longer produce blocking findings; static HTML anchors
+are recognized; and incomplete evidence sources are reported as diagnostics
+instead of false clean passes.
+
 ### Security
 
 - keep Action path inputs literal and validate option values before invoking the CLI
