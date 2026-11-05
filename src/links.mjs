@@ -5,7 +5,7 @@ import path from 'node:path';
 import { lookup } from 'node:dns/promises';
 import { decodeLocalPath } from './local-url.mjs';
 import { stripCodeBlocks, stripInlineCode } from './markdown-content.mjs';
-import { MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
+import { isMarkdownPath, MARKDOWN_EXTENSIONS } from './markdown-files.mjs';
 import {
   createPrivateNetworkBlockingLookup,
   getBlockedRemoteUrlReason
@@ -403,6 +403,13 @@ function checkLocalUrl(url, opts = {}) {
   // An absent extensionless relative path may be an HTML/wiki route; do not guess .md.
   if (!resolved.unverifiableIfMissing && !decodedPath.startsWith('/') && !path.extname(decodedPath)) {
     return null;
+  }
+  if (!isMarkdownPath(decodedPath)) {
+    for (const extension of MARKDOWN_EXTENSIONS) {
+      const companion = resolved.targetPath + extension;
+      if ((!opts.readBoundary || getReadContainment(companion, opts.readBoundary) === 'inside')
+        && fs.existsSync(companion)) return null;
+    }
   }
 
   if (resolved.unverifiableIfMissing) {

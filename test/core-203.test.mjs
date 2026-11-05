@@ -121,3 +121,118 @@ test('JUnit totals count emitted errors and failures when a file has both kinds 
   assert.equal([...xml.matchAll(/<failure\b/g)].length, 1);
   assert.equal([...xml.matchAll(/<error\b/g)].length, 4);
 });
+
+test('versioned host routes with Markdown companions abstain without hiding explicit missing files', async (t) => {
+  const root = temp(t);
+  fs.mkdirSync(path.join(root, 'docs'));
+  fs.writeFileSync(path.join(root, 'docs', 'migrating-to-1.0.0.md'), '# Migration\n');
+  fs.writeFileSync(path.join(root, 'docs', 'migrating-to-2.0.0.mdx'), '# Migration\n');
+  fs.writeFileSync(path.join(root, 'README.md'), [
+    '[md route](docs/migrating-to-1.0.0)',
+    '[mdx route](./docs/migrating-to-2.0.0#host-only)',
+    '[root route](/migrating-to-1.0.0)',
+    '[missing source](docs/missing.md)',
+    '[missing version](docs/migrating-to-3.0.0)',
+    '[missing exact anchor](docs/migrating-to-1.0.0.md#missing)', ''
+  ].join('\n'));
+  const result = await check({ cwd: root, paths: ['README.md'], siteRoot: 'docs' });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.findings.map(({ line, message }) => ({ line, message })), [
+    { line: 4, message: 'Dead link: docs/missing.md (Target not found)' },
+    { line: 5, message: 'Dead link: docs/migrating-to-3.0.0 (Target not found)' },
+    { line: 6, message: 'Missing local anchor: #missing.' }
+  ]);
+});
+
+test('heading emphasis allows rendered slugs and preserves internal snake_case and legacy anchors', async (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'guide.md'), [
+    '# Community _(Unofficial)_',
+    '# Community _(Unofficial)_',
+    '# __Bold__ and _italic_',
+    '# snake_case',
+    '# snake_case_name',
+    '# _snake_case_ and _two words_',
+    '# `_code_`', ''
+  ].join('\n'));
+  fs.writeFileSync(path.join(root, 'README.md'), [
+    '[rendered](guide.md#community-unofficial)',
+    '[duplicate](guide.md#community-unofficial-1)',
+    '[legacy](guide.md#community-_unofficial_)',
+    '[strong](guide.md#bold-and-italic)',
+    '[snake](guide.md#snake_case)',
+    '[snake many](guide.md#snake_case_name)',
+    '[missing](guide.md#snakecase)',
+    '[inner underscore](guide.md#snake_case-and-two-words)',
+    '[code](guide.md#_code_)',
+    '[missing code](guide.md#code)', ''
+  ].join('\n'));
+  const result = await check({ cwd: root, paths: ['README.md'] });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.findings.map(({ line, message }) => ({ line, message })), [
+    { line: 7, message: 'Missing local anchor: #snakecase.' },
+    { line: 10, message: 'Missing local anchor: #code.' }
+  ]);
+});
+
+test('unmatched emphasis delimiters keep anchor analysis within a bounded budget', (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'guide.md'), '# ' + '_a '.repeat(65536) + '\n');
+  fs.writeFileSync(path.join(root, 'README.md'), '[missing](guide.md#missing)\n');
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { check } from ${JSON.stringify(new URL('../src/api.mjs', import.meta.url).href)};
+    const result = await check({ cwd: process.cwd(), paths: ['README.md'] });
+    assert.equal(result.complete, true);
+    assert.equal(result.findings.length, 1);
+  `], {
+    cwd: root, encoding: 'utf8', timeout: 5000,
+    env: { PATH: process.env.PATH || '', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('HTML heading text supplies possible anchors while fenced headings and explicit IDs stay exact', async (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'guide.md'), [
+    '<h3>Technology Sponsors</h3>',
+    '<H2 class="section"><em>Other</em> Sponsors</H2>',
+    '<h3 id="chosen">Explicit Text</h3>',
+    '```html', '<h3>Fenced Heading</h3>', '```', ''
+  ].join('\n'));
+  fs.writeFileSync(path.join(root, 'README.md'), [
+    '[html](guide.md#technology-sponsors)',
+    '[nested](guide.md#other-sponsors)',
+    '[explicit](guide.md#chosen)',
+    '[fenced](guide.md#fenced-heading)',
+    '[explicit text](guide.md#explicit-text)',
+    '[missing](guide.md#absent)', ''
+  ].join('\n'));
+  const result = await check({ cwd: root, paths: ['README.md'] });
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(result.findings.map(({ line, message }) => ({ line, message })), [
+    { line: 4, message: 'Missing local anchor: #fenced-heading.' },
+    { line: 5, message: 'Missing local anchor: #explicit-text.' },
+    { line: 6, message: 'Missing local anchor: #absent.' }
+  ]);
+});
+
+test('HTML heading text that cannot be statically derived never proves an anchor absent', async (t) => {
+  for (const content of [
+    '<h3>\nTechnology Sponsors\n</h3>\n',
+    '<h3>Technology &amp; Sponsors</h3>\n',
+    '<h3>{title}</h3>\n'
+  ]) {
+    const root = temp(t);
+    fs.writeFileSync(path.join(root, 'guide.md'), content);
+    fs.writeFileSync(path.join(root, 'README.md'), '[anchor](guide.md#rendered-heading)\n');
+    const result = await check({ cwd: root, paths: ['README.md'] });
+    assert.equal(result.complete, false);
+    assert.deepEqual(result.findings, []);
+    assert.deepEqual(result.diagnostics.map(({ code }) => code), ['evidence-source-unavailable']);
+  }
+});
