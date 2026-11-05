@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented in this file.
 
+## [2.0.3] - 2026-11-05
+
+### Fixed
+
+- avoid false incomplete results when a literal less-than sign in prose precedes a later HTML anchor; keep indeterminate HTML evidence incomplete
+- make JUnit failure and error totals match the emitted elements, retaining error precedence for a testcase with both diagnostics and blocking findings
+- avoid blocking findings for versioned host routes with Markdown source companions and possible heading anchors from underscore emphasis or static HTML
+
+### Changed
+
+- reduce repeated filesystem resolution within each scan and avoid inline-scanner allocations for link-free input, preserving the existing link grammars and workspace containment checks
+- align package metadata, release-specific Action references, and the bundled Action with 2.0.3
+
+### Notes
+
+- host-route and possible-anchor acceptance is conservative; it does not validate the generated site or provide complete Markdown/HTML renderer support
+- npm publication, Action tags, and the GitHub Release remain separate maintainer steps
+
 ## [2.0.2] - 2026-11-05
 
 2.0.2 is the first npm release to include the precision changes developed after

@@ -31,7 +31,7 @@ const checks = [
       },
       {
         label: 'release-specific Action v2 example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.3/
       },
       {
         label: 'Action v2 offline default',
@@ -39,7 +39,7 @@ const checks = [
       },
       {
         label: 'stable release version',
-        pattern: /Version `2\.0\.2` is the current stable release/
+        pattern: /Version `2\.0\.3` is the current stable release/
       },
       {
         label: 'changed Markdown-only boundary',
@@ -141,11 +141,11 @@ const checks = [
     expectations: [
       {
         label: 'documented migration version',
-        pattern: /This guide covers version `2\.0\.2`/
+        pattern: /This guide covers version `2\.0\.3`/
       },
       {
         label: 'release-specific Action example',
-        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.2/
+        pattern: /uses: Elgabor\/doclify-guardrail\/action@v2\.0\.3/
       }
     ]
   },
@@ -154,7 +154,7 @@ const checks = [
     expectations: [
       {
         label: 'stable package version',
-        pattern: /"version": "2\.0\.2"/
+        pattern: /"version": "2\.0\.3"/
       }
     ]
   },
@@ -163,7 +163,7 @@ const checks = [
     expectations: [
       {
         label: 'stable Action package version',
-        pattern: /"version": "2\.0\.2"/
+        pattern: /"version": "2\.0\.3"/
       }
     ]
   },
@@ -293,6 +293,14 @@ const checks = [
     file: 'CHANGELOG.md',
     expectations: [
       {
+        label: '2.0.3 precision, JUnit and performance entry',
+        pattern: /## \[2\.0\.3\] - 2026-11-05\n[\s\S]*?### Fixed[\s\S]*?JUnit[\s\S]*?### Changed[\s\S]*?filesystem resolution[\s\S]*?### Notes/
+      },
+      {
+        label: 'first npm release of the post-2.0.1 precision changes',
+        pattern: /2\.0\.2 is the first npm release to include the precision changes developed after\s+2\.0\.1:/
+      },
+      {
         label: '2.0.2 security, fixes and maintenance entry',
         pattern: /## \[2\.0\.2\] - 2026-11-05\n[\s\S]*?### Security[\s\S]*?XML 1\.0[\s\S]*?### Fixed[\s\S]*?### Changed[\s\S]*?### Notes/
       },
@@ -394,6 +402,18 @@ for (const file of ['README.md', 'MIGRATION.md']) {
   checks.push({
     file,
     expectations: [
+      {
+        label: 'versioned host-route abstention with Markdown source companions',
+        pattern: /Missing local routes with an existing `\.md` or `\.mdx` source companion[\s\S]*?`migrating-to-5\.0\.0`[\s\S]*?does not verify that the generated site\s+serves the route/
+      },
+      {
+        label: 'possible emphasis and HTML heading anchors with incomplete fallback',
+        pattern: /underscore emphasis delimiters\s+removed[\s\S]*?`snake_case`[\s\S]*?Static single-line HTML headings[\s\S]*?multiline text, encoded entities, or dynamic expressions leave anchor\s+evidence incomplete/
+      },
+      {
+        label: 'JUnit totals and diagnostic error precedence',
+        pattern: /JUnit emits an error[\s\S]*?takes precedence over a blocking finding[\s\S]*?totals count the elements actually emitted/
+      },
       {
         label: 'generated anchor and command exemption with local paths preserved',
         pattern: /Generated documents skip\s+anchor and command claims; local path checks still\s+apply\./
