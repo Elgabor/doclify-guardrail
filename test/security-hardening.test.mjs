@@ -8,6 +8,7 @@ import test from 'node:test';
 import { check } from '../src/api.mjs';
 import { compileWildcard } from '../src/wildcard.mjs';
 import { scanInlineLinks } from '../src/inline-links.mjs';
+import { checkDeadLinksDetailed } from '../src/links.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-security-'));
@@ -150,4 +151,97 @@ test('SEC-03 scanners are differential-equivalent to the three previous link gra
       assert.deepEqual(current, previous, `${mode}:${JSON.stringify(input)}`);
     }
   }
+});
+
+test('SEC-05 DNS deadlines return without late requests or unbounded abandoned lookups', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import { checkDeadLinksDetailed } from ${JSON.stringify(new URL('../src/links.mjs', import.meta.url).href)};
+    const watchdog = setTimeout(() => { throw new Error('DNS exceeded the watchdog'); }, 2000);
+    let release;
+    let requests = 0;
+    const scan = await checkDeadLinksDetailed('[x](https://slow.invalid)', {
+      sourceFile: 'README.md', timeoutMs: 50,
+      lookupFn: () => new Promise(resolve => { release = resolve; }),
+      requestFn: async () => { requests++; return {status:200,headers:{get:()=>null}}; }
+    });
+    assert.match(scan.findings[0]?.message || '', /Timeout/);
+    release([{address:'8.8.8.8',family:4}]);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(requests,0);
+    let lookups = 0;
+    const stalled = await checkDeadLinksDetailed(Array.from({length:20},(_,i)=>'[x](https://host'+i+'.invalid)').join('\\n'), {
+      sourceFile:'README.md',timeoutMs:50,concurrency:2,
+      lookupFn:()=>{lookups++;return new Promise(()=>{});},
+      requestFn:async()=>{throw new Error('request after deadline');}
+    });
+    assert.equal(stalled.findings.length,20);
+    assert.ok(stalled.findings.every(f=>f.message.includes('Timeout')));
+    assert.ok(lookups<=2, 'too many abandoned DNS lookups: '+lookups);
+    clearTimeout(watchdog);
+  `, temp(t));
+});
+
+test('SEC-05 one URL budget covers redirects and HEAD to GET fallback', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import { checkDeadLinksDetailed } from ${JSON.stringify(new URL('../src/links.mjs', import.meta.url).href)};
+    const reply = (status, location=null) => ({status,headers:{get:()=>location}});
+    for (const scenario of ['redirect','fallback']) {
+      let requests=0;
+      const content='[a](http://127.0.0.1/a)';
+      const result=await checkDeadLinksDetailed(content,{
+        sourceFile:'README.md',timeoutMs:100,concurrency:1,allowPrivateLinks:true,
+        requestFn:async(url,opts)=>{
+          requests++;
+          await new Promise(resolve=>setTimeout(resolve,70));
+          if(scenario==='redirect') return reply(302,'/next');
+          if(scenario==='fallback') return reply(opts.method==='HEAD'?405:200);
+          return reply(200);
+        }
+      });
+      assert.match(result.findings.at(-1)?.message || '',/Timeout/,scenario);
+      assert.equal(requests,2);
+    }
+  `, temp(t));
+});
+
+test('SEC-05 queued URLs each receive a full timeout after leaving the queue', (t) => {
+  child(`
+    import assert from 'node:assert/strict';
+    import { checkDeadLinksDetailed } from ${JSON.stringify(new URL('../src/links.mjs', import.meta.url).href)};
+    const reply = {status:200,headers:{get:()=>null}};
+    const urls = Array.from({length:6},(_,index)=>'[x](https://host'+index+'.invalid)').join('\\n');
+    let requests = 0;
+    const result = await checkDeadLinksDetailed(urls, {
+      sourceFile:'README.md',timeoutMs:200,concurrency:2,
+      lookupFn:async()=>[{address:'8.8.8.8',family:4}],
+      requestFn:async()=>{
+        requests++;
+        await new Promise(resolve=>setTimeout(resolve,120));
+        return reply;
+      }
+    });
+    assert.deepEqual(result.findings,[]);
+    assert.equal(requests,6);
+    const slow = await checkDeadLinksDetailed('[x](https://slow.invalid)', {
+      sourceFile:'README.md',timeoutMs:200,
+      lookupFn:async()=>[{address:'8.8.8.8',family:4}],
+      requestFn:async()=>{await new Promise(resolve=>setTimeout(resolve,260));return reply;}
+    });
+    assert.match(slow.findings[0]?.message || '',/Timeout/);
+  `, temp(t));
+});
+
+test('SEC-05 private URLs retain a finding per distinct line before allow-list and cache', async () => {
+  const url = 'http://127.0.0.1/private';
+  const result = await checkDeadLinksDetailed(`[x](${url}) [duplicate](${url})\n[y](${url})`, {
+    sourceFile: 'README.md',
+    linkAllowList: [url],
+    remoteCache: new Map([[url, null]]),
+    requestFn: async () => { throw new Error('private request started'); }
+  });
+  assert.deepEqual(result.findings.map(finding => finding.line), [1, 2]);
+  assert.ok(result.findings.every(finding => finding.message.includes('Blocked private host/IP')));
+  assert.equal(result.stats.remoteLinksChecked, 0);
 });
