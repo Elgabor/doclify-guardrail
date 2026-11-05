@@ -342,6 +342,9 @@ function checkRepositoryClaims(analysis, index, filePath, { allowCommandClaims =
         ? path.posix.normalize(path.posix.join(path.posix.dirname(filePath), decodeLocalPath(target)))
         : filePath;
       if (!index.files.has(targetPath)) {
+        const symlink = [...(index.unavailableSymlinks?.values() || [])].find((source) => targetPath === source.path
+          || targetPath.startsWith(`${source.path}/`));
+        if (symlink && isMarkdownPath(targetPath)) addDiagnostic(evidenceDiagnostic({ path: targetPath, state: symlink.state }));
         const excluded = [...(index.excludedPaths || [])].find((excludedPath) => targetPath === excludedPath
           || targetPath.startsWith(`${excludedPath}/`));
         if (excluded) addDiagnostic(evidenceDiagnostic({ path: targetPath, state: 'excluded' }));

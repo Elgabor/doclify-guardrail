@@ -6,6 +6,7 @@ import { isMarkdownPath } from './markdown-files.mjs';
 import { compareText } from './text-order.mjs';
 import { compileWildcard } from './wildcard.mjs';
 import { scanInlineLinks } from './inline-links.mjs';
+import { getReadContainment } from './workspace-path.mjs';
 
 const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', '.next', '.cache']);
 const MAKEFILE_PRIORITY = new Map([['GNUmakefile', 0], ['makefile', 1], ['Makefile', 2]]);
@@ -190,6 +191,7 @@ function excludedPathMayContainWorkspace(relativePath, patterns) {
 }
 
 function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
+  const canonicalWorkspace = fs.realpathSync(workspace);
   const index = {
     files: new Set(),
     anchors: new Map(),
@@ -198,6 +200,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
     packageSources: new Map(),
     workspaceSources: [],
     anchorSources: new Map(),
+    unavailableSymlinks: new Map(),
     makeSources: new Map(),
     excludedPaths: new Set(),
     excludedDirectories: new Set(),
@@ -207,6 +210,56 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
   };
 
   const packageCandidates = [];
+  const anchorCache = new Map();
+  function addAnchors(sourcePath, relative) {
+    if (!anchorCache.has(sourcePath)) {
+      try {
+        anchorCache.set(sourcePath, anchorsFor(fs.readFileSync(sourcePath, 'utf8')));
+      } catch {
+        anchorCache.set(sourcePath, null);
+      }
+    }
+    const analysis = anchorCache.get(sourcePath);
+    if (analysis) index.anchors.set(relative, analysis.anchors);
+    index.anchorSources.set(relative, {
+      path: relative,
+      state: analysis ? analysis.complete ? 'available' : 'unavailable' : 'unreadable'
+    });
+  }
+
+  function canonicalSourceExcluded(sourcePath) {
+    const relative = portable(path.relative(canonicalWorkspace, sourcePath));
+    if (relative.split('/').some((part) => IGNORED_DIRECTORIES.has(part))) return true;
+    if (isExcluded(sourcePath, { directory: false })) return true;
+    for (let directory = path.dirname(sourcePath); directory !== canonicalWorkspace; directory = path.dirname(directory)) {
+      if (isExcluded(directory, { directory: true })) return true;
+      if (path.dirname(directory) === directory) break;
+    }
+    return false;
+  }
+
+  function addSymlink(absolutePath, name) {
+    const relative = portable(path.relative(workspace, absolutePath));
+    const source = { path: relative, state: 'unavailable' };
+    index.unavailableSymlinks.set(relative, source);
+    // Resolve regular files only; directory links never expand the walk.
+    if (getReadContainment(absolutePath, workspace) !== 'inside') return;
+    let canonical;
+    try {
+      canonical = fs.realpathSync(absolutePath);
+      if (!fs.statSync(canonical).isFile()) return;
+    } catch {
+      return;
+    }
+    if (canonicalSourceExcluded(canonical)) {
+      source.state = 'excluded';
+      return;
+    }
+    index.unavailableSymlinks.delete(relative);
+    index.files.add(relative);
+    if (isMarkdownPath(name)) addAnchors(canonical, relative);
+    // Manifest and Makefile symlinks retain their previous unsupported behavior.
+  }
   function walk(directory) {
     let entries;
     try {
@@ -241,6 +294,10 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
         walk(absolutePath);
         continue;
       }
+      if (entry.isSymbolicLink()) {
+        addSymlink(absolutePath, entry.name);
+        continue;
+      }
       if (!entry.isFile()) continue;
       const relative = portable(path.relative(workspace, absolutePath));
       index.files.add(relative);
@@ -263,16 +320,7 @@ function buildRepositoryIndex(workspace, { isExcluded = () => false } = {}) {
         }
       }
       if (isMarkdownPath(entry.name)) {
-        try {
-          const anchorAnalysis = anchorsFor(fs.readFileSync(absolutePath, 'utf8'));
-          index.anchors.set(relative, anchorAnalysis.anchors);
-          index.anchorSources.set(relative, {
-            path: relative,
-            state: anchorAnalysis.complete ? 'available' : 'unavailable'
-          });
-        } catch {
-          index.anchorSources.set(relative, { path: relative, state: 'unreadable' });
-        }
+        addAnchors(absolutePath, relative);
       }
     }
   }

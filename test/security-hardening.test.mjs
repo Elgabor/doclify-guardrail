@@ -9,6 +9,7 @@ import { check } from '../src/api.mjs';
 import { compileWildcard } from '../src/wildcard.mjs';
 import { scanInlineLinks } from '../src/inline-links.mjs';
 import { checkDeadLinksDetailed } from '../src/links.mjs';
+import { buildRepositoryIndex } from '../src/repository-index.mjs';
 
 function temp(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'doclify-security-'));
@@ -244,4 +245,56 @@ test('SEC-05 private URLs retain a finding per distinct line before allow-list a
   assert.deepEqual(result.findings.map(finding => finding.line), [1, 2]);
   assert.ok(result.findings.every(finding => finding.message.includes('Blocked private host/IP')));
   assert.equal(result.stats.remoteLinksChecked, 0);
+});
+
+test('SEC-06 contained file aliases and chains verify anchors', { skip: process.platform === 'win32' }, async (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'target.md'), '# Existing\n');
+  fs.symlinkSync('target.md', path.join(root, 'alias.md'));
+  fs.symlinkSync('alias.md', path.join(root, 'chain.md'));
+  for (const alias of ['alias.md', 'chain.md']) {
+    for (const fragment of ['existing', 'missing']) {
+      fs.writeFileSync(path.join(root, 'README.md'), `[ref](${alias}#${fragment})`);
+      const result = await check({ cwd: root, paths: ['README.md'] });
+      assert.equal(result.complete, true);
+      assert.deepEqual(result.findings.map(f=>f.ruleId), fragment === 'existing' ? [] : ['local-link']);
+    }
+  }
+});
+
+test('SEC-06 unavailable alias evidence is incomplete only when referenced', { skip: process.platform === 'win32' }, async (t) => {
+  const parent = temp(t);
+  const root = path.join(parent, 'repo');
+  fs.mkdirSync(root);
+  fs.mkdirSync(path.join(root, 'private'));
+  fs.mkdirSync(path.join(root, 'directory'));
+  fs.writeFileSync(path.join(root, 'private/target.md'), '# Existing\n');
+  fs.writeFileSync(path.join(root, 'directory/target.md'), '# Existing\n');
+  fs.writeFileSync(path.join(parent, 'outside.md'), '# Outside\n');
+  fs.symlinkSync('../outside.md', path.join(root, 'external.md'));
+  fs.symlinkSync('missing.md', path.join(root, 'broken.md'));
+  fs.symlinkSync('directory', path.join(root, 'directory-alias'));
+  fs.symlinkSync('private/target.md', path.join(root, 'excluded.md'));
+  fs.symlinkSync('cycle-b.md', path.join(root, 'cycle-a.md'));
+  fs.symlinkSync('cycle-a.md', path.join(root, 'cycle-b.md'));
+  fs.writeFileSync(path.join(root, '.doclify-guardrail.json'), JSON.stringify({exclude:['private/**']}));
+  fs.writeFileSync(path.join(root, 'README.md'), '# Safe\n');
+  assert.equal((await check({cwd:root,paths:['README.md']})).complete, true);
+  for (const alias of ['external.md', 'broken.md', 'directory-alias/target.md', 'excluded.md', 'cycle-a.md']) {
+    fs.writeFileSync(path.join(root, 'README.md'), `[ref](${alias}#existing)`);
+    const result = await check({cwd:root,paths:['README.md']});
+    assert.equal(result.complete, false, alias);
+    assert.ok(result.diagnostics.length > 0, alias);
+  }
+});
+
+test('SEC-06 aliases do not add support for manifest or Makefile symlinks', { skip: process.platform === 'win32' }, (t) => {
+  const root = temp(t);
+  fs.writeFileSync(path.join(root, 'manifest.txt'), '{"name":"root","scripts":{"test":"true"}}');
+  fs.writeFileSync(path.join(root, 'make.txt'), 'check:\n');
+  fs.symlinkSync('manifest.txt', path.join(root, 'package.json'));
+  fs.symlinkSync('make.txt', path.join(root, 'Makefile'));
+  const index = buildRepositoryIndex(root);
+  assert.equal(index.rootPackage, null);
+  assert.equal(index.makefiles.size, 0);
 });
