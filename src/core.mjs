@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { RULE_CATALOG } from './rule-catalog.mjs';
 import { ConfigV2Error, createV2ConfigResolver } from './config-v2.mjs';
 import { discoverGitRoot, getChangedFilesFromRoot, GitSelectionError } from './diff.mjs';
-import { checkDeadLinksDetailed } from './links.mjs';
+import { checkDeadLinksDetailed, createBoundedLookup, DEFAULT_LINK_CONCURRENCY } from './links.mjs';
 import { createResult } from './result.mjs';
 import { allowsRepositoryClaims, resolveDocumentPurpose } from './document-purpose.mjs';
 import { createSuppressionMatcher } from './suppressions.mjs';
@@ -306,6 +306,7 @@ async function runCheck(options = {}) {
     diagnostics.push(diagnostic);
   };
   const remoteCache = new Map();
+  const lookupLimiters = new Map();
   let repositoryIndex = null;
   const getRepositoryIndex = () => {
     if (!repositoryIndex) {
@@ -364,13 +365,18 @@ async function runCheck(options = {}) {
       .filter((finding) => !ignored.has(finding.ruleId) && !suppressionMatcher.isSuppressed(finding.ruleId, finding.line))
       .map((finding) => ({ ...finding, path: filePath }));
 
+    const linkConcurrency = fileOptions.linkConcurrency || DEFAULT_LINK_CONCURRENCY;
+    if (!lookupLimiters.has(linkConcurrency)) {
+      lookupLimiters.set(linkConcurrency, createBoundedLookup({ concurrency: linkConcurrency }));
+    }
     const linkResult = await checkDeadLinksDetailed(content, {
       sourceFile: absolutePath,
       siteRoot: fileOptions.siteRoot,
       linkAllowList: fileOptions.linkAllowList,
       timeoutMs: fileOptions.linkTimeoutMs || undefined,
-      concurrency: fileOptions.linkConcurrency || undefined,
+      concurrency: linkConcurrency,
       remoteCache,
+      lookupLimiter: lookupLimiters.get(linkConcurrency),
       checkRemote: fileOptions.externalLinks === true,
       readBoundary: discoveryRoot,
       isExcluded: configResolver.isExcluded
