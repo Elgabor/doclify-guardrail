@@ -6,9 +6,7 @@ doclify-report.md
 report.md
 /bench/out/
 
-# Local operator and agent control files (never published)
-/AGENTS.md
-/CLAUDE.md
+# Private operator files (AGENTS.md and CLAUDE.md are public project guidance)
 /CLAUDE.local.md
 /PLAN.md
 /TASKS.md
