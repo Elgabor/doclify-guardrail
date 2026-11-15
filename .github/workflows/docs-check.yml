@@ -71,7 +71,7 @@ jobs:
       # the local ./action smoke above covers the current checkout.
       - name: Smoke security-fixed Action from an immutable reference
         id: action-sha-smoke
-        uses: Elgabor/doclify-guardrail/action@3f43d658fa6706bf03cfa8ca6ca08a953ba29703
+        uses: Elgabor/doclify-guardrail/action@e8896630631b436c0a42c456390246534471cb44
         with:
           path: docs/validation-protocol.md
       - name: Verify immutable Action reads the caller workspace
