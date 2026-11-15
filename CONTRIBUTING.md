@@ -26,8 +26,11 @@ repository.
 
 The package keeps `engines: >=20`; Node.js 20 reached end of life on
 2026-04-30 and remains accepted for compatibility. Use a maintained Node.js
-22, 24, or 26 LTS release. The correctness CI matrix is pinned to 20.20.2,
-22.23.4, 24.22.2, and 26.13.0; performance and docs checks use exactly 24.22.2.
+22, 24, or 26 LTS release. Correctness CI covers 20.20.2, 22.23.4, 24.22.2,
+and 26.13.0. Docs Check owns the Node 24 correctness, network, performance and
+documentation gates; Reliability covers the other three runtimes and Node 26
+network checks. Both run on pull requests and pushes to main, cancelling
+superseded runs on the same ref.
 
 The root package has no runtime dependencies. The full suite also exercises the
 Action source, so install its locked dependencies without lifecycle scripts:

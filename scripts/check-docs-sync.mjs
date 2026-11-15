@@ -239,8 +239,8 @@ const checks = [
         pattern: /run: npm pack --dry-run/
       },
       {
-        label: 'performance baseline trigger',
-        pattern: /'bench\/baselines\/perf-300\.json'/
+        label: 'benchmark and performance baseline trigger',
+        pattern: /'bench\/\*\*'/
       },
       {
         label: 'explicit catastrophic performance regression gate',
@@ -371,28 +371,16 @@ const checks = [
         pattern: /\n  correctness:\n/
       },
       {
-        label: 'separate network job',
-        pattern: /\n  network:\n/
-      },
-      {
-        label: 'separate enforced performance job',
-        pattern: /\n  performance:\n[\s\S]*?npm run test:performance/
-      },
-      {
         label: 'labeled correctness gate',
         pattern: /run: npm run test:labeled/
       },
       {
-        label: 'exact compatibility and maintained runtime matrix',
-        pattern: /correctness:\n[\s\S]*?node: \['20\.20\.2', '22\.23\.4', '24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
+        label: 'compatibility runtimes complementary to Docs Check Node 24',
+        pattern: /correctness:\n[\s\S]*?node: \['20\.20\.2', '22\.23\.4', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
       },
       {
-        label: 'exact network runtime matrix',
-        pattern: /network:\n[\s\S]*?node: \['24\.22\.2', '26\.13\.0'\][\s\S]*?node-version: \$\{\{ matrix\.node \}\}\n\s+check-latest: true/
-      },
-      {
-        label: 'exact performance runtime and failed-gate measurement',
-        pattern: /performance:\n[\s\S]*?node-version: '24\.22\.2'\n\s+check-latest: true[\s\S]*?npm run test:performance \|\| \{[\s\S]*?node scripts\/perf-corpus\.mjs --measure[\s\S]*?exit "\$status"/
+        label: 'Node 26 network gate also runs after correctness failures',
+        pattern: /if: \$\{\{ !cancelled\(\) && matrix\.node == '26\.13\.0' \}\}\n\s+run: npm run test:network/
       }
     ]
   }
